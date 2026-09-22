@@ -38,6 +38,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     private readonly IAudioPlaybackService _audioPlaybackService;
     private readonly StoryPlaybackSession _storyPlaybackSession;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
+    private readonly IOfflineStoryDownloadService _offlineDownloadService;
     private readonly ObservableCollection<PlaylistTrackItem> _tracks = [];
     private readonly CollectionView _trackList;
     private MobilePlaylist? _playlist;
@@ -64,13 +65,15 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         SessionState sessionState,
         IAudioPlaybackService audioPlaybackService,
         StoryPlaybackSession storyPlaybackSession,
-        PlaylistPlaybackState playlistPlaybackState)
+        PlaylistPlaybackState playlistPlaybackState,
+        IOfflineStoryDownloadService offlineDownloadService)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _audioPlaybackService = audioPlaybackService;
         _storyPlaybackSession = storyPlaybackSession;
         _playlistPlaybackState = playlistPlaybackState;
+        _offlineDownloadService = offlineDownloadService;
 
         Title = "Speellys";
         SafeAreaEdges = SafeAreaEdges.None;
@@ -800,7 +803,16 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         _loadingStoryKey = key;
         try
         {
-            var detail = await _apiClient.GetStoryAsync(_currentStory.Slug, _currentStory.Source, _loadCts.Token);
+            var download = await _offlineDownloadService.GetDownloadAsync(_currentStory.Slug, _currentStory.Source, _loadCts.Token);
+            var detail = download is null ? null : _offlineDownloadService.CreateOfflineDetail(download);
+            if (detail is null || detail.RequiresSubscription ||
+                string.IsNullOrWhiteSpace(detail.IsVideo
+                    ? await _offlineDownloadService.ResolvePlayableVideoAsync(detail, _loadCts.Token)
+                    : await _offlineDownloadService.ResolvePlayableAudioAsync(detail, _loadCts.Token)))
+            {
+                detail = await _apiClient.GetStoryAsync(_currentStory.Slug, _currentStory.Source, _loadCts.Token);
+                if (detail is not null) await _offlineDownloadService.RefreshAccessAsync(detail, _loadCts.Token);
+            }
             if (!_isPageActive || detail is null || !string.Equals(GetStoryKey(detail.Story), key, StringComparison.OrdinalIgnoreCase))
             {
                 return;
@@ -904,6 +916,13 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
     private async Task StartPlaybackAsync(MobileStoryDetailResponse detail)
     {
+        if (detail.IsVideo)
+        {
+            await Shell.Current.GoToAsync(
+                $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(detail.Story.Slug)}&source={Uri.EscapeDataString(detail.Story.Source)}",
+                animate: false);
+            return;
+        }
         try
         {
             if (_storyPlaybackSession.IsCurrentStory(detail.Story))
@@ -914,10 +933,14 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
-            var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
-                detail.AudioUrl,
-                detail.Story.Slug,
-                detail.Story.Source);
+            var playbackUrl = await _offlineDownloadService.ResolvePlayableAudioAsync(detail);
+            if (string.IsNullOrWhiteSpace(playbackUrl))
+            {
+                playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
+                    detail.AudioUrl,
+                    detail.Story.Slug,
+                    detail.Story.Source);
+            }
             await _storyPlaybackSession.PlayAsync(
                 playbackUrl,
                 detail.Story,

@@ -170,12 +170,26 @@ public sealed class StoryPlaybackSession
             return;
         }
 
+        var download = await _offlineDownloadService.GetDownloadAsync(current.Story.Slug, current.Story.Source);
+        var localAudio = download is null ? null : await _offlineDownloadService.ResolvePlayableAudioAsync(
+            _offlineDownloadService.CreateOfflineDetail(download));
+        if (!ReferenceEquals(_current, current)) return;
+        var switchToDownload = !string.IsNullOrWhiteSpace(localAudio) &&
+            !string.Equals(current.PlaybackUrl, localAudio, StringComparison.Ordinal);
+        var position = _audioPlaybackService.CurrentPosition;
+        var playbackUrl = switchToDownload ? localAudio! : current.PlaybackUrl;
+
         _isChangingPlayback = true;
         try
         {
             await _audioPlaybackService.PlayAsync(
-                current.PlaybackUrl,
+                playbackUrl,
                 new AudioPlaybackMetadata(current.Story.Title, "Schink Stories", current.ArtworkUrl));
+            if (switchToDownload)
+            {
+                _current = current with { PlaybackUrl = playbackUrl };
+                await _audioPlaybackService.SeekAsync(position);
+            }
         }
         finally
         {
@@ -322,29 +336,14 @@ public sealed class StoryPlaybackSession
                 return;
             }
 
-            MobileStoryDetailResponse? detail;
-            if (_playlistPlaybackState.IsOfflineQueue)
+            var download = await _offlineDownloadService.GetDownloadAsync(
+                nextStory.Slug, nextStory.Source, cancellationToken);
+            var detail = download is null ? null : _offlineDownloadService.CreateOfflineDetail(download);
+            var localAudio = detail is null ? null : await _offlineDownloadService.ResolvePlayableAudioAsync(detail, cancellationToken);
+            if (!_playlistPlaybackState.IsOfflineQueue && string.IsNullOrWhiteSpace(localAudio))
             {
-                var download = await _offlineDownloadService.GetDownloadAsync(
-                    nextStory.Slug,
-                    nextStory.Source,
-                    cancellationToken);
-                detail = download is null ? null : _offlineDownloadService.CreateOfflineDetail(download);
-            }
-            else
-            {
-                try
-                {
-                    detail = await _apiClient.GetStoryAsync(nextStory.Slug, "luister", cancellationToken);
-                }
-                catch when (!cancellationToken.IsCancellationRequested)
-                {
-                    var download = await _offlineDownloadService.GetDownloadAsync(
-                        nextStory.Slug,
-                        "luister",
-                        cancellationToken);
-                    detail = download is null ? null : _offlineDownloadService.CreateOfflineDetail(download);
-                }
+                detail = await _apiClient.GetStoryAsync(nextStory.Slug, nextStory.Source, cancellationToken);
+                if (detail is not null) await _offlineDownloadService.RefreshAccessAsync(detail, cancellationToken);
             }
 
             if (detail is null ||
@@ -476,7 +475,9 @@ public sealed class StoryPlaybackSession
 
     private MobileStorySummary? ResolveNextStory(MobileStorySummary currentStory)
     {
-        var stories = _playlistPlaybackState.GetPlaybackStories(currentStory);
+        var stories = _playlistPlaybackState.GetPlaybackStories(currentStory)
+            .Where(story => !string.Equals(story.StoryType, "video", StringComparison.OrdinalIgnoreCase))
+            .ToList();
         var currentIndex = stories.ToList().FindIndex(story => SameStory(story, currentStory));
         return currentIndex >= 0 && currentIndex < stories.Count - 1
             ? stories[currentIndex + 1]

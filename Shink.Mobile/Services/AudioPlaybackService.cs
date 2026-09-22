@@ -236,6 +236,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
+            if (playerItem is null || !ReferenceEquals(_player?.CurrentItem, playerItem)) return;
             _player?.Play();
             IsPlaying = true;
             ApplyPlaybackSpeed();
@@ -811,6 +812,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
                 await PreparePlayerAsync(player, CancellationToken.None);
             }
 
+            if (!ReferenceEquals(_player, player)) return;
             player.Start();
             IsPlaying = true;
             ApplyPlaybackSpeed();
@@ -825,10 +827,10 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
                 _currentAudioUrl = null;
                 _metadata = null;
                 IsPlaying = false;
+                StopBackgroundPlaybackService();
             }
 
             ReleasePlayer(player, stopFirst: false);
-            StopBackgroundPlaybackService();
             throw;
         }
     }
@@ -1013,18 +1015,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     {
         try
         {
-            var context = Android.App.Application.Context;
-            var intent = new Android.Content.Intent(
-                context,
-                typeof(Shink.Mobile.Platforms.Android.AudioPlaybackForegroundService));
-            if (Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.O)
-            {
-                context.StartForegroundService(intent);
-            }
-            else
-            {
-                context.StartService(intent);
-            }
+            Shink.Mobile.Platforms.Android.AudioPlaybackForegroundService.RequestStart(
+                Android.App.Application.Context);
         }
         catch (Exception exception)
         {
@@ -1037,10 +1029,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         CancelCompletionKeepAliveStop();
         try
         {
-            var context = Android.App.Application.Context;
-            context.StopService(new Android.Content.Intent(
-                context,
-                typeof(Shink.Mobile.Platforms.Android.AudioPlaybackForegroundService)));
+            Shink.Mobile.Platforms.Android.AudioPlaybackForegroundService.RequestStop();
         }
         catch (Exception exception)
         {

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using CommunityToolkit.Maui;
 using PostHog.Config;
 using Shink.Mobile.Pages;
 using Shink.Mobile.Services;
@@ -13,6 +14,7 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
+            .UseMauiCommunityToolkitMediaElement(false)
             .ConfigureFonts(fonts =>
             {
                 fonts.AddFont("fa-regular-400.ttf", "FontAwesomeRegular");

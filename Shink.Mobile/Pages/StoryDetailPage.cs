@@ -58,6 +58,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private Border? _castSheet;
     private BoxView? _castScrim;
     private MobileStoryDetailResponse? _currentDetail;
+    private StoryVideoPlayer? _videoPlayer;
+    private bool _isVideoFullscreen;
     private Button? _activePlayButton;
     private Slider? _activeProgressSlider;
     private Label? _activeCurrentTimeLabel;
@@ -71,11 +73,18 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private string? _playlistSlug;
     private string? _loadedKey;
     private CancellationTokenSource? _loadCts;
+    private bool _needsLoadRetry;
+    private bool _isLoadInFlight;
+    private bool _retryAfterCurrentLoad;
+    private int _loadAttempt;
+    private Window? _recoveryWindow;
+    private bool _isRecoveryEventSubscribed;
     private bool _isPageActive;
     private bool _isDownloadEventSubscribed;
     private bool _isPlaybackEventSubscribed;
     private bool _isClosing;
     private bool _isShowingFullscreenCover;
+    private StoryFullscreenPage? _fullscreenPage;
     private bool _wasKeepScreenOnBeforeFullscreen;
     private bool _isFavoriteRequestInFlight;
     private bool _isPlaybackRequestInFlight;
@@ -260,6 +269,20 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _playerSurface.TranslationY = 0;
         SubscribeDownloadEvents();
         SubscribePlaybackEvents();
+        SubscribeRecoveryEvents();
+
+        if (_currentDetail is { IsVideo: true } videoDetail && _videoPlayer is null &&
+            string.Equals(videoDetail.Story.Slug, StorySlug, StringComparison.OrdinalIgnoreCase))
+        {
+            RenderDetail(videoDetail, trackView: false);
+        }
+
+        if (_needsLoadRetry)
+        {
+            if (_isLoadInFlight) _retryAfterCurrentLoad = true;
+            await RetryFailedLoadAsync();
+            return;
+        }
 
         var loadKey = $"{StorySlug}:{Source}";
         if (string.IsNullOrWhiteSpace(StorySlug) || loadKey == _loadedKey)
@@ -304,12 +327,97 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
         _storyPlaybackSession.NotifyPageHidden();
         _isPageActive = false;
+        ClearVideoPlayer();
         CancelActiveLoad();
         DismissCastPicker();
         StopProgressTimer();
         UnsubscribeDownloadEvents();
         UnsubscribePlaybackEvents();
+        UnsubscribeRecoveryEvents();
         ClearActivePlaybackUi();
+    }
+
+    private void SubscribeRecoveryEvents()
+    {
+        if (_isRecoveryEventSubscribed) return;
+        Connectivity.Current.ConnectivityChanged += OnConnectivityChanged;
+        _recoveryWindow = Window;
+        if (_recoveryWindow is not null) _recoveryWindow.Resumed += OnRecoveryResumed;
+        _isRecoveryEventSubscribed = true;
+    }
+
+    private void UnsubscribeRecoveryEvents()
+    {
+        if (!_isRecoveryEventSubscribed) return;
+        Connectivity.Current.ConnectivityChanged -= OnConnectivityChanged;
+        if (_recoveryWindow is not null) _recoveryWindow.Resumed -= OnRecoveryResumed;
+        _recoveryWindow = null;
+        _isRecoveryEventSubscribed = false;
+        _retryAfterCurrentLoad = false;
+    }
+
+    private void OnConnectivityChanged(object? sender, ConnectivityChangedEventArgs args)
+    {
+        if (args.NetworkAccess == NetworkAccess.Internet) QueueLoadRecovery();
+    }
+
+    private void OnRecoveryResumed(object? sender, EventArgs args) => QueueLoadRecovery();
+
+    private void QueueLoadRecovery() => MainThread.BeginInvokeOnMainThread(async () =>
+    {
+        if (!_isPageActive || _isClosing || !_needsLoadRetry) return;
+        if (_isLoadInFlight)
+        {
+            // The connection can return before the failed request unwinds.
+            _retryAfterCurrentLoad = true;
+            return;
+        }
+
+        await RetryFailedLoadAsync();
+    });
+
+    private async Task RetryFailedLoadAsync()
+    {
+        if (!_isPageActive || _isClosing || !_needsLoadRetry || _isLoadInFlight) return;
+        CancelActiveLoad();
+        _loadCts = new CancellationTokenSource();
+        await LoadAsync(cancellationToken: _loadCts.Token);
+    }
+
+    private Button BuildLoadBackButton()
+    {
+        var button = new Button
+        {
+            Text = "Terug",
+            AutomationId = "story-load-back",
+            BackgroundColor = PlayerPanelColor,
+            TextColor = PlayerTextColor,
+            CornerRadius = 22,
+            MinimumHeightRequest = 44,
+            HorizontalOptions = LayoutOptions.Start
+        };
+        button.Clicked += async (_, _) => await CloseAsync(button);
+        return button;
+    }
+
+    private void RenderLoadError(string message)
+    {
+        _needsLoadRetry = true;
+        _loadedKey = null;
+        _content.Children.Clear();
+        _content.Children.Add(BuildLoadBackButton());
+        _content.Children.Add(BuildMessage(message));
+        var retry = new Button
+        {
+            Text = "Probeer weer",
+            AutomationId = "story-load-retry",
+            BackgroundColor = PlayerAccentColor,
+            TextColor = PlayerAccentTextColor,
+            CornerRadius = 22,
+            MinimumHeightRequest = 44
+        };
+        retry.Clicked += async (_, _) => await RetryFailedLoadAsync();
+        _content.Children.Add(retry);
     }
 
     private void SubscribeDownloadEvents()
@@ -338,7 +446,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            if (_isPageActive && _currentDetail is not null)
+            if (_isPageActive && _currentDetail is not null && !_currentDetail.IsVideo)
             {
                 RenderDetail(_currentDetail, trackView: false);
             }
@@ -347,19 +455,34 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private async Task LoadAsync(bool showLoading = true, CancellationToken cancellationToken = default)
     {
+        var attempt = ++_loadAttempt;
+        _isLoadInFlight = true;
+        _needsLoadRetry = true;
+        OfflineStoryDownload? offlineDownload = null;
         var renderedCachedDetail = false;
-        if (showLoading)
-        {
-            renderedCachedDetail = await TryRenderCachedStoryAsync(cancellationToken);
-            if (!renderedCachedDetail)
-            {
-                _content.Children.Clear();
-                _content.Children.Add(BuildLoadingState());
-            }
-        }
-
         try
         {
+            offlineDownload = await _offlineDownloadService.GetDownloadAsync(
+                StorySlug ?? string.Empty, Source ?? "luister", cancellationToken);
+            if (offlineDownload is not null && !cancellationToken.IsCancellationRequested && _isPageActive)
+            {
+                RenderOfflineDetail(offlineDownload);
+                _needsLoadRetry = false;
+                renderedCachedDetail = true;
+                if (Connectivity.Current.NetworkAccess != NetworkAccess.Internet) return;
+            }
+            if (showLoading && !renderedCachedDetail)
+            {
+                renderedCachedDetail = await TryRenderCachedStoryAsync(cancellationToken);
+                if (cancellationToken.IsCancellationRequested || !_isPageActive) return;
+                if (renderedCachedDetail) _needsLoadRetry = false;
+                if (!renderedCachedDetail)
+                {
+                    _content.Children.Clear();
+                    _content.Children.Add(BuildLoadBackButton());
+                    _content.Children.Add(BuildLoadingState());
+                }
+            }
             var detail = await _apiClient.GetStoryAsync(StorySlug ?? string.Empty, Source ?? "luister", cancellationToken);
             if (cancellationToken.IsCancellationRequested || !_isPageActive)
             {
@@ -368,8 +491,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
             if (detail is null)
             {
-                _content.Children.Clear();
-                _content.Children.Add(BuildMessage("Storie nie gevind nie."));
+                if (renderedCachedDetail) return;
+                RenderLoadError("Storie nie gevind nie. Probeer weer of gaan terug.");
                 return;
             }
 
@@ -379,25 +502,26 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
+            await _offlineDownloadService.RefreshAccessAsync(detail, cancellationToken);
+            if (cancellationToken.IsCancellationRequested || !_isPageActive) return;
             RenderDetail(detail, trackView: !renderedCachedDetail);
+            _needsLoadRetry = false;
+            _loadedKey = $"{StorySlug}:{Source}";
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             if (cancellationToken.IsCancellationRequested || !_isPageActive)
             {
                 return;
             }
 
-            var offlineDownload = await _offlineDownloadService.GetDownloadAsync(
-                StorySlug ?? string.Empty,
-                Source ?? "luister",
-                cancellationToken);
             if (offlineDownload is not null)
             {
                 RenderOfflineDetail(offlineDownload);
+                _needsLoadRetry = false;
                 return;
             }
 
@@ -406,8 +530,19 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
-            _content.Children.Clear();
-            _content.Children.Add(BuildMessage(ex.Message));
+            RenderLoadError("Die storie kon nie laai nie. Gaan jou internetverbinding na en probeer weer.");
+        }
+        finally
+        {
+            if (attempt == _loadAttempt)
+            {
+                _isLoadInFlight = false;
+                if (_retryAfterCurrentLoad)
+                {
+                    _retryAfterCurrentLoad = false;
+                    QueueLoadRecovery();
+                }
+            }
         }
     }
 
@@ -441,6 +576,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private void RenderOfflineDetail(OfflineStoryDownload download)
     {
         var detail = _offlineDownloadService.CreateOfflineDetail(download);
+        if (detail.IsVideo)
+        {
+            RenderDetail(detail, trackView: false);
+            return;
+        }
         _content.Children.Clear();
         Title = detail.Story.Title;
         _currentDetail = detail;
@@ -454,16 +594,20 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         if (detail.RequiresSubscription)
         {
             _content.Children.Add(BuildMessage("Hierdie aflaai moet weer aanlyn bevestig word."));
+            RefreshFullscreenPlayer(detail);
             return;
         }
 
         _content.Children.Add(BuildAudioPlayer(detail));
         _content.Children.Add(BuildStoryInfoCard(detail));
+        RefreshFullscreenPlayer(detail);
         UpdateProgressState();
         if (IsCurrentStoryPlaying(detail))
         {
             StartProgressTimer();
         }
+        EnsureCatalogDurationVisibleAsync(detail);
+        TryStartPendingAutoplay(detail);
     }
 
     private void RenderPreview(MobileStorySummary story)
@@ -496,24 +640,46 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _content.Children.Add(BuildStoryHeader(previewDetail));
         _content.Children.Add(BuildActionRail(previewDetail));
         _content.Children.Add(BuildInlineLoadingState());
+        RefreshFullscreenPlayer(previewDetail);
     }
 
     private void RenderDetail(MobileStoryDetailResponse detail, bool trackView = true)
     {
+        if (detail.IsVideo && !detail.RequiresSubscription && _videoPlayer is { HasMedia: true } &&
+            string.Equals(_currentDetail?.Story.Slug, detail.Story.Slug, StringComparison.OrdinalIgnoreCase))
+        {
+            // Download/favorite updates must not tear down a playing video.
+            _currentDetail = detail;
+            return;
+        }
+        ClearVideoPlayer();
         _content.Children.Clear();
         Title = detail.Story.Title;
         _currentDetail = detail;
         _activeStory = detail.Story;
         SaveContinueListening(detail);
         _content.Children.Add(BuildTopBar());
-        _content.Children.Add(BuildCoverArt(detail));
+        if (detail.IsVideo && !detail.RequiresSubscription)
+        {
+            _coverArt = null;
+            _videoPlayer = new StoryVideoPlayer(detail, _apiClient, _offlineDownloadService, _storyPlaybackSession);
+            _videoPlayer.FullscreenRequested += (_, _) => ToggleVideoFullscreen();
+            _content.Children.Add(_videoPlayer);
+        }
+        else
+        {
+            _content.Children.Add(BuildCoverArt(detail));
+        }
         _content.Children.Add(BuildStoryHeader(detail));
         _content.Children.Add(BuildActionRail(detail));
-        _ = _offlineDownloadService.RefreshAccessAsync(detail);
 
         if (detail.RequiresSubscription)
         {
             _content.Children.Add(BuildLockedPanel(detail));
+        }
+        else if (detail.IsVideo)
+        {
+            if (trackView) _ = _apiClient.TrackStoryViewAsync(detail.Story.Slug, detail.Story.Source);
         }
         else if (!string.IsNullOrWhiteSpace(detail.AudioUrl))
         {
@@ -543,6 +709,45 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             _content.Children.Add(playlistQueue);
         }
 
+        RefreshFullscreenPlayer(detail);
+    }
+
+    private void ToggleVideoFullscreen()
+    {
+        if (_videoPlayer is null) return;
+        _isVideoFullscreen = !_isVideoFullscreen;
+        if (_isVideoFullscreen)
+        {
+            _content.Children.Remove(_videoPlayer);
+            _playerSurface.IsVisible = false;
+            _videoPlayer.ZIndex = 200;
+            _videoPlayer.Margin = new Thickness(24);
+            _root.Children.Add(_videoPlayer);
+            _orientationService.RequestLandscape();
+        }
+        else
+        {
+            _root.Children.Remove(_videoPlayer);
+            _videoPlayer.Margin = Thickness.Zero;
+            _content.Children.Insert(1, _videoPlayer);
+            _playerSurface.IsVisible = true;
+            _orientationService.RequestPortrait();
+        }
+        _videoPlayer.SetFullscreen(_isVideoFullscreen);
+    }
+
+    protected override bool OnBackButtonPressed()
+    {
+        if (!_isVideoFullscreen) return base.OnBackButtonPressed();
+        ToggleVideoFullscreen();
+        return true;
+    }
+
+    private void ClearVideoPlayer()
+    {
+        if (_isVideoFullscreen) ToggleVideoFullscreen();
+        _videoPlayer?.Dispose();
+        _videoPlayer = null;
     }
 
     private static View BuildLoadingState() =>
@@ -1181,69 +1386,65 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private async Task ShowFullscreenCoverAsync(MobileStoryDetailResponse detail)
     {
-        var closeButton = BuildFullscreenCloseButton();
-        var closeTap = new TapGestureRecognizer();
-        closeTap.Tapped += async (_, _) =>
+        if (_isShowingFullscreenCover)
         {
-            await Navigation.PopModalAsync(true);
-        };
-        closeButton.GestureRecognizers.Add(closeTap);
-
-        var fullscreenImage = new ProgressiveCachedImage(
-            _apiClient,
-            PageHelpers.BuildStoryImageRequest(detail.Story, _apiClient, "schink_background.jpeg"))
-        {
-            Aspect = Aspect.AspectFit,
-            HorizontalOptions = LayoutOptions.Fill,
-            VerticalOptions = LayoutOptions.Fill
-        };
-        if (!detail.RequiresSubscription && !string.IsNullOrWhiteSpace(detail.AudioUrl))
-        {
-            var fullscreenImageTap = new TapGestureRecognizer();
-            fullscreenImageTap.Tapped += (_, _) => _ = ToggleFullscreenPlaybackAsync(detail);
-            fullscreenImage.GestureRecognizers.Add(fullscreenImageTap);
+            return;
         }
 
-        var fullscreenPage = new ContentPage
-        {
-            BackgroundColor = Colors.Black,
-            Content = new Grid
-            {
-                Padding = new Thickness(8),
-                ColumnDefinitions =
-                {
-                    new ColumnDefinition(GridLength.Star),
-                    new ColumnDefinition(GridLength.Auto)
-                },
-                Children =
-                {
-                    fullscreenImage,
-                    closeButton,
-                    BuildFullscreenMediaControls(detail)
-                }
-            }
-        };
-        Grid.SetColumn(closeButton, 1);
-        Shell.SetNavBarIsVisible(fullscreenPage, false);
+        var fullscreenPage = new StoryFullscreenPage(
+            BuildFullscreenCloseButton(),
+            () => _currentDetail is { } current && !current.RequiresSubscription
+                ? ToggleFullscreenPlaybackAsync(current)
+                : Task.CompletedTask);
+        _fullscreenPage = fullscreenPage;
         fullscreenPage.Disappearing += (_, _) =>
         {
+            _fullscreenPage = null;
             RestoreFullscreenCoverDeviceState();
-            RestoreFullscreenPlaybackUi(detail);
+            if (_currentDetail is { } current)
+            {
+                RestoreFullscreenPlaybackUi(current);
+            }
         };
 
         _wasKeepScreenOnBeforeFullscreen = DeviceDisplay.Current.KeepScreenOn;
         DeviceDisplay.Current.KeepScreenOn = true;
         _orientationService.RequestLandscape();
         _isShowingFullscreenCover = true;
+        RefreshFullscreenPlayer(detail);
         try
         {
             await Navigation.PushModalAsync(fullscreenPage, true);
         }
         catch
         {
+            _fullscreenPage = null;
             RestoreFullscreenCoverDeviceState();
+            RestoreFullscreenPlaybackUi(detail);
             throw;
         }
+    }
+
+    private void RefreshFullscreenPlayer(MobileStoryDetailResponse detail)
+    {
+        if (_fullscreenPage is null)
+        {
+            return;
+        }
+
+        var fullscreenImage = new ProgressiveCachedImage(
+            _apiClient,
+            PageHelpers.BuildStoryImageRequest(detail.Story, _apiClient, "schink_background.jpeg"))
+        {
+            Aspect = Aspect.AspectFill,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill
+        };
+        _fullscreenPage.SetPlayerContent(
+            fullscreenImage,
+            BuildFullscreenMediaControls(detail),
+            BuildFavoriteOverlay(detail));
+        UpdateProgressState();
     }
 
     private void RestoreFullscreenCoverDeviceState()
@@ -1262,7 +1463,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         if (detail.RequiresSubscription || string.IsNullOrWhiteSpace(detail.AudioUrl))
         {
-            return new Grid { InputTransparent = true };
+            return new Label
+            {
+                Text = detail.RequiresSubscription ? "Sluit hierdie storie oop om te luister." : "Storie laai …",
+                TextColor = Colors.White,
+                BackgroundColor = Color.FromArgb("#B0121212"),
+                Padding = 14,
+                HorizontalTextAlignment = TextAlignment.Center
+            };
         }
 
         var progressSlider = BuildProgressSlider(
@@ -1275,6 +1483,10 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             _activeDurationLabel?.Text ??
             (_activeCatalogDuration is null ? "--:--" : FormatTime(_activeCatalogDuration.Value)),
             TextAlignment.End);
+        progressSlider.MinimumTrackColor = Colors.White;
+        progressSlider.ThumbColor = Colors.White;
+        currentTimeLabel.TextColor = Colors.White;
+        durationLabel.TextColor = Colors.White;
         var playButton = BuildMainPlaybackButton(IsCurrentStoryPlaying(detail) ? "II" : "▶");
 
         _activePlayButton = playButton;
@@ -1292,7 +1504,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             {
                 new Border
                 {
-                    BackgroundColor = Color.FromArgb("#8A061816"),
+                    BackgroundColor = Color.FromArgb("#D91C1C1C"),
                     StrokeThickness = 0,
                     StrokeShape = new RoundRectangle { CornerRadius = 22 },
                     Padding = new Thickness(14, 10, 14, 12),
@@ -1315,7 +1527,16 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                                     durationLabel
                                 }
                             },
-                            BuildFullscreenTransportControls(detail, playButton)
+                            BuildFullscreenTransportControls(detail, playButton),
+                            new Border
+                            {
+                                BackgroundColor = PlayerPanelColor,
+                                StrokeThickness = 0,
+                                StrokeShape = new RoundRectangle { CornerRadius = 18 },
+                                Padding = new Thickness(8, 2),
+                                HorizontalOptions = LayoutOptions.Center,
+                                Content = BuildPlaybackModeRow(detail)
+                            }
                         }
                     }
                 }
@@ -1325,6 +1546,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private async Task ToggleFullscreenPlaybackAsync(MobileStoryDetailResponse detail)
     {
+        _fullscreenPage?.RevealControls();
         if (IsCurrentStoryPlaying(detail))
         {
             PausePlayback(_activePlayButton ?? BuildMainPlaybackButton("▶"));
@@ -1345,6 +1567,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         if (_inlinePlayButton is not null)
         {
             _activePlayButton = _inlinePlayButton;
+            _activePlayButton.Text = IsCurrentStoryPlaying(detail) ? "II" : "▶";
         }
 
         if (_inlineProgressSlider is not null)
@@ -1613,7 +1836,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             return;
         }
 
-        if (detail.RequiresSubscription || string.IsNullOrWhiteSpace(detail.AudioUrl))
+        if (detail.RequiresSubscription || string.IsNullOrWhiteSpace(detail.IsVideo ? detail.VideoUrl : detail.AudioUrl))
         {
             await DisplayAlertAsync("Nie beskikbaar nie", "Hierdie storie kan nie tans afgelaai word nie.", "Reg so");
             return;
@@ -1970,6 +2193,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                     "Aanlyn bevestiging nodig",
                     "Hierdie aflaai moet weer aanlyn bevestig word.",
                     "Reg so");
+                return;
+            }
+
+            // Root-relative signed routes can parse as file URIs on mobile.
+            // Only an explicit file scheme identifies a saved download here.
+            if (detail.AudioUrl?.StartsWith("file:", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                throw new InvalidOperationException("Die afgelaaide klank is nie meer beskikbaar nie. Laai die storie weer af wanneer jy aanlyn is.");
             }
 
             var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
@@ -2848,17 +3079,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         };
         block.Children.Add(BuildStoryInfoHeading(title));
 
-        var wrap = new FlexLayout
-        {
-            Direction = Microsoft.Maui.Layouts.FlexDirection.Row,
-            Wrap = Microsoft.Maui.Layouts.FlexWrap.Wrap,
-            AlignItems = Microsoft.Maui.Layouts.FlexAlignItems.Center,
-            JustifyContent = Microsoft.Maui.Layouts.FlexJustify.Center
-        };
+        var wrap = new StoryInfoTagLayout();
 
         foreach (var tag in tags.Where(tag => !string.IsNullOrWhiteSpace(tag)))
         {
-            wrap.Children.Add(new Border
+            var pill = new Border
             {
                 BackgroundColor = StorySummaryPillColor,
                 StrokeThickness = 1,
@@ -2870,9 +3095,13 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 {
                     Text = tag.Trim(),
                     FontSize = 13,
-                    TextColor = StorySummaryTextColor
+                    TextColor = StorySummaryTextColor,
+                    LineBreakMode = LineBreakMode.WordWrap,
+                    MaxLines = -1,
+                    HorizontalTextAlignment = TextAlignment.Center
                 }
-            });
+            };
+            wrap.Children.Add(pill);
         }
 
         block.Children.Add(wrap);
@@ -3597,9 +3826,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             try
             {
                 TimeSpan? duration = null;
+                var localAudio = await _offlineDownloadService.ResolvePlayableAudioAsync(detail, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(localAudio))
+                {
+                    duration = await _audioPlaybackService.GetDurationAsync(localAudio, cancellationToken);
+                }
                 var shouldPrepareFirst = DeviceInfo.Current.Platform == DevicePlatform.Android;
 
-                if (shouldPrepareFirst)
+                if (string.IsNullOrWhiteSpace(localAudio) && shouldPrepareFirst)
                 {
                     var preparedAudioUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
                         detail.AudioUrl,
@@ -3608,7 +3842,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                         cancellationToken);
                     duration = await _audioPlaybackService.GetDurationAsync(preparedAudioUrl, cancellationToken);
                 }
-                else
+                else if (string.IsNullOrWhiteSpace(localAudio))
                 {
                     duration = await _audioPlaybackService.GetDurationAsync(audioUrl, cancellationToken);
                     if (duration is null && !cancellationToken.IsCancellationRequested)

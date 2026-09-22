@@ -667,7 +667,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "private void EnsureCatalogDurationVisibleAsync(MobileStoryDetailResponse detail)");
         StringAssert.Contains(storyDetail, "var audioUrl = _apiClient.BuildAbsoluteUrl(detail.AudioUrl);");
         StringAssert.Contains(storyDetail, "var shouldPrepareFirst = DeviceInfo.Current.Platform == DevicePlatform.Android;");
-        StringAssert.Contains(storyDetail, "if (shouldPrepareFirst)");
+        StringAssert.Contains(storyDetail, "if (string.IsNullOrWhiteSpace(localAudio) && shouldPrepareFirst)");
         StringAssert.Contains(storyDetail, "duration = await _audioPlaybackService.GetDurationAsync(preparedAudioUrl, cancellationToken);");
         StringAssert.Contains(storyDetail, "duration = await _audioPlaybackService.GetDurationAsync(audioUrl, cancellationToken);");
         StringAssert.Contains(storyDetail, "if (duration is null && !cancellationToken.IsCancellationRequested)");
@@ -1048,8 +1048,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(karaktersPage, "CharacterIconPlacement.TopRight");
         StringAssert.Contains(karaktersPage, "Text = FontAwesomeVolumeHighGlyph");
         StringAssert.Contains(karaktersPage, "FontFamily = FontAwesomeSolidFontFamily");
-        StringAssert.Contains(karaktersPage, "AnimateSpeakerTapAsync()");
-        StringAssert.Contains(karaktersPage, "_speakerIcon.RotateToAsync");
+        StringAssert.Contains(karaktersPage, "CharacterAnimations.Speaker(_speakerButton, _speakerIcon)");
+        StringAssert.Contains(karaktersPage, "_owner._audioPlaybackService.IsPlaying");
         Assert.DoesNotContain("class SpeakerDrawable", karaktersPage, StringComparison.Ordinal);
         StringAssert.Contains(karaktersPage, "new LockDrawable()");
         StringAssert.Contains(karaktersPage, "HeightRequest = 28");
@@ -1204,6 +1204,7 @@ public class MobileAbsoluteUrlSourceTests
     public void MobileStoryDetailCoverArtCanOpenFullscreenImage()
     {
         var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+        var fullscreenPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryFullscreenPage.cs"));
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
         var orientationService = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "OrientationService.cs"));
         var infoPlist = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "Info.plist"));
@@ -1217,9 +1218,16 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "private async Task ShowFullscreenCoverAsync(MobileStoryDetailResponse detail)");
         StringAssert.Contains(storyDetail, "Navigation.PushModalAsync(fullscreenPage, true)");
         StringAssert.Contains(storyDetail, "Aspect = Aspect.AspectFit");
-        StringAssert.Contains(storyDetail, "fullscreenImageTap.Tapped += (_, _) => _ = ToggleFullscreenPlaybackAsync(detail);");
-        StringAssert.Contains(storyDetail, "await Navigation.PopModalAsync(true)");
-        StringAssert.Contains(storyDetail, "Padding = new Thickness(8)");
+        StringAssert.Contains(fullscreenPage, "await _togglePlayback();");
+        StringAssert.Contains(fullscreenPage, "await Navigation.PopModalAsync(true)");
+        StringAssert.Contains(fullscreenPage, "TimeSpan.FromMilliseconds(2200)");
+        StringAssert.Contains(fullscreenPage, "SafeAreaEdges = SafeAreaEdges.None");
+        StringAssert.Contains(fullscreenPage, "StatusBarHiddenMode.True");
+        StringAssert.Contains(fullscreenPage, "BehaviorShowTransientBarsBySwipe");
+        StringAssert.Contains(fullscreenPage, "RestoreSystemBars();");
+        StringAssert.Contains(storyDetail, "RefreshFullscreenPlayer(detail);");
+        StringAssert.Contains(storyDetail, "RefreshFullscreenPlayer(previewDetail);");
+        StringAssert.Contains(storyDetail, "RestoreFullscreenPlaybackUi(current);");
         StringAssert.Contains(storyDetail, "new ColumnDefinition(GridLength.Star)");
         StringAssert.Contains(storyDetail, "new ColumnDefinition(GridLength.Auto)");
         StringAssert.Contains(storyDetail, "BuildFullscreenMediaControls(detail)");
@@ -1384,7 +1392,7 @@ public class MobileAbsoluteUrlSourceTests
         Assert.IsFalse(accountPage.Contains("Rotation = 180", StringComparison.Ordinal));
         StringAssert.Contains(accountPage, "WidthRequest = 38");
         StringAssert.Contains(accountPage, "Content = new Grid");
-        StringAssert.Contains(accountPage, "new ColumnDefinition { Width = 38 }");
+        StringAssert.Contains(accountPage, "new ColumnDefinition { Width = 44 }");
         StringAssert.Contains(accountPage, "SetAuthPanelMode(AuthPanelMode.Landing);");
         Assert.IsFalse(accountPage.Contains("BuildAuthPanelHeading(", StringComparison.Ordinal));
     }

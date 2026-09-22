@@ -94,7 +94,7 @@ public sealed class MobilePersistentPlaybackSourceTests
         var program = ReadSource("Shink", "Program.cs");
 
         StringAssert.Contains(playbackSession, "ScheduleAutoplayPreparation(playbackItem);");
-        StringAssert.Contains(playbackSession, "await _apiClient.GetStoryAsync(nextStory.Slug, \"luister\", cancellationToken);");
+        StringAssert.Contains(playbackSession, "await _apiClient.GetStoryAsync(nextStory.Slug, nextStory.Source, cancellationToken);");
         StringAssert.Contains(playbackSession, "await _audioPlaybackService.PrepareAsync(playbackUrl, cancellationToken);");
         StringAssert.Contains(playbackSession, "_ = AdvanceAutoplayAsync(endedItem);");
         StringAssert.Contains(playlistState, "public bool IsAutoplayEnabled { get; private set; } = true;");
@@ -143,7 +143,7 @@ public sealed class MobilePersistentPlaybackSourceTests
         var playlistState = ReadSource("Shink.Mobile", "Services", "PlaylistPlaybackState.cs");
 
         StringAssert.Contains(downloadedPage, "AutomationId = \"downloads-play-all\"");
-        StringAssert.Contains(downloadedPage, "Text = \"▶  Speel alles\"");
+        StringAssert.Contains(downloadedPage, "\"▶  Speel alles\"");
         StringAssert.Contains(downloadedPage, "_playlistPlaybackState.SetOfflineQueue(playlist, firstStory);");
         StringAssert.Contains(downloadedPage, "_playlistPlaybackState.SetAutoplay(true);");
         StringAssert.Contains(downloadedPage, "ResolvePlayableAudioAsync(firstDetail)");
@@ -154,7 +154,7 @@ public sealed class MobilePersistentPlaybackSourceTests
         StringAssert.Contains(playlistState, "preserveSource: isOfflineQueue");
         StringAssert.Contains(playlistState, "preserveSource: IsOfflineQueue");
 
-        StringAssert.Contains(playbackSession, "if (_playlistPlaybackState.IsOfflineQueue)");
+        StringAssert.Contains(playbackSession, "if (!_playlistPlaybackState.IsOfflineQueue && string.IsNullOrWhiteSpace(localAudio))");
         StringAssert.Contains(playbackSession, "nextStory.Source,");
         StringAssert.Contains(playbackSession, "_playlistPlaybackState.IsOfflineQueue && string.IsNullOrWhiteSpace(offlinePlaybackUrl)");
         StringAssert.Contains(playbackSession, "_playlistPlaybackState.IsOfflineQueue ? null : prepared.Playlist");

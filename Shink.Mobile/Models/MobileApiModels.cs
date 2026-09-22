@@ -168,7 +168,12 @@ public sealed record MobileStoryDetailResponse(
     string? YouTubeUrl,
     IReadOnlyList<MobileStoryTestQuestion> TestQuestions,
     string LoginUrl,
-    string PlansUrl);
+    string PlansUrl,
+    string? VideoUrl = null)
+{
+    public bool IsVideo => string.Equals(Story.StoryType, "video", StringComparison.OrdinalIgnoreCase) ||
+                           !string.IsNullOrWhiteSpace(VideoUrl);
+}
 
 public sealed record MobileStoryCharacter(
     string DisplayName,

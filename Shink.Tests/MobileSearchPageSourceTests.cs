@@ -72,8 +72,8 @@ public sealed class MobileSearchPageSourceTests
         StringAssert.Contains(source, "container.FadeToAsync(1, 260, Easing.CubicOut)");
         StringAssert.Contains(source, "container.TranslateToAsync(0, 0, 320, Easing.CubicOut)");
         StringAssert.Contains(source, "container.ScaleToAsync(1, 330, Easing.CubicOut)");
-        StringAssert.Contains(source, "ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem");
-        StringAssert.Contains(source, "if (IsAndroid)");
+        StringAssert.Contains(source, "ItemSizingStrategy = ItemSizingStrategy.MeasureAllItems");
+        StringAssert.Contains(source, "if (IsAndroid || !container.IsLoaded)");
         StringAssert.Contains(source, "container.Opacity = 1;");
         StringAssert.Contains(source, "_ = AnimateResultContainerAsync(container, result);");
         StringAssert.Contains(source, "_visibleResults.ReplaceWith(matches)");

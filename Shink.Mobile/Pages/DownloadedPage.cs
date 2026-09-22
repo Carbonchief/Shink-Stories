@@ -270,14 +270,14 @@ public sealed class DownloadedPage : ContentPage
             Children = { heading }
         };
 
-        if (downloads is not { Count: > 0 })
+        if (downloads is not { Count: > 0 } || downloads.All(item => item.StoryType == "video"))
         {
             return header;
         }
 
         var playAllButton = new Button
         {
-            Text = "▶  Speel alles",
+            Text = downloads.Any(item => item.StoryType == "video") ? "▶  Speel oudiostories" : "▶  Speel alles",
             FontFamily = "PoppinsSemiBold",
             FontSize = 13,
             TextColor = Colors.White,
@@ -313,7 +313,8 @@ public sealed class DownloadedPage : ContentPage
         try
         {
             var currentDownloads = ApplySavedOrder(
-                await _offlineDownloadService.GetPlayableDownloadsAsync());
+                (await _offlineDownloadService.GetPlayableDownloadsAsync())
+                    .Where(item => item.StoryType != "video").ToArray());
             if (currentDownloads.Count == 0)
             {
                 await DisplayAlertAsync(

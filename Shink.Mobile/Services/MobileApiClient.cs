@@ -317,6 +317,7 @@ public sealed class MobileApiClient
 #endif
 
     private readonly HttpClient _httpClient;
+    private readonly HttpClient _videoAuthorizationClient;
     private readonly CookieContainer _cookieContainer;
     private readonly MobileAppSettings _settings;
     private readonly SessionState _sessionState;
@@ -363,6 +364,12 @@ public sealed class MobileApiClient
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
+        _videoAuthorizationClient = new HttpClient(new HttpClientHandler
+        {
+            CookieContainer = _cookieContainer,
+            UseCookies = true,
+            AllowAutoRedirect = false
+        }) { Timeout = TimeSpan.FromSeconds(30) };
     }
 
     public string BaseUrl
@@ -1807,6 +1814,29 @@ public sealed class MobileApiClient
             });
     }
 
+    public async Task<string> ResolveVideoPlaybackSourceAsync(
+        string videoUrl, CancellationToken cancellationToken = default)
+    {
+        await EnsureAuthCookiesLoadedAsync(cancellationToken);
+        // Authorize with the app's cookie-bearing client. Native players do not
+        // share its cookies; give them only the resulting expiring storage URL.
+        using var request = new HttpRequestMessage(HttpMethod.Get, BuildAbsoluteUrl(videoUrl));
+        using var response = await _videoAuthorizationClient.SendAsync(
+            request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (response.StatusCode is not (HttpStatusCode.Redirect or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect))
+        {
+            await EnsureSuccessAsync(response, cancellationToken);
+            throw new InvalidOperationException("Kon nie die video se speelskakel kry nie. Probeer weer.");
+        }
+        var playbackUri = response.Headers.Location;
+        if (playbackUri is null || !playbackUri.IsAbsoluteUri || playbackUri.Scheme != Uri.UriSchemeHttps ||
+            playbackUri.AbsolutePath.StartsWith("/media/video/", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Kon nie die video se speelskakel kry nie. Probeer weer.");
+        }
+        return playbackUri.AbsoluteUri;
+    }
+
     public async Task<string> PrepareAudioPlaybackSourceAsync(
         string? audioUrl,
         string slug,
@@ -1888,11 +1918,14 @@ public sealed class MobileApiClient
         return new Uri(cachePath).AbsoluteUri;
     }
 
-    public async Task DownloadAudioToFileAsync(
+    public Task DownloadAudioToFileAsync(
         string audioUrl,
         string destinationPath,
         IProgress<MobileAudioDownloadProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        // Android's response stream can perform synchronous network I/O even
+        // during an async read or disposal. Keep the complete transfer off UI.
+        Task.Run(async () =>
     {
         await EnsureAuthCookiesLoadedAsync(cancellationToken);
 
@@ -1929,12 +1962,17 @@ public sealed class MobileApiClient
                 totalBytes is > 0 ? Math.Clamp(bytesReceived / (double)totalBytes.Value, 0, 1) : null));
         }
 
+        if (bytesReceived == 0 || (totalBytes.HasValue && bytesReceived != totalBytes.Value))
+        {
+            throw new IOException("Die klankaflaai is onvolledig. Probeer asseblief weer wanneer jou verbinding herstel het.");
+        }
+
         _analytics.TrackEvent("mobile_audio_file_downloaded", new Dictionary<string, object>
         {
             ["bytes_received"] = bytesReceived,
             ["total_bytes"] = totalBytes ?? 0
         });
-    }
+    }, cancellationToken);
 
     public Task MaintainImageCacheAsync(CancellationToken cancellationToken = default) =>
         Task.Run(() => MaintainImageCache(cancellationToken), cancellationToken);

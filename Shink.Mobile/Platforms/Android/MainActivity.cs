@@ -7,7 +7,8 @@ namespace Shink.Mobile;
 [Activity(
     Theme = "@style/Maui.SplashTheme",
     MainLauncher = true,
-    LaunchMode = LaunchMode.SingleTop,
+    LaunchMode = LaunchMode.SingleTask,
+    ResizeableActivity = true,
     ConfigurationChanges = ConfigChanges.ScreenSize
         | ConfigChanges.Orientation
         | ConfigChanges.UiMode

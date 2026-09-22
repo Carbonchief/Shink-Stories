@@ -9,6 +9,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
     private const int DesiredChoiceCount = 4;
     private const int DefaultRoundCount = 10;
     private static readonly TimeSpan AutoAdvanceDelay = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan NextRoundPreloadTimeout = TimeSpan.FromSeconds(8);
     private const string PoppinsBoldFontFamily = "PoppinsBold";
     private static readonly string[] PerfectScoreMessages =
     [
@@ -485,11 +486,11 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
             var response = forceRefresh
                 ? await _apiClient.GetCharactersAsync(cancellationToken)
                 : await _apiClient.GetCachedCharactersAsync(cancellationToken);
-            var eligibleCharacters = SelectEligibleCharacters(response);
-            if (!forceRefresh && eligibleCharacters.Count < 2)
+            var eligibleCharacters = CharacterGuessCatalog.SelectEligibleCharacters(response);
+            if (!forceRefresh && eligibleCharacters.Count < _selectedRoundCount)
             {
                 response = await _apiClient.GetCharactersAsync(cancellationToken);
-                eligibleCharacters = SelectEligibleCharacters(response);
+                eligibleCharacters = CharacterGuessCatalog.SelectEligibleCharacters(response);
             }
 
             if (cancellationToken.IsCancellationRequested || !_isPageActive)
@@ -503,9 +504,9 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
                 return;
             }
 
-            if (eligibleCharacters.Count < 2)
+            if (eligibleCharacters.Count < _selectedRoundCount)
             {
-                ShowErrorState("Sluit minstens twee Karakters oop deur na hul stories te luister.");
+                ShowErrorState($"Ons kon nie {_selectedRoundCount} verskillende Karakters laai nie. Probeer asseblief weer.");
                 return;
             }
 
@@ -525,21 +526,9 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         }
     }
 
-    private static IReadOnlyList<MobileCharacterCard> SelectEligibleCharacters(MobileCharactersResponse? response) =>
-        response?.Characters
-            .Where(static character => character.IsUnlocked)
-            .Where(static character => !string.IsNullOrWhiteSpace(character.Slug))
-            .Where(static character => !string.IsNullOrWhiteSpace(character.DisplayName))
-            .Where(static character => !string.IsNullOrWhiteSpace(character.ImageUrl))
-            .Where(static character => !string.IsNullOrWhiteSpace(
-                CharacterMysteryImageResolver.Resolve(character.ImageUrl, character.MysteryImageUrl)))
-            .DistinctBy(static character => character.Slug, StringComparer.OrdinalIgnoreCase)
-            .ToArray()
-        ?? Array.Empty<MobileCharacterCard>();
-
     private void StartNewGame()
     {
-        if (_availableCharacters.Count < 2)
+        if (_availableCharacters.Count < _selectedRoundCount)
         {
             return;
         }
@@ -670,13 +659,23 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
                 urls,
                 cancellation.Token,
                 maxImages: 10,
-                maxDegreeOfParallelism: 2);
+                maxDegreeOfParallelism: 2)
+                .WaitAsync(NextRoundPreloadTimeout, cancellation.Token);
         }
         catch (OperationCanceledException)
         {
         }
+        catch (TimeoutException)
+        {
+            // Continue with the prepared round; progressive images can finish loading on screen.
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"Character guess image preload failed: {exception.Message}");
+        }
         finally
         {
+            cancellation.Cancel();
             if (ReferenceEquals(_nextRoundPreloadCancellation, cancellation))
             {
                 _nextRoundPreloadCancellation = null;

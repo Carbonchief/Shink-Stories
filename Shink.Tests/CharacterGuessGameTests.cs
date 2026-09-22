@@ -45,7 +45,7 @@ public class CharacterGuessGameTests
     [TestMethod]
     public void ConsecutiveRoundsNeverRepeatTheSameTarget()
     {
-        var game = new CharacterGuessGame(CharacterKeys, totalRounds: 20, desiredChoiceCount: 4, new Random(17));
+        var game = new CharacterGuessGame(CharacterKeys, totalRounds: 5, desiredChoiceCount: 4, new Random(17));
         string? previousTarget = null;
 
         for (var roundNumber = 1; roundNumber <= game.TotalRounds; roundNumber++)
@@ -58,6 +58,141 @@ public class CharacterGuessGameTests
         }
 
         Assert.IsTrue(game.HasPerfectScore);
+    }
+
+    [TestMethod]
+    [DataRow(10)]
+    [DataRow(20)]
+    [DataRow(30)]
+    public void SelectedDifficultyCompletesEveryRoundWithoutRepeatingTargets(int selectedRounds)
+    {
+        var difficulty = CharacterGuessDifficultyCatalog.FromRoundCount(selectedRounds);
+        var keys = Enumerable.Range(1, 40).Select(index => $"character-{index}").ToArray();
+
+        for (var seed = 0; seed < 20; seed++)
+        {
+            var game = new CharacterGuessGame(keys, difficulty.TotalRounds, random: new Random(seed));
+            var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            CharacterGuessRound? prepared = null;
+            Assert.AreEqual(selectedRounds, game.TotalRounds);
+
+            for (var number = 1; number <= selectedRounds; number++)
+            {
+                var round = game.StartNextRound();
+                if (prepared is not null)
+                {
+                    Assert.AreSame(prepared, round);
+                }
+
+                Assert.AreEqual(number, round.RoundNumber);
+                Assert.IsTrue(targets.Add(round.TargetKey), $"Repeated target at round {number}, seed {seed}.");
+                Assert.AreEqual(game.ChoiceCount, round.ChoiceKeys.Distinct().Count());
+                CollectionAssert.Contains(round.ChoiceKeys.ToArray(), round.TargetKey);
+                prepared = game.PrepareNextRound();
+                Assert.AreSame(prepared, game.PrepareNextRound());
+                Assert.AreEqual(number == selectedRounds, prepared is null);
+
+                // Wrong answers must not end the game early either.
+                var answer = number % 3 == 0
+                    ? round.ChoiceKeys.First(key => key != round.TargetKey)
+                    : round.TargetKey;
+                var result = game.Guess(answer);
+                Assert.AreEqual(number == selectedRounds, result.IsComplete);
+                Assert.AreEqual(number == selectedRounds, game.IsComplete);
+            }
+
+            Assert.AreEqual(selectedRounds, targets.Count);
+            Assert.AreEqual(selectedRounds - selectedRounds / 3, game.Score);
+            Assert.IsNull(game.PrepareNextRound());
+            Assert.ThrowsExactly<InvalidOperationException>(() => game.StartNextRound());
+        }
+    }
+
+    [TestMethod]
+    public void DuplicateCatalogEntriesCannotCreateRepeatTargets()
+    {
+        var keys = Enumerable.Range(1, 30).Select(index => $"character-{index}").ToArray();
+        var input = keys.Concat(keys.Select(key => $" {key.ToUpperInvariant()} ")).Append(" ");
+        var game = new CharacterGuessGame(input, totalRounds: 30, random: new Random(17));
+        var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var number = 1; number <= 30; number++)
+        {
+            var round = game.StartNextRound();
+            Assert.IsTrue(targets.Add(round.TargetKey));
+            game.PrepareNextRound();
+            game.PrepareNextRound();
+            Assert.AreEqual(number == 30, game.Guess(round.TargetKey).IsComplete);
+        }
+
+        Assert.IsTrue(game.HasPerfectScore);
+        Assert.AreEqual(30, game.Score);
+    }
+
+    [TestMethod]
+    public void InsufficientUniqueCharactersCannotSilentlyShortenOrRepeatTheGame()
+    {
+        var keys = Enumerable.Range(1, 20).Select(index => $"character-{index}").ToArray();
+        Assert.ThrowsExactly<ArgumentException>(() =>
+            new CharacterGuessGame(keys.Concat(keys), totalRounds: 30));
+    }
+
+    [TestMethod]
+    public void LockedCharactersSupplyFullAnswerArtworkAndThirtyUniqueRounds()
+    {
+        // MatchImageUrl contains the full artwork even when the profile ImageUrl is a silhouette.
+        var characters = Enumerable.Range(1, 30).Select(index => new
+        {
+            Slug = $"character-{index}",
+            DisplayName = $"Karakter {index}",
+            IsUnlocked = false,
+            ImageUrl = $"https://example.com/character-{index}-mystery.png",
+            MatchImageUrl = $"https://example.com/character-{index}.png",
+            MysteryImageUrl = $"https://example.com/character-{index}-mystery.png"
+        }).ToArray();
+        var json = System.Text.Json.JsonSerializer.Serialize(new { Characters = characters });
+        var response = System.Text.Json.JsonSerializer.Deserialize<Shink.Mobile.Models.MobileCharactersResponse>(json)!;
+        var eligible = CharacterGuessCatalog.SelectEligibleCharacters(response);
+
+        Assert.AreEqual(30, eligible.Count);
+        Assert.IsTrue(eligible.All(character => !character.IsUnlocked));
+        Assert.IsTrue(eligible.All(character => character.ImageUrl == character.MatchImageUrl));
+        Assert.IsTrue(eligible.All(character => character.ImageUrl != character.MysteryImageUrl));
+        var game = new CharacterGuessGame(eligible.Select(character => character.Slug), totalRounds: 30);
+        var targets = new HashSet<string>();
+        while (!game.IsComplete)
+        {
+            var round = game.StartNextRound();
+            Assert.IsTrue(targets.Add(round.TargetKey));
+            game.Guess(round.TargetKey);
+        }
+
+        Assert.AreEqual(30, game.RoundNumber);
+    }
+
+    [TestMethod]
+    public void CatalogFiltersMissingArtworkAndDuplicateSlugsWithoutUnlockingProfiles()
+    {
+        const string json = """
+            { "Characters": [
+                { "Slug": " alpha ", "DisplayName": "Alpha", "IsUnlocked": false,
+                  "ImageUrl": "alpha-mystery.png", "MatchImageUrl": "alpha.png" },
+                { "Slug": "ALPHA", "DisplayName": "Alpha", "IsUnlocked": true, "ImageUrl": "alpha.png" },
+                { "Slug": "beta", "DisplayName": "Beta", "IsUnlocked": true, "ImageUrl": "beta.png" },
+                { "Slug": "gamma", "DisplayName": "Gamma", "IsUnlocked": false, "ImageUrl": "gamma-mystery.png" },
+                { "Slug": "delta", "DisplayName": "", "IsUnlocked": true, "ImageUrl": "delta.png" },
+                { "Slug": null, "DisplayName": "Missing slug", "MatchImageUrl": "missing.png" }
+            ] }
+            """;
+        var response = System.Text.Json.JsonSerializer.Deserialize<Shink.Mobile.Models.MobileCharactersResponse>(json)!;
+        var eligible = CharacterGuessCatalog.SelectEligibleCharacters(response);
+
+        CollectionAssert.AreEqual(new[] { "alpha", "beta" }, eligible.Select(character => character.Slug).ToArray());
+        Assert.AreEqual("alpha.png", eligible[0].ImageUrl);
+        Assert.IsFalse(eligible[0].IsUnlocked);
+        Assert.AreEqual("beta.png", eligible[1].ImageUrl);
+        Assert.AreEqual("alpha-mystery.png", response.Characters[0].ImageUrl);
+        Assert.IsEmpty(CharacterGuessCatalog.SelectEligibleCharacters(null));
     }
 
     [TestMethod]
@@ -236,6 +371,9 @@ public class CharacterGuessGameTests
         StringAssert.Contains(gamePage, "_game?.PrepareNextRound()");
         StringAssert.Contains(gamePage, "PreloadNextRoundImages();");
         StringAssert.Contains(gamePage, "await _nextRoundPreloadTask.WaitAsync(cancellation.Token);");
+        StringAssert.Contains(gamePage, "NextRoundPreloadTimeout = TimeSpan.FromSeconds(8)");
+        StringAssert.Contains(gamePage, ".WaitAsync(NextRoundPreloadTimeout, cancellation.Token)");
+        StringAssert.Contains(gamePage, "catch (TimeoutException)");
         StringAssert.Contains(gamePage, "maxImages: 10");
         Assert.IsFalse(gamePage.Contains("Volgende Karakter", StringComparison.Ordinal));
     }

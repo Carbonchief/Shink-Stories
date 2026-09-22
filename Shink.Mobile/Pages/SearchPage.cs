@@ -87,6 +87,7 @@ public sealed class SearchPage : ContentPage
             PlaceholderColor = Color.FromArgb("#42484C"),
             BackgroundColor = Colors.Transparent,
             VerticalTextAlignment = TextAlignment.Center,
+            VerticalOptions = LayoutOptions.Fill,
             AutomationId = "story-search-input"
         };
         _searchEntry.TextChanged += OnSearchTextChanged;
@@ -130,7 +131,9 @@ public sealed class SearchPage : ContentPage
             Background = Brush.Transparent,
             Header = _searchHeader,
             ItemsSource = _visibleResults,
-            ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem,
+            // Filtering replaces the content of recycled rows. Measure each new
+            // card so iOS does not arrange it using an unmeasured, zero width.
+            ItemSizingStrategy = ItemSizingStrategy.MeasureAllItems,
             SelectionMode = SelectionMode.None,
             ItemsLayout = new LinearItemsLayout(ItemsLayoutOrientation.Vertical)
             {
@@ -152,6 +155,7 @@ public sealed class SearchPage : ContentPage
 
         var searchContent = new Grid
         {
+            SafeAreaEdges = SafeAreaEdges.None,
             Children = { _resultsView }
         };
 
@@ -184,6 +188,7 @@ public sealed class SearchPage : ContentPage
             Children = { _topBarHost }
         };
         var topBarBackdropLayer = MobileTopBar.BuildStoriesBackdropLayer(_topBarOverlay);
+        _topBarOverlay.SizeChanged += (_, _) => ScheduleStickySearchFieldPositionUpdate();
 
         var bottomBarOverlay = new Grid
         {
@@ -261,6 +266,7 @@ public sealed class SearchPage : ContentPage
     {
         return new VerticalStackLayout
         {
+            SafeAreaEdges = SafeAreaEdges.None,
             MaximumWidthRequest = 720,
             HorizontalOptions = LayoutOptions.Center,
             Padding = new Thickness(22, 0),
@@ -312,6 +318,7 @@ public sealed class SearchPage : ContentPage
 
         return new VerticalStackLayout
         {
+            SafeAreaEdges = SafeAreaEdges.None,
             Spacing = 0,
             Children =
             {
@@ -343,6 +350,8 @@ public sealed class SearchPage : ContentPage
 
         var grid = new Grid
         {
+            SafeAreaEdges = SafeAreaEdges.None,
+            RowDefinitions = { new RowDefinition { Height = GridLength.Star } },
             ColumnSpacing = 0,
             ColumnDefinitions =
             {
@@ -357,6 +366,8 @@ public sealed class SearchPage : ContentPage
 
         var field = new Border
         {
+            SafeAreaEdges = SafeAreaEdges.None,
+            VerticalOptions = LayoutOptions.Start,
             BackgroundColor = Color.FromArgb("#FBFCFD"),
             Stroke = Color.FromArgb("#2E2C2D"),
             StrokeThickness = 2.5,
@@ -384,6 +395,9 @@ public sealed class SearchPage : ContentPage
     private ContentView BuildSearchFieldOverlay() =>
         new()
         {
+            // Page chrome handles safe areas. This translated field must not add
+            // another top inset inside its fixed-height border.
+            SafeAreaEdges = SafeAreaEdges.None,
             MaximumWidthRequest = 720,
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Start,
@@ -420,6 +434,17 @@ public sealed class SearchPage : ContentPage
 
     private void UpdateStickySearchFieldPosition()
     {
+        var stickyFieldTop = Math.Max(
+            MinimumStickySearchFieldTop,
+            _topBarOverlay.Height + 6);
+        // The overlay and its scrolling placeholder must start at the same
+        // position when the hero collapses, before any user scrolling.
+        var headerTopInset = _searchHero.IsVisible ? 0 : stickyFieldTop - SearchFieldTopInset;
+        if (Math.Abs(_searchHeader.Padding.Top - headerTopInset) > 0.5)
+        {
+            _searchHeader.Padding = new Thickness(22, headerTopInset, 22, 0);
+        }
+
         if (_searchHero.IsVisible && _searchHero.Height <= 0)
         {
             _searchFieldOverlay.Opacity = 0;
@@ -429,10 +454,7 @@ public sealed class SearchPage : ContentPage
         var fieldSlotYWithinHeader = _searchHero.IsVisible
             ? _searchHero.Height
             : 0;
-        var fieldSlotContentY = Math.Max(0, _searchHeader.Y + fieldSlotYWithinHeader);
-        var stickyFieldTop = Math.Max(
-            MinimumStickySearchFieldTop,
-            _topBarOverlay.Height + 6);
+        var fieldSlotContentY = Math.Max(0, _searchHeader.Y + headerTopInset + fieldSlotYWithinHeader);
         var fieldTop = Math.Max(
             stickyFieldTop,
             fieldSlotContentY + SearchFieldTopInset - _resultsScrollOffset);
@@ -617,12 +639,22 @@ public sealed class SearchPage : ContentPage
             HorizontalOptions = LayoutOptions.Fill
         };
         container.BindingContextChanged += (_, _) => BindResultContainer(container);
+        container.Loaded += (_, _) =>
+        {
+            if (!IsAndroid && container.BindingContext is StorySearchResult result)
+            {
+                RevealResultContainer(container, result);
+            }
+        };
         return container;
     }
 
     private void BindResultContainer(ContentView container)
     {
         container.CancelAnimations();
+        container.Opacity = 1;
+        container.TranslationY = 0;
+        container.Scale = 1;
         if (container.BindingContext is not StorySearchResult result)
         {
             container.Content = null;
@@ -630,14 +662,19 @@ public sealed class SearchPage : ContentPage
         }
 
         container.Content = BuildResultCard(result.Candidate);
-        if (IsAndroid)
+        if (IsAndroid || !container.IsLoaded)
         {
-            container.Opacity = 1;
-            container.TranslationY = 0;
-            container.Scale = 1;
             return;
         }
 
+        RevealResultContainer(container, result);
+    }
+
+    private static void RevealResultContainer(ContentView container, StorySearchResult result)
+    {
+        // Binding can happen before the native cell has an animation manager.
+        // Keep it visible until Loaded, then start the optional reveal.
+        container.CancelAnimations();
         container.Opacity = 0;
         container.TranslationY = 24;
         container.Scale = 0.975;
@@ -664,6 +701,15 @@ public sealed class SearchPage : ContentPage
         }
         catch (OperationCanceledException)
         {
+        }
+        finally
+        {
+            if (ReferenceEquals(container.BindingContext, result))
+            {
+                container.Opacity = 1;
+                container.TranslationY = 0;
+                container.Scale = 1;
+            }
         }
     }
 

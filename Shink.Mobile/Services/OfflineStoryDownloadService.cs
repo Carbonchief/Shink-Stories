@@ -38,7 +38,8 @@ public sealed record OfflineStoryDownload(
     string AudioFileName,
     string? OwnerKey = null,
     string? ArtworkFileName = null,
-    bool RequiresFullStoryAccess = true);
+    bool RequiresFullStoryAccess = true,
+    string StoryType = "story");
 
 public interface IOfflineStoryDownloadService
 {
@@ -62,6 +63,8 @@ public interface IOfflineStoryDownloadService
     Task RemoveAsync(string slug, string source, CancellationToken cancellationToken = default);
 
     Task<string?> ResolvePlayableAudioAsync(MobileStoryDetailResponse detail, CancellationToken cancellationToken = default);
+
+    Task<string?> ResolvePlayableVideoAsync(MobileStoryDetailResponse detail, CancellationToken cancellationToken = default);
 
     MobileStorySummary CreateOfflineStory(OfflineStoryDownload download);
 
@@ -179,7 +182,8 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         IProgress<OfflineDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        if (detail.RequiresSubscription || string.IsNullOrWhiteSpace(detail.AudioUrl))
+        var mediaUrl = detail.IsVideo ? detail.VideoUrl : detail.AudioUrl;
+        if (detail.RequiresSubscription || string.IsNullOrWhiteSpace(mediaUrl))
         {
             throw new InvalidOperationException("Hierdie storie kan nie tans afgelaai word nie.");
         }
@@ -216,8 +220,9 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
                 ["duration_seconds"] = detail.Story.DurationSeconds ?? 0
             });
             Directory.CreateDirectory(AudioDirectory);
-            var audioUrl = _apiClient.BuildAbsoluteUrl(detail.AudioUrl);
-            var audioFileName = $"{BuildStableKey(key)}{ResolveAudioExtensionFromUrl(audioUrl)}";
+            var audioUrl = _apiClient.BuildAbsoluteUrl(mediaUrl);
+            var extension = detail.IsVideo ? ".mp4" : ResolveAudioExtensionFromUrl(audioUrl);
+            var audioFileName = $"{BuildStableKey(key)}{extension}";
             var audioPath = BuildAudioPath(audioFileName);
             var temporaryPath = $"{audioPath}.tmp";
             if (File.Exists(temporaryPath))
@@ -270,7 +275,8 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
                 AudioFileName: audioFileName,
                 OwnerKey: ownerKey,
                 ArtworkFileName: artworkFileName,
-                RequiresFullStoryAccess: detail.Story.RequiresFullStoryAccess);
+                RequiresFullStoryAccess: detail.Story.RequiresFullStoryAccess,
+                StoryType: detail.IsVideo ? "video" : detail.Story.StoryType);
 
             await SaveDownloadAsync(download, cancellationToken);
             metadataSaved = true;
@@ -385,6 +391,21 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         MobileStoryDetailResponse detail,
         CancellationToken cancellationToken = default)
     {
+        if (detail.IsVideo) return null;
+        return await ResolvePlayableFileAsync(detail, cancellationToken);
+    }
+
+    public async Task<string?> ResolvePlayableVideoAsync(
+        MobileStoryDetailResponse detail,
+        CancellationToken cancellationToken = default)
+    {
+        if (!detail.IsVideo) return null;
+        return await ResolvePlayableFileAsync(detail, cancellationToken);
+    }
+
+    private async Task<string?> ResolvePlayableFileAsync(
+        MobileStoryDetailResponse detail, CancellationToken cancellationToken)
+    {
         var download = await GetDownloadAsync(detail.Story.Slug, detail.Story.Source, cancellationToken);
         if (download is null || !IsPlayable(download))
         {
@@ -411,6 +432,7 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             IsFavorite: false,
             DetailUrl: download.DetailUrl,
             DurationSeconds: download.DurationSeconds,
+            StoryType: download.StoryType,
             RequiresFullStoryAccess: download.RequiresFullStoryAccess);
     }
 
@@ -420,7 +442,7 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
 
         return new MobileStoryDetailResponse(
             Story: story,
-            AudioUrl: new Uri(BuildAudioPath(download.AudioFileName)).AbsoluteUri,
+            AudioUrl: story.StoryType == "video" ? null : new Uri(BuildAudioPath(download.AudioFileName)).AbsoluteUri,
             ShareUrl: download.DetailUrl,
             RequiresSubscription: !IsPlayable(download),
             PreviousStory: null,
@@ -435,7 +457,8 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             YouTubeUrl: null,
             TestQuestions: Array.Empty<MobileStoryTestQuestion>(),
             LoginUrl: string.Empty,
-            PlansUrl: string.Empty);
+            PlansUrl: string.Empty,
+            VideoUrl: story.StoryType == "video" ? new Uri(BuildAudioPath(download.AudioFileName)).AbsoluteUri : null);
     }
 
     private static string AudioDirectory =>

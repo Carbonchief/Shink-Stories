@@ -37,6 +37,14 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private CancellationTokenSource? _imageWarmupCancellation;
     private CancellationTokenSource? _loadCancellation;
     private double _lastResponsiveWidth = -1;
+    private CancellationTokenSource? _previewCancellation;
+    private string? _previewSlug;
+    private event EventHandler? PreviewPlaybackChanged;
+    private Window? _observedWindow;
+    private VisualElement? _profileImage;
+    private VisualElement? _profileImageButton;
+    private readonly List<View> _friendTiles = [];
+    private IDispatcherTimer? _friendAnimationTimer;
 
     public KaraktersPage(
         MobileApiClient apiClient,
@@ -238,6 +246,14 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         base.OnAppearing();
         _isPageActive = true;
+        _audioPlaybackService.PlaybackStateChanged += OnPreviewPlaybackChanged;
+        _audioPlaybackService.PlaybackEnded += OnPreviewPlaybackEnded;
+        _observedWindow = Window;
+        if (_observedWindow is not null)
+        {
+            _observedWindow.Deactivated += OnWindowDeactivated;
+            _observedWindow.Activated += OnWindowActivated;
+        }
         if (_response is null)
         {
             await LoadAsync();
@@ -253,6 +269,15 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         _isPageActive = false;
         _loadCancellation?.Cancel();
         _imageWarmupCancellation?.Cancel();
+        StopCharacterPreview();
+        _audioPlaybackService.PlaybackStateChanged -= OnPreviewPlaybackChanged;
+        _audioPlaybackService.PlaybackEnded -= OnPreviewPlaybackEnded;
+        if (_observedWindow is not null)
+        {
+            _observedWindow.Deactivated -= OnWindowDeactivated;
+            _observedWindow.Activated -= OnWindowActivated;
+            _observedWindow = null;
+        }
         CloseCharacterProfile();
         base.OnDisappearing();
     }
@@ -541,6 +566,8 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         private MobileCharacterCard? _character;
         private string? _imageKey;
         private double _lastWidth = -1;
+        private bool _speakerPlaying;
+        private bool _loaded;
 
         public ReusableCharacterCardView(KaraktersPage owner)
         {
@@ -699,12 +726,23 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 }
 
                 SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
-                var animation = AnimateSpeakerTapAsync();
                 await _owner.PlayCharacterAudioAsync(_character);
-                await animation;
             };
             _speakerButton.GestureRecognizers.Add(speakerTap);
             Content = _card;
+            Loaded += (_, _) =>
+            {
+                _loaded = true;
+                _owner.PreviewPlaybackChanged -= OnPreviewChanged;
+                _owner.PreviewPlaybackChanged += OnPreviewChanged;
+                UpdateSpeaker();
+            };
+            Unloaded += (_, _) =>
+            {
+                _loaded = false;
+                _owner.PreviewPlaybackChanged -= OnPreviewChanged;
+                UpdateSpeaker();
+            };
         }
 
         protected override void OnBindingContextChanged()
@@ -713,6 +751,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             if (BindingContext is not MobileCharacterCard character)
             {
                 _character = null;
+                UpdateSpeaker();
                 _imageKey = null;
                 _image.Request = null;
                 IsVisible = false;
@@ -726,6 +765,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
             IsVisible = true;
             _character = character;
+            UpdateSpeaker();
             _lastWidth = _owner.Width;
             var mediaSize = _owner.ResolveCharacterMediaSize();
             var imageSize = Math.Max(1, mediaSize - 8);
@@ -739,7 +779,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 _image.SetImage(
                     character.ImageUrl,
                     character.PreviewImageUrl,
-                    "schink_background.jpeg");
+                    PageHelpers.StoryPlaceholderFile);
                 _imageKey = imageKey;
             }
 
@@ -777,32 +817,20 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 : Color.FromArgb("#153718");
         }
 
-        private async Task AnimateSpeakerTapAsync()
-        {
-            _speakerButton.CancelAnimations();
-            _speakerIcon.CancelAnimations();
-            _speakerButton.BackgroundColor = Color.FromArgb("#F39A32");
-            _speakerIcon.TextColor = Color.FromArgb("#1D1306");
+        private void OnPreviewChanged(object? sender, EventArgs e) => UpdateSpeaker();
 
-            try
-            {
-                for (var pulse = 0; pulse < 3; pulse++)
-                {
-                    await Task.WhenAll(
-                        _speakerButton.ScaleToAsync(1.08, 100, Easing.CubicOut),
-                        _speakerIcon.RotateToAsync(pulse % 2 == 0 ? -9 : 9, 100, Easing.CubicOut));
-                    await Task.WhenAll(
-                        _speakerButton.ScaleToAsync(0.98, 100, Easing.CubicInOut),
-                        _speakerIcon.RotateToAsync(pulse % 2 == 0 ? 7 : -7, 100, Easing.CubicInOut));
-                }
-            }
-            finally
-            {
-                _speakerButton.Scale = 1;
-                _speakerIcon.Rotation = 0;
-                _speakerButton.BackgroundColor = Color.FromArgb("#F5FAFB");
-                _speakerIcon.TextColor = Color.FromArgb("#103C49");
-            }
+        private void UpdateSpeaker()
+        {
+            var playing = _loaded && _owner._isPageActive && _character is not null &&
+                string.Equals(_owner._previewSlug, _character.Slug, StringComparison.OrdinalIgnoreCase) &&
+                _owner._audioPlaybackService.IsPlaying && !_owner._storyPlaybackSession.HasActiveStory;
+            if (_speakerPlaying == playing) return;
+            _speakerPlaying = playing;
+            CharacterAnimations.Stop(_speakerButton);
+            CharacterAnimations.Stop(_speakerIcon);
+            _speakerButton.BackgroundColor = Color.FromArgb(playing ? "#F39A32" : "#F5FAFB");
+            _speakerIcon.TextColor = Color.FromArgb(playing ? "#1D1306" : "#103C49");
+            if (playing) CharacterAnimations.Speaker(_speakerButton, _speakerIcon);
         }
     }
 
@@ -897,6 +925,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             return;
         }
 
+        CloseCharacterProfile();
         var closeButton = new Button
         {
             Text = "✕",
@@ -916,7 +945,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             new ProgressiveImageRequest(
                 character.ImageUrl,
                 character.PreviewImageUrl,
-                "schink_background.jpeg"))
+                PageHelpers.StoryPlaceholderFile))
         {
             HeightRequest = wideLayout ? 340 : 260,
             Aspect = Aspect.AspectFit,
@@ -936,13 +965,16 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             imageTap.Tapped += async (_, _) =>
             {
                 SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
-                await imageButton.ScaleToAsync(1.04, 100, Easing.CubicOut);
-                await imageButton.ScaleToAsync(1, 140, Easing.CubicIn);
+                CharacterAnimations.Celebrate(imageButton);
                 await PlayCharacterAudioAsync(character);
             };
             imageButton.GestureRecognizers.Add(imageTap);
         }
 
+        _profileImage = profileImage;
+        _profileImageButton = imageButton;
+        SemanticProperties.SetDescription(imageButton, $"Speel {character.DisplayName} se stem");
+        imageButton.AutomationId = "character-profile-play";
         var profileContent = new VerticalStackLayout
         {
             Padding = new Thickness(16, 14, 16, 28),
@@ -1077,6 +1109,8 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         profileCard.Scale = 0.94;
         profileCard.Opacity = 0;
         _profileOverlay.IsVisible = true;
+        StartProfileAnimations();
+        CharacterAnimations.Pop(imageButton);
         await Task.WhenAll(
             profileCard.FadeToAsync(1, 120, Easing.CubicOut),
             profileCard.ScaleToAsync(1, 180, Easing.CubicOut));
@@ -1084,6 +1118,10 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
     private void CloseCharacterProfile()
     {
+        StopProfileAnimations();
+        _profileImage = null;
+        _profileImageButton = null;
+        _friendTiles.Clear();
         _profileOverlay.InputTransparent = true;
         _profileOverlay.IsVisible = false;
         _profileOverlay.Opacity = 1;
@@ -1161,11 +1199,14 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 string.Equals(NormalizeFriendToken(candidate.Slug.Replace("-", " ")), NormalizeFriendToken(friendName), StringComparison.Ordinal));
             if (friend is null)
             {
-                layout.Children.Add(BuildUnmatchedFriend(friendName));
+                var unmatchedTile = BuildUnmatchedFriend(friendName);
+                _friendTiles.Add(unmatchedTile);
+                layout.Children.Add(unmatchedTile);
                 continue;
             }
 
             var tile = BuildFriendTile(friend);
+            _friendTiles.Add(tile);
             if (friend.IsUnlocked)
             {
                 var tap = new TapGestureRecognizer();
@@ -1196,7 +1237,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                     new ProgressiveImageRequest(
                         friend.ImageUrl,
                         friend.PreviewImageUrl,
-                        "schink_background.jpeg"))
+                        PageHelpers.StoryPlaceholderFile))
                 {
                     HeightRequest = 72,
                     WidthRequest = 72,
@@ -1270,7 +1311,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                         HeightRequest = 150,
                         Content = new ProgressiveCachedImage(
                             _apiClient,
-                            new ProgressiveImageRequest(story.ImageUrl, FallbackFile: "schink_background.jpeg"))
+                            new ProgressiveImageRequest(story.ImageUrl, FallbackFile: PageHelpers.StoryPlaceholderFile))
                         {
                             Aspect = Aspect.AspectFill
                         }
@@ -1328,26 +1369,107 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             return;
         }
 
-        var clip = character.PreviewAudioClips[Random.Shared.Next(character.PreviewAudioClips.Count)];
+        StopCharacterPreview();
+        using var request = new CancellationTokenSource();
+        _previewCancellation = request;
+        var token = request.Token;
         try
         {
-            _storyPlaybackSession.Stop();
+            var freshCatalog = await _apiClient.GetCharactersAsync(token);
+            token.ThrowIfCancellationRequested();
+            var clip = CharacterPreviewCatalog.SelectClip(freshCatalog, character.Slug);
             var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
-                clip.AudioUrl,
-                character.Slug,
-                "karakter");
+                clip.AudioUrl, character.Slug, "karakter", token);
+            token.ThrowIfCancellationRequested();
+            if (!_isPageActive) return;
+
+            _storyPlaybackSession.Stop();
+            _previewSlug = character.Slug;
+            // Repeated taps restart even when the randomly selected clip is the same.
+            _audioPlaybackService.Stop();
             await _audioPlaybackService.PlayAsync(
                 playbackUrl,
                 new AudioPlaybackMetadata(
                     character.DisplayName,
                     "Schink Stories Karakters",
                     _apiClient.BuildImageUrl(character.ImageUrl)));
+            token.ThrowIfCancellationRequested();
+            OnPreviewPlaybackChanged(this, EventArgs.Empty);
             _ = _apiClient.TrackCharacterProfileListenAsync(character.Slug, clip.StreamSlug);
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            if (token.IsCancellationRequested) return;
+            StopCharacterPreview();
             await DisplayAlertAsync("Kon nie karakterklank speel nie", ex.Message, "Maak toe");
         }
+        finally
+        {
+            if (ReferenceEquals(_previewCancellation, request)) _previewCancellation = null;
+        }
+    }
+
+    private void StopCharacterPreview()
+    {
+        _previewCancellation?.Cancel();
+        _previewCancellation = null;
+        var ownedPreview = _previewSlug is not null;
+        _previewSlug = null;
+        if (ownedPreview && !_storyPlaybackSession.HasActiveStory) _audioPlaybackService.Stop();
+        PreviewPlaybackChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnPreviewPlaybackChanged(object? sender, EventArgs e) =>
+        MainThread.BeginInvokeOnMainThread(() => PreviewPlaybackChanged?.Invoke(this, EventArgs.Empty));
+
+    private void OnPreviewPlaybackEnded(object? sender, EventArgs e) =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            _previewSlug = null;
+            PreviewPlaybackChanged?.Invoke(this, EventArgs.Empty);
+        });
+
+    private void OnWindowDeactivated(object? sender, EventArgs e)
+    {
+        StopCharacterPreview();
+        StopProfileAnimations();
+    }
+
+    private void OnWindowActivated(object? sender, EventArgs e) => StartProfileAnimations();
+
+    private void StartProfileAnimations()
+    {
+        StopProfileAnimations();
+        if (!_isPageActive || !_profileOverlay.IsVisible || CharacterAnimations.ReduceMotion) return;
+        if (_profileImage is not null) CharacterAnimations.Idle(_profileImage);
+        if (_friendTiles.Count == 0) return;
+        AnimateRandomFriend();
+        _friendAnimationTimer = Dispatcher.CreateTimer();
+        _friendAnimationTimer.Interval = TimeSpan.FromSeconds(3);
+        _friendAnimationTimer.Tick += OnFriendAnimationTick;
+        _friendAnimationTimer.Start();
+    }
+
+    private void OnFriendAnimationTick(object? sender, EventArgs e) => AnimateRandomFriend();
+
+    private void AnimateRandomFriend()
+    {
+        if (_friendTiles.Count > 0)
+            CharacterAnimations.FriendBop(_friendTiles[Random.Shared.Next(_friendTiles.Count)]);
+    }
+
+    private void StopProfileAnimations()
+    {
+        if (_friendAnimationTimer is not null)
+        {
+            _friendAnimationTimer.Stop();
+            _friendAnimationTimer.Tick -= OnFriendAnimationTick;
+            _friendAnimationTimer = null;
+        }
+        if (_profileImage is not null) CharacterAnimations.Stop(_profileImage);
+        if (_profileImageButton is not null) CharacterAnimations.Stop(_profileImageButton);
+        foreach (var tile in _friendTiles) CharacterAnimations.Stop(tile);
     }
 
     private async Task OpenPrimaryStoryAsync(MobileCharacterCard character)

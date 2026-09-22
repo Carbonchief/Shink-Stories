@@ -19,10 +19,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shink.Mobile\Services\CharacterPreviewCatalog.cs" Link="Mobile\CharacterPreviewCatalog.cs" />
     <Compile Include="..\Shink.Mobile\Services\StorePurchaseRecovery.cs" Link="Mobile\StorePurchaseRecovery.cs" />
     <Compile Include="..\Shink.Mobile\Games\CharacterMatchGame.cs" Link="Mobile\CharacterMatchGame.cs" />
     <Compile Include="..\Shink.Mobile\Models\StoryImageDecodeSize.cs" Link="Mobile\StoryImageDecodeSize.cs" />
     <Compile Include="..\Shink.Mobile\Games\CharacterGuessGame.cs" Link="Mobile\CharacterGuessGame.cs" />
+    <Compile Include="..\Shink.Mobile\Games\CharacterGuessDifficulty.cs" Link="Mobile\CharacterGuessDifficulty.cs" />
+    <Compile Include="..\Shink.Mobile\Games\CharacterGuessCatalog.cs" Link="Mobile\CharacterGuessCatalog.cs" />
+    <Compile Include="..\Shink.Mobile\Models\MobileApiModels.cs" Link="Mobile\MobileApiModels.cs" />
     <Compile Include="..\Shink.Mobile\Navigation\MobileNotificationNavigation.cs" Link="Mobile\MobileNotificationNavigation.cs" />
     <Compile Include="..\Shink.Mobile\Services\OfflineDownloadAccessPolicy.cs" Link="Mobile\OfflineDownloadAccessPolicy.cs" />
   </ItemGroup>

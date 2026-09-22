@@ -45,6 +45,9 @@ public sealed class AccountPage : ContentPage
     private bool _hasLoadedSession;
     private bool _isAuthRequestInFlight;
     private bool _isSessionStateSubscribed;
+#if ANDROID
+    private AndroidX.Activity.OnBackPressedCallback? _authBackCallback;
+#endif
 
     public string? ReturnUrl { get; set; }
 
@@ -130,6 +133,7 @@ public sealed class AccountPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        UpdateSystemBackHandling();
         SubscribePageEvents();
         if (_hasLoadedSession)
         {
@@ -142,9 +146,58 @@ public sealed class AccountPage : ContentPage
 
     protected override void OnDisappearing()
     {
+#if ANDROID
+        _authBackCallback?.Remove();
+        _authBackCallback?.Dispose();
+        _authBackCallback = null;
+#endif
         UnsubscribePageEvents();
         base.OnDisappearing();
     }
+
+    protected override bool OnBackButtonPressed() =>
+        TryReturnToAuthLanding() || base.OnBackButtonPressed();
+
+    private bool TryReturnToAuthLanding()
+    {
+        if (_sessionState.Current.IsSignedIn || _authPanelMode == AuthPanelMode.Landing)
+        {
+            return false;
+        }
+
+        if (!_isAuthRequestInFlight)
+        {
+            SetAuthPanelMode(AuthPanelMode.Landing);
+        }
+
+        return true;
+    }
+
+    private void UpdateSystemBackHandling()
+    {
+#if ANDROID
+        // Root Shell pages do not receive OnBackButtonPressed in this MAUI version.
+        // Enable the native callback only while an authentication form is open.
+        if (_authBackCallback is null &&
+            Platform.CurrentActivity is AndroidX.Activity.ComponentActivity activity)
+        {
+            _authBackCallback = new AuthBackCallback(this);
+            activity.OnBackPressedDispatcher.AddCallback(activity, _authBackCallback);
+        }
+        if (_authBackCallback is not null)
+        {
+            _authBackCallback.Enabled = !_sessionState.Current.IsSignedIn &&
+                _authPanelMode != AuthPanelMode.Landing;
+        }
+#endif
+    }
+
+#if ANDROID
+    private sealed class AuthBackCallback(AccountPage page) : AndroidX.Activity.OnBackPressedCallback(false)
+    {
+        public override void HandleOnBackPressed() => page.TryReturnToAuthLanding();
+    }
+#endif
 
     private void SubscribePageEvents()
     {
@@ -435,6 +488,13 @@ public sealed class AccountPage : ContentPage
             return;
         }
 
+        // Detach reused labels while the old layout still owns its native views.
+        // Android cannot add a label to a new layout while its old parent retains it.
+        DetachStatusLabel();
+        if (_authTaglineLabel?.Parent is Layout taglineParent)
+        {
+            taglineParent.Remove(_authTaglineLabel);
+        }
         _authPanelContentHost.Content = null;
         var metrics = GetLandingLayoutMetrics();
 
@@ -462,7 +522,6 @@ public sealed class AccountPage : ContentPage
             return;
         }
 
-        DetachStatusLabel();
         var formContent = new StackLayout
         {
             Spacing = 14,
@@ -734,6 +793,7 @@ public sealed class AccountPage : ContentPage
     private void SetAuthPanelMode(AuthPanelMode mode)
     {
         _authPanelMode = mode;
+        UpdateSystemBackHandling();
         if (_authHero is not null)
         {
             _authHero.IsVisible = _authPanelMode == AuthPanelMode.Landing;
@@ -907,7 +967,7 @@ public sealed class AccountPage : ContentPage
             VerticalOptions = LayoutOptions.Center,
             InputTransparent = true
         };
-        var backButton = new Border
+        var backDecoration = new Border
         {
             BackgroundColor = Color.FromArgb("#FFF7E8"),
             Stroke = Color.FromArgb("#E8DEC8"),
@@ -915,27 +975,31 @@ public sealed class AccountPage : ContentPage
             StrokeShape = new RoundRectangle { CornerRadius = 18 },
             WidthRequest = 38,
             HeightRequest = 38,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true,
+            Content = backIcon
+        };
+        // Use a native hit target; nested decorative views can swallow border gestures.
+        var backHitTarget = new Button
+        {
+            AutomationId = "auth-back",
+            BackgroundColor = Colors.Transparent,
+            BorderWidth = 0,
+            Padding = 0,
+            WidthRequest = 44,
+            HeightRequest = 44
+        };
+        SemanticProperties.SetDescription(backHitTarget, "Terug na welkomskerm");
+        backHitTarget.Clicked += (_, _) => TryReturnToAuthLanding();
+        var backButton = new Grid
+        {
+            WidthRequest = 44,
+            HeightRequest = 44,
             HorizontalOptions = LayoutOptions.Start,
             VerticalOptions = LayoutOptions.Center,
-            Content = new Grid
-            {
-                WidthRequest = 38,
-                HeightRequest = 38,
-                Children =
-                {
-                    backIcon
-                }
-            }
+            Children = { backDecoration, backHitTarget }
         };
-        var backTap = new TapGestureRecognizer();
-        backTap.Tapped += (_, _) =>
-        {
-            if (!_isAuthRequestInFlight)
-            {
-                SetAuthPanelMode(AuthPanelMode.Landing);
-            }
-        };
-        backButton.GestureRecognizers.Add(backTap);
 
         var heading = new Label
         {
@@ -955,9 +1019,9 @@ public sealed class AccountPage : ContentPage
         {
             ColumnDefinitions =
             {
-                new ColumnDefinition { Width = 38 },
+                new ColumnDefinition { Width = 44 },
                 new ColumnDefinition { Width = GridLength.Star },
-                new ColumnDefinition { Width = 38 }
+                new ColumnDefinition { Width = 44 }
             },
             Children =
             {
@@ -1280,6 +1344,12 @@ public sealed class AccountPage : ContentPage
     private void ApplySessionState()
     {
         var session = _sessionState.Current;
+#if ANDROID
+        if (_authBackCallback is not null)
+        {
+            _authBackCallback.Enabled = !session.IsSignedIn && _authPanelMode != AuthPanelMode.Landing;
+        }
+#endif
 
         _signedInState.Children.Clear();
         if (session.IsSignedIn)
