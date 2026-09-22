@@ -51,7 +51,7 @@ public sealed class ProfilePage : ContentPage
         _firstNameEntry = BuildEntry("Naam");
         _lastNameEntry = BuildEntry("Van");
         _displayNameEntry = BuildEntry("Vertoonnaam");
-        _mobileNumberEntry = BuildEntry("Selfoonnommer");
+        _mobileNumberEntry = BuildEntry("Selfoonnommer (opsioneel)");
         _mobileNumberEntry.Keyboard = Keyboard.Telephone;
 
         _saveSpinner = new ActivityIndicator
@@ -96,7 +96,8 @@ public sealed class ProfilePage : ContentPage
                     _avatarHost,
                     BuildForm(),
                     BuildSaveRow(),
-                    _statusLabel
+                    _statusLabel,
+                    BuildAccountSettingsButton()
                 }
             }
         };
@@ -197,7 +198,7 @@ public sealed class ProfilePage : ContentPage
                 BuildField("Naam", _firstNameEntry),
                 BuildField("Van", _lastNameEntry),
                 BuildField("Vertoonnaam", _displayNameEntry),
-                BuildField("Selfoonnommer", _mobileNumberEntry)
+                BuildField("Selfoonnommer (opsioneel)", _mobileNumberEntry)
             }
         };
 
@@ -331,6 +332,22 @@ public sealed class ProfilePage : ContentPage
                 VerticalTextAlignment = TextAlignment.Center
             }
         });
+    }
+
+    private Button BuildAccountSettingsButton()
+    {
+        var button = new Button
+        {
+            Text = "Rekeninginstellings en verwydering",
+            AutomationId = "profile-account-settings",
+            BackgroundColor = Colors.White,
+            TextColor = AccentColor,
+            MinimumHeightRequest = 48,
+            CornerRadius = 24
+        };
+        button.Clicked += async (_, _) =>
+            await Shell.Current.GoToAsync(nameof(SettingsPage), animate: true);
+        return button;
     }
 
     private async Task SaveAsync()

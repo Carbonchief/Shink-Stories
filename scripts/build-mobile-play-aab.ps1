@@ -25,17 +25,17 @@ $credentialTarget = if ($env:SCHINK_ANDROID_PLAY_UPLOAD_CREDENTIAL_TARGET) {
 }
 $appIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_appicon.png"
 $playStoreIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_appicon_playstore.png"
-$expectedSourceIconHash = "30faba4a58e01bf90b4fdd3580308312aca40a5e93e9298dcbf34fd1f9e8eba8"
-$expectedAndroidIconHash = "648f5a7e5de3bf9d956d8af8c6428f3edac9d4e49dcd33d0254b639cb316476c"
+$expectedSourceIconHash = "8a5d7a16984ad1343d2c7263f0712272b582bb19ba5a9339933abc2fe2bc7f22"
+$expectedAndroidIconHash = "dbe36cbe16d7e80afa143c98e50a30765107eec13ce9cbaf73c9e7c6e54f6ef8"
 
 foreach ($iconPath in @($appIcon, $playStoreIcon)) {
     if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
-        throw "Missing approved teal app icon: $iconPath"
+        throw "Missing configured Schink Stories app icon: $iconPath"
     }
 
     $iconHash = (Get-FileHash -LiteralPath $iconPath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($iconHash -ne $expectedSourceIconHash) {
-        throw "App icon does not match the approved teal Schink icon: $iconPath"
+        throw "App icon does not match the configured Schink Stories icon: $iconPath"
     }
 }
 

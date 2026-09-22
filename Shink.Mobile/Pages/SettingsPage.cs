@@ -160,7 +160,13 @@ public sealed class SettingsPage : ContentPage
                 "Bestuur intekening",
                 "Kanselleer of verander jou intekening by jou betaalwinkel.",
                 OpenSubscriptionManagementAsync,
-                "settings-manage-subscription-row")));
+                "settings-manage-subscription-row"),
+            BuildSettingsRow(
+                "×",
+                "Verwyder my rekening",
+                "Verwyder jou rekening en persoonlike data permanent.",
+                ConfirmDeleteAccountAsync,
+                "settings-delete-account-row")));
 
         _downloadSummaryLabel = new Label
         {
@@ -210,13 +216,7 @@ public sealed class SettingsPage : ContentPage
                 "Terme en voorwaardes",
                 "Lees die voorwaardes vir die gebruik van Schink Stories.",
                 () => OpenWebsiteAsync("/terme-en-voorwaardes"),
-                "settings-terms-row"),
-            BuildSettingsRow(
-                "×",
-                "Verwyder my rekening",
-                "Verwyder jou rekening en persoonlike data permanent.",
-                ConfirmDeleteAccountAsync,
-                "settings-delete-account-row")));
+                "settings-terms-row")));
 
         _content.Children.Add(BuildSignOutButton());
         _content.Children.Add(new Label
@@ -612,11 +612,14 @@ public sealed class SettingsPage : ContentPage
                     await _offlineDownloadService.RemoveAsync(download.Slug, download.Source);
                 }
 
-                await _apiClient.GetSessionAsync();
                 await DisplayAlertAsync(
-                    "Rekening verwyder",
+                    "Rekening suksesvol verwyder",
                     $"{message} Indien jy met Apple ingeteken het, kan jy Schink Stories ook onder jou Apple-rekening se ‘Teken in met Apple’-instellings verwyder.",
                     "Reg so");
+
+                // Publishing the signed-out session replaces this page with login/signup.
+                // Keep the success dialog visible until the user acknowledges it.
+                await _apiClient.GetSessionAsync();
             }
             catch (InvalidOperationException exception)
             {

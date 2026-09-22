@@ -52,7 +52,19 @@ fi
 
 /bin/bash "$ICON_VERIFY_SCRIPT" android-aab "$UNSIGNED_BUNDLE"
 
-if ! unzip -p "$UNSIGNED_BUNDLE" 'base/lib/arm64-v8a/libaot-Shink.Mobile.dll.so' | strings | rg -q 'PostHogProjectApiKey|phc_'; then
+posthog_token_found=false
+for posthog_entry in \
+  'base/lib/arm64-v8a/libassembly-store.so' \
+  'base/lib/armeabi-v7a/libassembly-store.so' \
+  'base/lib/arm64-v8a/libaot-Shink.Mobile.dll.so' \
+  'base/lib/armeabi-v7a/libaot-Shink.Mobile.dll.so'; do
+  if unzip -p "$UNSIGNED_BUNDLE" "$posthog_entry" 2>/dev/null | strings | rg -q 'PostHogProjectApiKey|phc_'; then
+    posthog_token_found=true
+    break
+  fi
+done
+
+if [[ "$posthog_token_found" != true ]]; then
   echo "The Google Play bundle is missing the embedded PostHog project token." >&2
   exit 1
 fi

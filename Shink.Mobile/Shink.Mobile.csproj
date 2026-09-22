@@ -14,8 +14,8 @@
 
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
-    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>28</ApplicationVersion>
+    <ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
+		<ApplicationVersion>32</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' == 'true'">23.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' != 'true'">21.0</SupportedOSPlatformVersion>
@@ -75,7 +75,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <MauiIcon Include="Resources/AppIcon/schink_appicon.png" />
+    <MauiIcon Include="Resources/AppIcon/schink_appicon.png"
+              Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'" />
+    <MauiIcon Include="Resources/AppIcon/schink_android_icon.png"
+              Link="Resources/AppIcon/schink_appicon.png"
+              Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'" />
     <MauiFont Include="../Shink/wwwroot/lib/fontawesome/webfonts/fa-regular-400.ttf"
               Alias="FontAwesomeRegular" />
     <MauiFont Include="../Shink/wwwroot/lib/fontawesome/webfonts/fa-solid-900.ttf"

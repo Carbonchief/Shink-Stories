@@ -731,7 +731,6 @@ public sealed class AccountPage : ContentPage
             var signupLastNameEntry = CreateEntry("Van");
             var signupDisplayNameEntry = CreateEntry("Vertoonnaam");
             var signupEmailEntry = CreateEntry("E-pos", Keyboard.Email);
-            var signupMobileEntry = CreateEntry("Selfoon");
             var signupPasswordEntry = CreateEntry("Wagwoord", isPassword: true);
             var signupButton = new Button
             {
@@ -751,7 +750,7 @@ public sealed class AccountPage : ContentPage
                         signupLastNameEntry.Text ?? string.Empty,
                         signupDisplayNameEntry.Text ?? string.Empty,
                         signupEmailEntry.Text ?? string.Empty,
-                        signupMobileEntry.Text ?? string.Empty,
+                        string.Empty,
                         signupPasswordEntry.Text ?? string.Empty);
                     await RefreshSessionAsync(result.Message);
                     await OpenPostAuthenticationDestinationAsync(isNewAccount: true);
@@ -766,7 +765,6 @@ public sealed class AccountPage : ContentPage
             formContent.Children.Add(BuildField(signupLastNameEntry));
             formContent.Children.Add(BuildField(signupDisplayNameEntry));
             formContent.Children.Add(BuildField(signupEmailEntry));
-            formContent.Children.Add(BuildField(signupMobileEntry));
             formContent.Children.Add(BuildField(signupPasswordEntry));
             formContent.Children.Add(signupButton);
             formContent.Children.Add(BuildModeSwitchLink(

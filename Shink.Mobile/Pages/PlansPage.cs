@@ -88,6 +88,7 @@ public sealed class PlansPage : ContentPage
     {
         _content.Children.Clear();
         _content.Children.Add(BuildHeader());
+        _content.Children.Add(BuildLegalLinks());
         _content.Children.Add(BuildIntro());
         _content.Children.Add(new ActivityIndicator
         {
@@ -113,13 +114,13 @@ public sealed class PlansPage : ContentPage
 
             _content.Children.Clear();
             _content.Children.Add(BuildHeader());
+            _content.Children.Add(BuildLegalLinks());
             _content.Children.Add(BuildIntro());
 
             if (_sessionState.Current.HasPaidSubscription)
             {
                 _content.Children.Add(BuildActiveAccessCard());
                 _content.Children.Add(BuildPurchaseDetails());
-                _content.Children.Add(BuildLegalLinks());
                 return;
             }
 
@@ -129,7 +130,6 @@ public sealed class PlansPage : ContentPage
                 _content.Children.Add(BuildRetryButton());
                 _content.Children.Add(BuildRestoreButton());
                 _content.Children.Add(BuildPurchaseDetails());
-                _content.Children.Add(BuildLegalLinks());
                 return;
             }
 
@@ -147,18 +147,17 @@ public sealed class PlansPage : ContentPage
             _content.Children.Add(BuildRetryButton());
             _content.Children.Add(BuildRestoreButton());
             _content.Children.Add(BuildPurchaseDetails());
-            _content.Children.Add(BuildLegalLinks());
         }
         catch (Exception)
         {
             _content.Children.Clear();
             _content.Children.Add(BuildHeader());
+            _content.Children.Add(BuildLegalLinks());
             _content.Children.Add(BuildIntro());
             _content.Children.Add(BuildNotice("Die winkelprodukte kon nie nou gelaai word nie. Probeer asseblief weer."));
             _content.Children.Add(BuildRetryButton());
             _content.Children.Add(BuildRestoreButton());
             _content.Children.Add(BuildPurchaseDetails());
-            _content.Children.Add(BuildLegalLinks());
         }
     }
 
@@ -542,19 +541,38 @@ public sealed class PlansPage : ContentPage
     private View BuildLegalLinks()
     {
         var termsButton = BuildTextLinkButton("Terme en voorwaardes");
-        termsButton.Clicked += async (_, _) => await Launcher.Default.OpenAsync(
-            new Uri(_apiClient.BuildAbsoluteUrl("/terme-en-voorwaardes")));
+        termsButton.AutomationId = "plans-terms-link";
+        termsButton.Clicked += async (_, _) => await OpenLegalLinkAsync("/terme-en-voorwaardes");
 
         var privacyButton = BuildTextLinkButton("Privaatheidsbeleid");
-        privacyButton.Clicked += async (_, _) => await Launcher.Default.OpenAsync(
-            new Uri(_apiClient.BuildAbsoluteUrl("/privaatheidsbeleid")));
+        privacyButton.AutomationId = "plans-privacy-link";
+        privacyButton.Clicked += async (_, _) => await OpenLegalLinkAsync("/privaatheidsbeleid");
 
         return new VerticalStackLayout
         {
             Spacing = 0,
             HorizontalOptions = LayoutOptions.Center,
-            Children = { termsButton, privacyButton }
+            Children = { privacyButton, termsButton }
         };
+    }
+
+    private async Task OpenLegalLinkAsync(string path)
+    {
+        try
+        {
+            if (await Launcher.Default.OpenAsync(new Uri(_apiClient.BuildAbsoluteUrl(path))))
+            {
+                return;
+            }
+        }
+        catch (Exception)
+        {
+            // Keep a failed browser handoff visible and recoverable.
+        }
+
+        await DisplayAlertAsync("Kon nie die blad oopmaak nie",
+            "Probeer asseblief weer. Jy kan die beleid en voorwaardes ook by www.schink.co.za lees.",
+            "Reg so");
     }
 
     private static Button BuildTextLinkButton(string text) =>
@@ -565,7 +583,7 @@ public sealed class PlansPage : ContentPage
             TextColor = AccentColor,
             FontSize = 13,
             FontAttributes = FontAttributes.Bold,
-            HeightRequest = 38,
+            MinimumHeightRequest = 44,
             Padding = new Thickness(10, 0)
         };
 

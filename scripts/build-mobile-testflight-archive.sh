@@ -71,4 +71,4 @@ if ! strings "$archive_dir/Products/Applications/Shink.Mobile.app/Shink.Mobile.d
   exit 1
 fi
 
-echo "TestFlight archive build completed with the approved teal app icon."
+echo "TestFlight archive build completed with the configured Schink Stories app icon."
