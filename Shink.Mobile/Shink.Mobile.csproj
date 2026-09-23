@@ -15,9 +15,9 @@
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
     <ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
-		<ApplicationVersion>32</ApplicationVersion>
+		<ApplicationVersion>34</ApplicationVersion>
 
-    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' == 'true'">23.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' == 'true'">24.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' != 'true'">21.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
   </PropertyGroup>
@@ -44,7 +44,7 @@
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
     <RuntimeIdentifiers>android-arm;android-arm64</RuntimeIdentifiers>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
-    <AndroidMinSdkVersion Condition="'$(SchinkGooglePlayBuild)' == 'true'">23</AndroidMinSdkVersion>
+    <AndroidMinSdkVersion Condition="'$(SchinkGooglePlayBuild)' == 'true'">24</AndroidMinSdkVersion>
     <AndroidMinSdkVersion Condition="'$(SchinkGooglePlayBuild)' != 'true'">21</AndroidMinSdkVersion>
     <AndroidTargetSdkVersion Condition="'$(SchinkGooglePlayBuild)' == 'true'">36</AndroidTargetSdkVersion>
     <AndroidTargetSdkVersion Condition="'$(SchinkGooglePlayBuild)' != 'true'">35</AndroidTargetSdkVersion>
@@ -77,8 +77,9 @@
   <ItemGroup>
     <MauiIcon Include="Resources/AppIcon/schink_appicon.png"
               Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'" />
-    <MauiIcon Include="Resources/AppIcon/schink_android_icon.png"
-              Link="Resources/AppIcon/schink_appicon.png"
+    <MauiIcon Include="Resources/AppIcon/schink_appicon.png"
+              Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'" />
+    <MauiIcon Include="Resources/AppIcon/schink_android_round_icon.png"
               Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'" />
     <MauiFont Include="../Shink/wwwroot/lib/fontawesome/webfonts/fa-regular-400.ttf"
               Alias="FontAwesomeRegular" />
@@ -119,6 +120,23 @@
     <!-- The cached native material no longer needs the older live BlurView binding. -->
     <AndroidLibrary Remove="Platforms/Android/Libs/BlurView-version-2.0.6.aar" />
   </ItemGroup>
+
+  <Target Name="UseCustomAndroidRoundAppIcon"
+          AfterTargets="ResizetizeImages"
+          BeforeTargets="_CollectLibraryResourceDirectories"
+          Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <ItemGroup>
+      <_SchinkAndroidIconDensity Include="mdpi;hdpi;xhdpi;xxhdpi;xxxhdpi" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_SchinkAndroidIconDensity-&gt;'$(IntermediateOutputPath)resizetizer/r/mipmap-%(Identity)/schink_android_round_icon_round.png')"
+      DestinationFiles="@(_SchinkAndroidIconDensity-&gt;'$(IntermediateOutputPath)resizetizer/r/mipmap-%(Identity)/schink_appicon_round.png')"
+      SkipUnchangedFiles="false" />
+    <Copy
+      SourceFiles="$(IntermediateOutputPath)resizetizer/r/mipmap-anydpi-v26/schink_android_round_icon_round.xml"
+      DestinationFiles="$(IntermediateOutputPath)resizetizer/r/mipmap-anydpi-v26/schink_appicon_round.xml"
+      SkipUnchangedFiles="false" />
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />

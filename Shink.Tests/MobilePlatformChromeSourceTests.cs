@@ -238,8 +238,12 @@ public sealed class MobilePlatformChromeSourceTests
     {
         var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
 
-        StringAssert.Contains(project, "<MauiIcon Include=\"Resources/AppIcon/schink_appicon.png\" />");
-        Assert.IsFalse(project.Contains("<MauiIcon Include=\"Resources/AppIcon/schink_appicon.png\" Resize=\"False\"", StringComparison.Ordinal));
+        var iosIcon = System.Xml.Linq.XDocument.Parse(project).Descendants("MauiIcon")
+            .Single(icon =>
+                (string?)icon.Attribute("Include") == "Resources/AppIcon/schink_appicon.png" &&
+                ((string?)icon.Attribute("Condition") ?? "").Contains("!= 'android'", StringComparison.Ordinal));
+        StringAssert.Contains((string?)iosIcon.Attribute("Condition") ?? "", "!= 'android'");
+        Assert.AreNotEqual("False", (string?)iosIcon.Attribute("Resize"));
         StringAssert.Contains(project, "sips -s format pbm");
         StringAssert.Contains(project, "sips -s format png");
         Assert.IsFalse(project.Contains("pngcrush", StringComparison.Ordinal));

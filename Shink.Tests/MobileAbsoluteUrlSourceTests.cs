@@ -1617,7 +1617,7 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
-    public void MobileAppIconUsesGeneratedWordlessSchinkAsset()
+    public void MobileAppIconsUseConfiguredPlatformArtwork()
     {
         var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
         var infoPlist = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "Info.plist"));
@@ -1625,15 +1625,29 @@ public class MobileAbsoluteUrlSourceTests
         var androidMainActivity = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "MainActivity.cs"));
         var iconPath = GetRepoPath("Shink.Mobile", "Resources", "AppIcon", "schink_appicon.png");
         var playStoreIconPath = GetRepoPath("Shink.Mobile", "Resources", "AppIcon", "schink_appicon_playstore.png");
+        var roundIconPath = GetRepoPath("Shink.Mobile", "Resources", "AppIcon", "schink_android_round_icon.png");
         var macPlayBuild = File.ReadAllText(GetRepoPath("scripts", "build-mobile-play-aab.sh"));
         var windowsPlayBuild = File.ReadAllText(GetRepoPath("scripts", "build-mobile-play-aab.ps1"));
         var testFlightBuild = File.ReadAllText(GetRepoPath("scripts", "build-mobile-testflight-archive.sh"));
         var iconVerifier = File.ReadAllText(GetRepoPath("scripts", "verify-mobile-app-icons.sh"));
         var iconBytes = File.ReadAllBytes(iconPath);
         var playStoreIconBytes = File.ReadAllBytes(playStoreIconPath);
-        const string expectedIconSha256 = "30FABA4A58E01BF90B4FDD3580308312ACA40A5E93E9298DCBF34FD1F9E8EBA8";
+        var roundIconBytes = File.ReadAllBytes(roundIconPath);
+        const string expectedIconSha256 = "8A5D7A16984AD1343D2C7263F0712272B582BB19BA5A9339933ABC2FE2BC7F22";
+        const string expectedRoundIconSha256 = "F2A9CD3EAB2572C096809A8B92CD6D8EF5F77EF2F7F8F6B658891C1C5FD04D2C";
 
-        StringAssert.Contains(project, "<MauiIcon Include=\"Resources/AppIcon/schink_appicon.png\" />");
+        var icons = System.Xml.Linq.XDocument.Parse(project).Descendants("MauiIcon").ToArray();
+        Assert.AreEqual(3, icons.Length);
+        var iosIcon = icons.Single(icon =>
+            (string?)icon.Attribute("Include") == "Resources/AppIcon/schink_appicon.png" &&
+            ((string?)icon.Attribute("Condition") ?? "").Contains("!= 'android'", StringComparison.Ordinal));
+        var androidIcon = icons.Single(icon =>
+            (string?)icon.Attribute("Include") == "Resources/AppIcon/schink_appicon.png" &&
+            ((string?)icon.Attribute("Condition") ?? "").Contains("== 'android'", StringComparison.Ordinal));
+        var androidRoundIcon = icons.Single(icon => (string?)icon.Attribute("Include") == "Resources/AppIcon/schink_android_round_icon.png");
+        StringAssert.Contains((string?)iosIcon.Attribute("Condition") ?? "", "!= 'android'");
+        StringAssert.Contains((string?)androidIcon.Attribute("Condition") ?? "", "== 'android'");
+        StringAssert.Contains((string?)androidRoundIcon.Attribute("Condition") ?? "", "== 'android'");
         StringAssert.Contains(infoPlist, "<key>XSAppIconAssets</key>");
         StringAssert.Contains(infoPlist, "<string>Assets.xcassets/schink_appicon.appiconset</string>");
         StringAssert.Contains(androidManifest, "android:icon=\"@mipmap/schink_appicon\"");
@@ -1643,15 +1657,18 @@ public class MobileAbsoluteUrlSourceTests
         Assert.IsTrue(iconBytes.Length > 100_000);
         Assert.AreEqual(expectedIconSha256, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(iconBytes)));
         CollectionAssert.AreEqual(iconBytes, playStoreIconBytes);
+        Assert.AreEqual(expectedRoundIconSha256, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(roundIconBytes)));
         StringAssert.Contains(macPlayBuild, "$ICON_VERIFY_SCRIPT\" source");
         StringAssert.Contains(macPlayBuild, "$ICON_VERIFY_SCRIPT\" android-aab");
         StringAssert.Contains(macPlayBuild, "dotnet clean");
         StringAssert.Contains(windowsPlayBuild, "Get-FileHash -LiteralPath $iconPath -Algorithm SHA256");
         StringAssert.Contains(windowsPlayBuild, "Google Play bundle contains a stale or unexpected launcher icon.");
+        StringAssert.Contains(windowsPlayBuild, "Google Play bundle contains a stale or unexpected round launcher icon.");
         StringAssert.Contains(testFlightBuild, "rsync -a");
         StringAssert.Contains(testFlightBuild, "--exclude 'obj'");
         StringAssert.Contains(testFlightBuild, "ios-artwork");
         StringAssert.Contains(iconVerifier, "EXPECTED_ANDROID_XXXHDPI_SHA256");
+        StringAssert.Contains(iconVerifier, "EXPECTED_ANDROID_ROUND_XXXHDPI_SHA256");
         StringAssert.Contains(iconVerifier, "EXPECTED_IOS_MARKETING_SHA256");
     }
 

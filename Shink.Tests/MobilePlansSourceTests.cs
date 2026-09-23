@@ -133,15 +133,15 @@ public class MobilePlansSourceTests
         StringAssert.Contains(migration, "'google_play'");
         StringAssert.Contains(migration, "'app_store'");
         StringAssert.Contains(project, "Plugin.InAppBilling\" Version=\"10.0.0\"");
-        StringAssert.Contains(project, "and '$(SchinkGooglePlayBuild)' == 'true'\">23.0</SupportedOSPlatformVersion>");
+        StringAssert.Contains(project, "and '$(SchinkGooglePlayBuild)' == 'true'\">24.0</SupportedOSPlatformVersion>");
         StringAssert.Contains(project, "and '$(SchinkGooglePlayBuild)' != 'true'\">21.0</SupportedOSPlatformVersion>");
-        StringAssert.Contains(project, "<AndroidMinSdkVersion Condition=\"'$(SchinkGooglePlayBuild)' == 'true'\">23</AndroidMinSdkVersion>");
+        StringAssert.Contains(project, "<AndroidMinSdkVersion Condition=\"'$(SchinkGooglePlayBuild)' == 'true'\">24</AndroidMinSdkVersion>");
         StringAssert.Contains(project, "<AndroidMinSdkVersion Condition=\"'$(SchinkGooglePlayBuild)' != 'true'\">21</AndroidMinSdkVersion>");
         StringAssert.Contains(project, "<AndroidTargetSdkVersion Condition=\"'$(SchinkGooglePlayBuild)' == 'true'\">36</AndroidTargetSdkVersion>");
         StringAssert.Contains(project, "<Target Name=\"SelectGooglePlayAndroidManifest\"");
         StringAssert.Contains(project, "<AndroidManifest>Platforms/Android/AndroidManifest.Play.xml</AndroidManifest>");
         StringAssert.Contains(playManifest, "com.android.vending.BILLING");
-        StringAssert.Contains(playManifest, "android:minSdkVersion=\"23\"");
+        StringAssert.Contains(playManifest, "android:minSdkVersion=\"24\"");
         StringAssert.Contains(playManifest, "android:targetSdkVersion=\"36\"");
         StringAssert.Contains(manifest, "tools:overrideLibrary=\"com.android.billingclient,com.google.android.gms.base,com.google.android.gms.common,com.google.android.gms.tasks\"");
         StringAssert.Contains(playManifest, "com.google.android.play.billingclient.version");

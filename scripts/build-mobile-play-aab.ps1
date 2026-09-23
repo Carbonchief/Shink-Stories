@@ -25,8 +25,12 @@ $credentialTarget = if ($env:SCHINK_ANDROID_PLAY_UPLOAD_CREDENTIAL_TARGET) {
 }
 $appIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_appicon.png"
 $playStoreIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_appicon_playstore.png"
+$androidRoundIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_android_round_icon.png"
 $expectedSourceIconHash = "8a5d7a16984ad1343d2c7263f0712272b582bb19ba5a9339933abc2fe2bc7f22"
 $expectedAndroidIconHash = "dbe36cbe16d7e80afa143c98e50a30765107eec13ce9cbaf73c9e7c6e54f6ef8"
+$expectedAndroidRoundIconSourceHash = "f2a9cd3eab2572c096809a8b92cd6d8ef5f77ef2f7f8f6b658891c1c5fd04d2c"
+$expectedAndroidRoundIconHash = "bc57aa1e40e861d775499e277ba4f921af9edfef68be1fbaad2c25733690d473"
+$expectedAndroidRoundForegroundHash = "1afd6edb14cf2b6cb99adf069663272c318e3105c9b29917dabe932f791017e8"
 
 foreach ($iconPath in @($appIcon, $playStoreIcon)) {
     if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
@@ -37,6 +41,15 @@ foreach ($iconPath in @($appIcon, $playStoreIcon)) {
     if ($iconHash -ne $expectedSourceIconHash) {
         throw "App icon does not match the configured Schink Stories icon: $iconPath"
     }
+}
+
+if (-not (Test-Path -LiteralPath $androidRoundIcon -PathType Leaf)) {
+    throw "Missing configured Schink Stories Android round launcher icon: $androidRoundIcon"
+}
+
+$androidRoundIconSourceHash = (Get-FileHash -LiteralPath $androidRoundIcon -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($androidRoundIconSourceHash -ne $expectedAndroidRoundIconSourceHash) {
+    throw "Android round launcher icon does not match the configured Schink Stories artwork."
 }
 
 if (-not (Test-Path -LiteralPath $keyStore -PathType Leaf)) {
@@ -159,6 +172,52 @@ try {
 
     if ($embeddedIconHash -ne $expectedAndroidIconHash) {
         throw "Google Play bundle contains a stale or unexpected launcher icon."
+    }
+
+    $roundIconEntry = $bundleArchive.GetEntry("base/res/mipmap-xxxhdpi-v4/schink_appicon_round.png")
+    if (-not $roundIconEntry) {
+        throw "Google Play bundle is missing the generated round launcher icon."
+    }
+
+    $roundIconStream = $roundIconEntry.Open()
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $embeddedRoundIconHash = ([BitConverter]::ToString($sha256.ComputeHash($roundIconStream))).Replace("-", "").ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $roundIconStream.Dispose()
+    }
+
+    if ($embeddedRoundIconHash -ne $expectedAndroidRoundIconHash) {
+        throw "Google Play bundle contains a stale or unexpected round launcher icon."
+    }
+
+    $roundForegroundEntry = $bundleArchive.GetEntry("base/res/mipmap-xxxhdpi-v4/schink_android_round_icon_foreground.png")
+    if (-not $roundForegroundEntry) {
+        throw "Google Play bundle is missing the generated round adaptive foreground."
+    }
+
+    $roundForegroundStream = $roundForegroundEntry.Open()
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $embeddedRoundForegroundHash = ([BitConverter]::ToString($sha256.ComputeHash($roundForegroundStream))).Replace("-", "").ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $roundForegroundStream.Dispose()
+    }
+
+    if ($embeddedRoundForegroundHash -ne $expectedAndroidRoundForegroundHash) {
+        throw "Google Play bundle contains a stale or unexpected round adaptive foreground."
     }
 }
 finally {

@@ -4,13 +4,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_ICON="$ROOT_DIR/Shink.Mobile/Resources/AppIcon/schink_appicon.png"
 PLAY_STORE_ICON="$ROOT_DIR/Shink.Mobile/Resources/AppIcon/schink_appicon_playstore.png"
-ANDROID_LAUNCHER_ICON="$ROOT_DIR/Shink.Mobile/Resources/AppIcon/schink_android_icon.png"
+ANDROID_LAUNCHER_ICON="$APP_ICON"
+ANDROID_ROUND_LAUNCHER_ICON="$ROOT_DIR/Shink.Mobile/Resources/AppIcon/schink_android_round_icon.png"
 EXPECTED_SOURCE_SHA256="8a5d7a16984ad1343d2c7263f0712272b582bb19ba5a9339933abc2fe2bc7f22"
 # AAPT2 strips the fully opaque alpha channel from generated PNGs when packaging the AAB.
-EXPECTED_ANDROID_LAUNCHER_SOURCE_SHA256="35c9577a755f4057c199c8d2108015728438529a10a0cdc706dbddd534651191"
-EXPECTED_ANDROID_XXXHDPI_SHA256="4b85b3890b2fa939b33433889ca5498710e9a2c8234bee8266e58ca3f92bce7f"
-EXPECTED_ANDROID_ROUND_XXXHDPI_SHA256="8836dc5603e3236bf247867a9aad895afa64a921a95db843bb42b0efa1ad2c15"
-EXPECTED_ANDROID_FOREGROUND_XXXHDPI_SHA256="de9ede8af9d0f6af81ef130271b567edf811802cc21c5ed38a8fb58079b48c91"
+EXPECTED_ANDROID_LAUNCHER_SOURCE_SHA256="$EXPECTED_SOURCE_SHA256"
+EXPECTED_ANDROID_ROUND_LAUNCHER_SOURCE_SHA256="f2a9cd3eab2572c096809a8b92cd6d8ef5f77ef2f7f8f6b658891c1c5fd04d2c"
+EXPECTED_ANDROID_XXXHDPI_SHA256="dbe36cbe16d7e80afa143c98e50a30765107eec13ce9cbaf73c9e7c6e54f6ef8"
+EXPECTED_ANDROID_ROUND_XXXHDPI_SHA256="bc57aa1e40e861d775499e277ba4f921af9edfef68be1fbaad2c25733690d473"
+EXPECTED_ANDROID_FOREGROUND_XXXHDPI_SHA256="2781ce62aad7a993225d9cde5b0a2faf7c544d74ff828095d6b27c19c2c9e34d"
+EXPECTED_ANDROID_ROUND_FOREGROUND_XXXHDPI_SHA256="1afd6edb14cf2b6cb99adf069663272c318e3105c9b29917dabe932f791017e8"
 EXPECTED_IOS_MARKETING_SHA256="5fec1012c94a1f0421a57b0bcf5133d8d96679efa8e629c35c660b97ee1b9bf3"
 
 sha256_file() {
@@ -41,6 +44,7 @@ verify_sources() {
   require_file_hash "$APP_ICON" "$EXPECTED_SOURCE_SHA256" "MAUI app icon"
   require_file_hash "$PLAY_STORE_ICON" "$EXPECTED_SOURCE_SHA256" "Google Play listing icon"
   require_file_hash "$ANDROID_LAUNCHER_ICON" "$EXPECTED_ANDROID_LAUNCHER_SOURCE_SHA256" "Android launcher icon"
+  require_file_hash "$ANDROID_ROUND_LAUNCHER_ICON" "$EXPECTED_ANDROID_ROUND_LAUNCHER_SOURCE_SHA256" "Android round launcher icon"
 }
 
 mode="${1:-source}"
@@ -74,6 +78,7 @@ case "$mode" in
     verify_bundle_icon "base/res/mipmap-xxxhdpi-v4/schink_appicon.png" "$EXPECTED_ANDROID_XXXHDPI_SHA256"
     verify_bundle_icon "base/res/mipmap-xxxhdpi-v4/schink_appicon_round.png" "$EXPECTED_ANDROID_ROUND_XXXHDPI_SHA256"
     verify_bundle_icon "base/res/mipmap-xxxhdpi-v4/schink_appicon_foreground.png" "$EXPECTED_ANDROID_FOREGROUND_XXXHDPI_SHA256"
+    verify_bundle_icon "base/res/mipmap-xxxhdpi-v4/schink_android_round_icon_foreground.png" "$EXPECTED_ANDROID_ROUND_FOREGROUND_XXXHDPI_SHA256"
     echo "Google Play bundle contains the configured Schink Stories launcher icon."
     ;;
   ios-artwork)
