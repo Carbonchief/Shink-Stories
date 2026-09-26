@@ -160,6 +160,10 @@
                                 <strong>@FormatPlanAmount(plan)</strong>
                                 <span>@GetPlanBillingLabel(plan)</span>
                             </span>
+                            @if (IsSelectedPlan(plan) && HasValidFreeAccessCode)
+                            {
+                                <span class="membership-discounted-price">Gratis met kode</span>
+                            }
                             @if (IsSelectedPlan(plan) && HasValidPercentageDiscount)
                             {
                                 <span class="membership-discounted-price">@GetSelectedPlanPriceDisplay()</span>
@@ -197,7 +201,7 @@
                            @onblur="PreviewDiscountCodeAsync" />
                 <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.DiscountCode)" />
                 <p class="signup-discount-code-help">
-                    As jou kode geldig is, wys ons die afslag voor jy met Paystack betaal.
+                    Pas die kode toe om te sien of dit 'n prysafslag of gratis toegang gee.
                 </p>
                 <div class="signup-discount-actions">
                     <button type="button" class="signup-discount-apply" @onclick="PreviewDiscountCodeAsync" disabled="@IsPreviewingDiscount">
@@ -228,6 +232,10 @@
                                 </div>
                             </dl>
                             <p>@DiscountPreview.DurationDescription</p>
+                        }
+                        else if (HasValidFreeAccessCode)
+                        {
+                            <p>@GetFreeAccessCodePreviewMessage()</p>
                         }
                         else
                         {
@@ -317,6 +325,10 @@
         string.Equals(DiscountPreview.DiscountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal) &&
         DiscountPreview.DiscountedAmountZar is not null &&
         DiscountPreview.OriginalAmountZar is not null;
+    private bool HasValidFreeAccessCode =>
+        DiscountPreview?.IsValid == true &&
+        DiscountPreview.BypassesPayment &&
+        string.Equals(DiscountPreview.DiscountKind, SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal);
     private string SignInHref => BuildSignInHref(GetSafeReturnUrl(ReturnUrl), GetSelectedPlanCheckoutPath());
     private IReadOnlyList<PaymentPlan> AvailablePlans =>
         IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.PublicSchoolPlans : HouseholdPlans;
@@ -885,10 +897,28 @@
     private static string FormatPlanAmount(PaymentPlan plan) =>
         $"R {plan.Amount:0.00}";
 
-    private string GetSelectedPlanPriceDisplay() =>
-        HasValidPercentageDiscount
-            ? FormatCurrency(DiscountPreview?.DiscountedAmountZar)
-            : SelectedPlan is null ? "Gratis" : FormatPlanAmount(SelectedPlan);
+    private string GetSelectedPlanPriceDisplay()
+    {
+        if (HasValidFreeAccessCode)
+        {
+            return "Gratis";
+        }
+
+        if (HasValidPercentageDiscount)
+        {
+            return FormatCurrency(DiscountPreview?.DiscountedAmountZar);
+        }
+
+        return SelectedPlan is null ? "Gratis" : FormatPlanAmount(SelectedPlan);
+    }
+
+    private string GetFreeAccessCodePreviewMessage()
+    {
+        var tierName = DiscountPreview?.ResolvedTierName;
+        return string.IsNullOrWhiteSpace(tierName)
+            ? "Jou kode is geldig en gee gratis toegang wanneer jy jou rekening skep. Geen Paystack-betaling is nodig nie."
+            : $"Jou kode is geldig en gee gratis toegang tot {tierName} wanneer jy jou rekening skep. Geen Paystack-betaling is nodig nie.";
+    }
 
     private static string FormatCurrency(decimal? amount) =>
         amount is null ? "Onbekend" : amount.Value <= 0m ? "Gratis" : $"R {amount.Value:0.00}";
@@ -905,7 +935,7 @@
     }
 
     private string GetDiscountPreviewClass() =>
-        HasValidPercentageDiscount
+        HasValidPercentageDiscount || HasValidFreeAccessCode
             ? "signup-discount-preview signup-discount-preview-valid"
             : "signup-discount-preview signup-discount-preview-invalid";
 
