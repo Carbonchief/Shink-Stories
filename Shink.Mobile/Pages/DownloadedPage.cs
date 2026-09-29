@@ -11,8 +11,7 @@ public sealed class DownloadedPage : ContentPage
     private const double BottomBarContentInset = 216;
     private const double BottomBarOverlayHeight = MobileBottomBar.NavigationHeight;
     private const string DownloadOrderPreferenceKey = "schink_downloaded_story_order_v1";
-    private const int LongPressMilliseconds = 550;
-    private const double DragStartThreshold = 10;
+    private const string DraggedDownloadOrderKeyProperty = "schink.downloaded-story-order-key";
     private static readonly Color PageBackgroundColor = Color.FromArgb("#46969E");
     private static readonly Color TextColor = Color.FromArgb("#1B2231");
     private static readonly Color MutedTextColor = Color.FromArgb("#69716D");
@@ -27,11 +26,9 @@ public sealed class DownloadedPage : ContentPage
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly VerticalStackLayout _content;
     private readonly Border _topBarHost;
+    private readonly Dictionary<string, Border> _downloadRowsByKey = new(StringComparer.OrdinalIgnoreCase);
     private List<OfflineStoryDownload> _orderedDownloads = [];
-    private CancellationTokenSource? _longPressCts;
     private Border? _draggingRow;
-    private double _lastPanY;
-    private bool _isDragging;
     private bool _suppressNextRowTap;
     private bool _isStartingPlaylist;
 
@@ -169,8 +166,7 @@ public sealed class DownloadedPage : ContentPage
 
     protected override void OnDisappearing()
     {
-        CancelLongPress();
-        if (_isDragging && _draggingRow is { } row)
+        if (_draggingRow is { } row)
         {
             FinishDragging(row);
         }
@@ -184,6 +180,7 @@ public sealed class DownloadedPage : ContentPage
 
     private async Task LoadAsync()
     {
+        _downloadRowsByKey.Clear();
         _content.Children.Clear();
         _content.Children.Add(BuildHeader());
         _content.Children.Add(new ActivityIndicator
@@ -522,9 +519,21 @@ public sealed class DownloadedPage : ContentPage
         rowTap.Tapped += async (_, _) => await HandleRowTapAsync(download);
         row.GestureRecognizers.Add(rowTap);
 
-        var pan = new PanGestureRecognizer();
-        pan.PanUpdated += (_, args) => HandleRowPanUpdated(row, args);
-        row.GestureRecognizers.Add(pan);
+        var orderKey = BuildDownloadOrderKey(download);
+        _downloadRowsByKey[orderKey] = row;
+
+        var drag = new DragGestureRecognizer();
+        drag.DragStarting += (_, args) =>
+        {
+            args.Data.Properties.Add(DraggedDownloadOrderKeyProperty, orderKey);
+            StartDragging(row);
+        };
+        drag.DropCompleted += (_, _) => FinishDragging(row);
+        row.GestureRecognizers.Add(drag);
+
+        var drop = new DropGestureRecognizer();
+        drop.Drop += (_, args) => HandleRowDrop(row, args);
+        row.GestureRecognizers.Add(drop);
         SemanticProperties.SetDescription(
             row,
             $"{download.Title}. Tik om te speel. Hou vas en sleep om die volgorde te verander.");
@@ -546,88 +555,51 @@ public sealed class DownloadedPage : ContentPage
         await OpenDownloadedStoryAsync(download);
     }
 
-    private void HandleRowPanUpdated(Border row, PanUpdatedEventArgs args)
+    private void StartDragging(Border row)
     {
-        switch (args.StatusType)
-        {
-            case GestureStatus.Started:
-                CancelLongPress();
-                _longPressCts = new CancellationTokenSource();
-                _ = ActivateLongPressAsync(row, _longPressCts.Token);
-                break;
-
-            case GestureStatus.Running:
-                if (!_isDragging &&
-                    (Math.Abs(args.TotalX) > DragStartThreshold ||
-                     Math.Abs(args.TotalY) > DragStartThreshold))
-                {
-                    CancelLongPress();
-                }
-
-                if (_isDragging && ReferenceEquals(_draggingRow, row))
-                {
-                    row.TranslationY += args.TotalY - _lastPanY;
-                    _lastPanY = args.TotalY;
-                    MoveDraggedRowIfNeeded(row);
-                }
-                break;
-
-            case GestureStatus.Completed:
-            case GestureStatus.Canceled:
-                CancelLongPress();
-                if (_isDragging && ReferenceEquals(_draggingRow, row))
-                {
-                    FinishDragging(row);
-                }
-                break;
-        }
+        _draggingRow = row;
+        _suppressNextRowTap = true;
+        row.ZIndex = 10;
+        row.Opacity = 0.86;
+        row.Scale = 1.02;
+        SafeHapticFeedback.TryPerform(HapticFeedbackType.LongPress);
     }
 
-    private async Task ActivateLongPressAsync(Border row, CancellationToken cancellationToken)
+    private void HandleRowDrop(Border targetRow, DropEventArgs args)
     {
-        try
-        {
-            await Task.Delay(LongPressMilliseconds, cancellationToken);
-            if (cancellationToken.IsCancellationRequested || !row.IsVisible)
-            {
-                return;
-            }
-
-            _isDragging = true;
-            _draggingRow = row;
-            _lastPanY = 0;
-            row.ZIndex = 10;
-            row.Opacity = 0.86;
-            await row.ScaleToAsync(1.02, 100);
-            SafeHapticFeedback.TryPerform(HapticFeedbackType.LongPress);
-        }
-        catch (OperationCanceledException)
-        {
-            // The finger moved before the hold completed, so this was a normal tap.
-        }
-    }
-
-    private void MoveDraggedRowIfNeeded(Border row)
-    {
-        var rowIndex = _content.Children.IndexOf(row);
-        if (rowIndex <= 0)
+        if (!args.Data.Properties.TryGetValue(DraggedDownloadOrderKeyProperty, out var draggedKeyValue) ||
+            draggedKeyValue is not string draggedKey ||
+            !_downloadRowsByKey.TryGetValue(draggedKey, out var draggedRow))
         {
             return;
         }
 
-        var rowCenter = row.Y + row.Height / 2 + row.TranslationY;
-        if (row.TranslationY > 0 && rowIndex < _content.Children.Count - 1 &&
-            _content.Children[rowIndex + 1] is View nextRow &&
-            rowCenter > nextRow.Y + nextRow.Height / 2)
+        var sourceIndex = _orderedDownloads.FindIndex(download =>
+            string.Equals(BuildDownloadOrderKey(download), draggedKey, StringComparison.OrdinalIgnoreCase));
+        var targetViewIndex = _content.Children.IndexOf(targetRow);
+        var targetIndex = targetViewIndex - 1;
+        if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= _orderedDownloads.Count)
         {
-            MoveRow(row, rowIndex + 1);
+            return;
         }
-        else if (row.TranslationY < 0 &&
-                 _content.Children[rowIndex - 1] is View previousRow &&
-                 rowCenter < previousRow.Y + previousRow.Height / 2)
+
+        args.Handled = true;
+        var dropPosition = args.GetPosition(targetRow);
+        var insertAfterTarget = dropPosition is { } position && position.Y >= targetRow.Height / 2;
+        var destinationIndex = targetIndex + (insertAfterTarget ? 1 : 0);
+        if (sourceIndex < destinationIndex)
         {
-            MoveRow(row, rowIndex - 1);
+            destinationIndex--;
         }
+
+        destinationIndex = Math.Clamp(destinationIndex, 0, _orderedDownloads.Count - 1);
+        if (sourceIndex == destinationIndex)
+        {
+            return;
+        }
+
+        MoveRow(draggedRow, destinationIndex + 1);
+        SaveDownloadOrder();
     }
 
     private void MoveRow(Border row, int newViewIndex)
@@ -650,26 +622,20 @@ public sealed class DownloadedPage : ContentPage
 
     private void FinishDragging(Border row)
     {
-        _isDragging = false;
+        if (!ReferenceEquals(_draggingRow, row))
+        {
+            return;
+        }
+
         _draggingRow = null;
-        row.TranslationY = 0;
         row.Scale = 1;
         row.Opacity = 1;
         row.ZIndex = 0;
-        SaveDownloadOrder();
-        _suppressNextRowTap = true;
         Dispatcher.StartTimer(TimeSpan.FromMilliseconds(700), () =>
         {
             _suppressNextRowTap = false;
             return false;
         });
-    }
-
-    private void CancelLongPress()
-    {
-        _longPressCts?.Cancel();
-        _longPressCts?.Dispose();
-        _longPressCts = null;
     }
 
     private static List<OfflineStoryDownload> ApplySavedOrder(

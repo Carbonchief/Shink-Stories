@@ -9,6 +9,7 @@
     width: min(100%, 1180px);
     margin: 0 auto;
     padding: clamp(1.2rem, 2vw, 2.2rem);
+    box-sizing: border-box;
     display: grid;
     gap: 1.25rem;
     color: var(--blog-ink);

@@ -30,6 +30,12 @@ public sealed class MobilePlaylistDetailParitySourceTests
         StringAssert.Contains(source, "Stories in hierdie speellys");
         StringAssert.Contains(source, "BuildFeaturedStory(showcaseStory)");
         StringAssert.Contains(source, "new GridItemsLayout(2, ItemsLayoutOrientation.Vertical)");
+        StringAssert.Contains(source, "_storiesLayout.Span = GetStoryGridSpan(width);");
+        StringAssert.Contains(source, "private const double StoryCardMaximumWidth = 174;");
+        StringAssert.Contains(source, "MaximumWidthRequest = StoryCardMaximumWidth,");
+        StringAssert.Contains(source, "(StoryCardMaximumWidth + StoryCardHorizontalMargin * 2 + StoryGridHorizontalSpacing)),");
+        StringAssert.Contains(source, "MaxLines = 1,");
+        StringAssert.Contains(source, "LineBreakMode = LineBreakMode.TailTruncation");
         StringAssert.Contains(source, "cover.HeightRequest = card.Width * 4d / 3d;");
         StringAssert.Contains(source, "nameof(PlaylistDetailPage)");
         StringAssert.Contains(source, "nameof(StoryDetailPage)");

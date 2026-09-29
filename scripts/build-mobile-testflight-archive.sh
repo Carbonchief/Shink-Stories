@@ -37,6 +37,7 @@ publish_ios() {
     -p:RuntimeIdentifier="$RUNTIME_IDENTIFIER" \
     -p:ArchiveOnBuild=true \
     -p:ValidateXcodeVersion=false \
+    -p:MdimportPath=/usr/bin/mdimport \
     -p:CodesignKey='Apple Distribution: SCHINK PTY. LTD. (6DP8F4CY29)' \
     -p:CodesignTeam=6DP8F4CY29 \
     -p:CodesignProvision='Schink Stories App Store Connect 2026' \

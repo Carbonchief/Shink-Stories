@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.WebUtilities
+@using Shink.Utilities
 @inject IBlogCatalogService BlogCatalogService
 @inject IBlogContentRenderer BlogContentRenderer
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -88,7 +89,7 @@ else
 
         <div class="blog-post-content-shell">
             <div class="blog-post-content">
-                <div class="blog-post-body">@((MarkupString)NormalizeRenderedBlogHtml(CurrentPost.ContentHtml))</div>
+                <div class="blog-post-body">@((MarkupString)NormalizeRenderedBlogHtml(BlogInlineImageUrlHelper.RewriteForBrowser(CurrentPost.ContentHtml)))</div>
             </div>
         </div>
 

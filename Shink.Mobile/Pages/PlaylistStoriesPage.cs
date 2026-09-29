@@ -14,6 +14,9 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
     private const string PlayIconGlyph = "\uf04b";
     private const string LockIconGlyph = "\uf023";
     private const string HeartIconGlyph = "\uf004";
+    private const double StoryCardMaximumWidth = 174;
+    private const double StoryCardHorizontalMargin = 7;
+    private const double StoryGridHorizontalSpacing = 12;
     private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
     private static readonly Color DefaultPageColor = Color.FromArgb("#FFFFFF");
     private static readonly Color DefaultTextColor = Color.FromArgb("#33424B");
@@ -48,10 +51,12 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly ObservableCollection<StoryCardItem> _stories = [];
+    private readonly GridItemsLayout _storiesLayout;
     private readonly CollectionView _storiesView;
     private MobilePlaylist? _playlist;
     private Border? _hero;
     private Color _pageTextColor = DefaultTextColor;
+    private double _lastPageWidth;
     private double _lastPageHeight;
 
     public PlaylistStoriesPage(
@@ -72,17 +77,19 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         Shell.SetNavBarIsVisible(this, false);
         Shell.SetTabBarIsVisible(this, false);
 
+        _storiesLayout = new GridItemsLayout(2, ItemsLayoutOrientation.Vertical)
+        {
+            HorizontalItemSpacing = StoryGridHorizontalSpacing,
+            VerticalItemSpacing = 16
+        };
+
         _storiesView = new CollectionView
         {
             BackgroundColor = Colors.Transparent,
             ItemsSource = _stories,
             SelectionMode = SelectionMode.None,
             ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem,
-            ItemsLayout = new GridItemsLayout(2, ItemsLayoutOrientation.Vertical)
-            {
-                HorizontalItemSpacing = 12,
-                VerticalItemSpacing = 16
-            },
+            ItemsLayout = _storiesLayout,
             ItemTemplate = new DataTemplate(BuildStoryCard),
             Margin = 0,
             Footer = new BoxView { HeightRequest = 26, Color = Colors.Transparent },
@@ -119,6 +126,13 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
     protected override void OnSizeAllocated(double width, double height)
     {
         base.OnSizeAllocated(width, height);
+
+        if (width > 0 && Math.Abs(width - _lastPageWidth) >= 1)
+        {
+            _lastPageWidth = width;
+            _storiesLayout.Span = GetStoryGridSpan(width);
+        }
+
         if (_hero is null || height <= 0 || Math.Abs(height - _lastPageHeight) < 1)
         {
             return;
@@ -127,6 +141,13 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         _lastPageHeight = height;
         _hero.HeightRequest = Math.Clamp(height * 0.8, 480, 720);
     }
+
+    private static int GetStoryGridSpan(double width) =>
+        Math.Clamp((int)Math.Floor(
+            (width + StoryGridHorizontalSpacing) /
+            (StoryCardMaximumWidth + StoryCardHorizontalMargin * 2 + StoryGridHorizontalSpacing)),
+            2,
+            6);
 
     private void SetPlaylist(MobilePlaylist playlist)
     {
@@ -418,7 +439,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
             FontFamily = "Poppins",
             FontSize = 15,
             LineHeight = 1.3,
-            MaxLines = 2,
+            MaxLines = 1,
             HorizontalTextAlignment = TextAlignment.Center,
             LineBreakMode = LineBreakMode.TailTruncation
         };
@@ -427,7 +448,9 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         var card = new VerticalStackLayout
         {
             Spacing = 8,
-            Margin = new Thickness(8, 0),
+            Margin = new Thickness(StoryCardHorizontalMargin, 0),
+            MaximumWidthRequest = StoryCardMaximumWidth,
+            HorizontalOptions = LayoutOptions.Center,
             Children = { cover, title }
         };
         card.SizeChanged += (_, _) =>
