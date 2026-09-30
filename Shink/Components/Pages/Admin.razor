@@ -103,7 +103,9 @@
     {
         <div class="admin-tabs-shell">
         <MudTabs Class="admin-tabs"
-                 Rounded="true">
+                 Rounded="true"
+                 OnPreviewInteraction="HandleAdminTabPreviewInteraction"
+                 @bind-ActivePanelIndex="_activeAdminTabIndex">
             <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
                 <section class="admin-section">
                     <div class="admin-section-head admin-subscriber-section-head">
@@ -1477,6 +1479,10 @@
 
             <MudTabPanel Text='@T("Blog", "Blog")'>
                 <AdminBlogPanel CurrentLanguageCode="@CurrentLanguageCode" />
+            </MudTabPanel>
+
+            <MudTabPanel Text='@T("Landingsbladsye", "Landing pages")'>
+                <AdminLandingPagesPanel CurrentLanguageCode="@CurrentLanguageCode" @ref="_landingPagesPanel" />
             </MudTabPanel>
 
             <MudTabPanel Text='@T("Analitika", "Analytics")'>
@@ -4824,6 +4830,9 @@
 </section>
 
 @code {
+    private int _activeAdminTabIndex;
+    private AdminLandingPagesPanel? _landingPagesPanel;
+
     private bool IsLoading { get; set; } = true;
     private bool IsRedirectingToLogin { get; set; }
     private bool IsAccessDenied { get; set; }
@@ -9467,15 +9476,30 @@
 
     private async ValueTask OnAdminLocationChanging(LocationChangingContext context)
     {
-        if (!HasUnsavedPlaylistOrderChanges)
+        if (HasUnsavedPlaylistOrderChanges && !await ConfirmDiscardPlaylistOrderChangesAsync())
+        {
+            context.PreventNavigation();
+            return;
+        }
+
+        if (_landingPagesPanel?.HasUnsavedChanges == true &&
+            !await _landingPagesPanel.ConfirmDiscardAsync())
+        {
+            context.PreventNavigation();
+        }
+    }
+
+    private async Task HandleAdminTabPreviewInteraction(TabInteractionEventArgs args)
+    {
+        if (args.PanelIndex == _activeAdminTabIndex ||
+            _landingPagesPanel?.HasUnsavedChanges != true)
         {
             return;
         }
 
-        var confirmed = await ConfirmDiscardPlaylistOrderChangesAsync();
-        if (!confirmed)
+        if (!await _landingPagesPanel.ConfirmDiscardAsync())
         {
-            context.PreventNavigation();
+            args.Cancel = true;
         }
     }
 

@@ -1,0 +1,178 @@
+@page "/veldtog/{Slug}"
+@using Microsoft.AspNetCore.Http
+@using Shink.Components.Shared
+@using Shink.Services
+@inject ILandingPageCatalogService LandingPageCatalogService
+@inject LandingPageContentValidator LandingPageContentValidator
+@inject NavigationManager NavigationManager
+@inject ILogger<LandingPage> Logger
+
+<PageTitle>@PageTitleText</PageTitle>
+<HeadContent>
+    <meta name="description" content="@SharingDescriptionText" />
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
+    <link rel="canonical" href="@CanonicalUrl" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="@SharingTitleText" />
+    <meta property="og:description" content="@SharingDescriptionText" />
+    <meta property="og:url" content="@CanonicalUrl" />
+    @if (!string.IsNullOrWhiteSpace(SharingImageUrl))
+    {
+        <meta property="og:image" content="@SharingImageUrl" />
+        <meta property="og:image:alt" content="@SharingImageAlt" />
+    }
+    <meta name="twitter:card" content="@(string.IsNullOrWhiteSpace(SharingImageUrl) ? "summary" : "summary_large_image")" />
+    <meta name="twitter:title" content="@SharingTitleText" />
+    <meta name="twitter:description" content="@SharingDescriptionText" />
+    @if (!string.IsNullOrWhiteSpace(SharingImageUrl))
+    {
+        <meta name="twitter:image" content="@SharingImageUrl" />
+        <meta name="twitter:image:alt" content="@SharingImageAlt" />
+    }
+</HeadContent>
+
+<div class="landing-public-page">
+    @if (IsLoading)
+    {
+        <section class="landing-page-state" role="status" aria-live="polite">
+            <p>Laai bladsy…</p>
+        </section>
+    }
+    else if (IsUnavailable)
+    {
+        <section class="landing-page-state" role="alert" aria-labelledby="landing-unavailable-title">
+            <h1 id="landing-unavailable-title">Ons kon nie die bladsy laai nie</h1>
+            <p>Probeer asseblief later weer.</p>
+        </section>
+    }
+    else if (Content is null)
+    {
+        <section class="landing-page-state" aria-labelledby="landing-not-found-title">
+            <h1 id="landing-not-found-title">Blad nie gevind nie</h1>
+            <p>Hierdie blad bestaan nie of is nie tans beskikbaar nie.</p>
+            <a href="/">Keer terug na die tuisblad</a>
+        </section>
+    }
+    else
+    {
+        <LandingPageRenderer Content="Content" />
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    [Parameter]
+    public string? Slug { get; set; }
+
+    private LandingPageContent? Content { get; set; }
+    private string? PublishedSlug { get; set; }
+    private bool IsLoading { get; set; } = true;
+    private bool IsUnavailable { get; set; }
+
+    private string PageTitleText =>
+        Content is null
+            ? (IsUnavailable ? "Tydelike fout | Schink Stories" : "Blad nie gevind nie | Schink Stories")
+            : string.IsNullOrWhiteSpace(Content.SharingTitle)
+                ? $"{Content.Title} | Schink Stories"
+                : Content.SharingTitle;
+
+    private string SharingTitleText =>
+        Content is null
+            ? PageTitleText
+            : string.IsNullOrWhiteSpace(Content.SharingTitle)
+                ? Content.Title
+                : Content.SharingTitle;
+
+    private string SharingDescriptionText =>
+        Content is null
+            ? "Die veldtogbladsy is nie tans beskikbaar nie."
+            : Content.SharingDescription;
+
+    private string CanonicalUrl
+    {
+        get
+        {
+            var slug = PublishedSlug ?? Slug ?? string.Empty;
+            return NavigationManager.ToAbsoluteUri($"/veldtog/{Uri.EscapeDataString(slug)}").ToString();
+        }
+    }
+
+    private string? SharingImageUrl
+    {
+        get
+        {
+            var image = Content?.Blocks?
+                .FirstOrDefault(block => string.Equals(block.Type, "image", StringComparison.OrdinalIgnoreCase) &&
+                                         !string.IsNullOrWhiteSpace(LandingPageRenderSafety.ImageUrl(block.ImageUrl)));
+            var imageUrl = image is null ? null : LandingPageRenderSafety.ImageUrl(image.ImageUrl);
+            return string.IsNullOrWhiteSpace(imageUrl)
+                ? null
+                : NavigationManager.ToAbsoluteUri(imageUrl).ToString();
+        }
+    }
+
+    private string SharingImageAlt =>
+        Content?.Blocks?
+            .FirstOrDefault(block => string.Equals(block.Type, "image", StringComparison.OrdinalIgnoreCase) &&
+                                     !string.IsNullOrWhiteSpace(LandingPageRenderSafety.ImageUrl(block.ImageUrl)))?
+            .AltText
+        ?? string.Empty;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        IsLoading = true;
+        IsUnavailable = false;
+        Content = null;
+        PublishedSlug = null;
+        SetResponse(0);
+
+        try
+        {
+            var publishedPage = await LandingPageCatalogService.FindPublishedBySlugAsync(
+                Slug,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+            if (publishedPage is null)
+            {
+                SetResponse(StatusCodes.Status404NotFound);
+                return;
+            }
+
+            Content = LandingPageContentValidator.NormalizeAndValidate(publishedPage.Content, forPublishing: true);
+            PublishedSlug = publishedPage.Slug;
+            SetResponse(StatusCodes.Status200OK);
+        }
+        catch (OperationCanceledException) when (HttpContext?.RequestAborted.IsCancellationRequested == true)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Could not load published landing page {LandingPageSlug}.", Slug);
+            IsUnavailable = true;
+            SetResponse(StatusCodes.Status503ServiceUnavailable);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void SetResponse(int statusCode)
+    {
+        var response = HttpContext?.Response;
+        if (response is null || response.HasStarted)
+        {
+            return;
+        }
+
+        response.Headers["Cache-Control"] = "no-store, no-cache, max-age=0, must-revalidate";
+        response.Headers["Pragma"] = "no-cache";
+        response.Headers["Expires"] = "0";
+        if (statusCode != 0)
+        {
+            response.StatusCode = statusCode;
+        }
+    }
+}
