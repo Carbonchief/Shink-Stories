@@ -1,0 +1,1362 @@
+@implements IAsyncDisposable
+@using System.Globalization
+@using System.Text
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Options
+@using Microsoft.JSInterop
+@using Shink.Components.Shared
+@using Shink.Services
+@using SixLabors.ImageSharp
+@using SixLabors.ImageSharp.Formats.Jpeg
+@using SixLabors.ImageSharp.Formats.Png
+@using SixLabors.ImageSharp.Formats.Webp
+@using SixLabors.ImageSharp.PixelFormats
+@inject ILandingPageAdminService LandingPageAdminService
+@inject IStoryMediaStorageService StoryMediaStorageService
+@inject IOptions<CloudflareR2Options> CloudflareR2OptionsAccessor
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@inject ILogger<AdminLandingPagesPanel> Logger
+
+<NavigationLock ConfirmExternalNavigation="HasUnsavedChanges" />
+
+<section class="landing-admin" aria-label='@T("Landingsbladbestuur", "Landing page management")'>
+    <header class="landing-admin-heading">
+        <div>
+            <h2>@T("Landingsbladsye", "Landing pages")</h2>
+            <p>@T("Skep en bestuur bemarkingsbladsye met 'n eenvoudige blokredigeerder.", "Create and manage marketing pages with a simple block editor.")</p>
+        </div>
+        <button type="button" class="landing-primary-button" @onclick="StartNewPageAsync" disabled="@IsBusy">
+            <span aria-hidden="true">＋</span> @T("Nuwe bladsy", "New page")
+        </button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <div class="landing-notice landing-notice-error" role="alert">@_errorMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(_statusMessage))
+    {
+        <div class="landing-notice landing-notice-success" role="status" aria-live="polite">@_statusMessage</div>
+    }
+
+    @if (_isLoading)
+    {
+        <div class="landing-loading" role="status">@T("Laai landingsbladsye...", "Loading landing pages...")</div>
+    }
+    else if (_loadFailed)
+    {
+        <div class="landing-empty-state" role="alert">
+            <h3>@T("Landingsbladsye kon nie laai nie", "Landing pages could not be loaded")</h3>
+            <button type="button" class="landing-secondary-button" @onclick="ReloadAsync">@T("Probeer weer", "Try again")</button>
+        </div>
+    }
+    else if (!_isAuthorized)
+    {
+        <div class="landing-empty-state" role="alert">
+            <h3>@T("Toegang geweier", "Access denied")</h3>
+            <p>@T("Jou rekening het nie adminregte vir landingsbladsye nie.", "Your account does not have admin access to landing pages.")</p>
+        </div>
+    }
+    else
+    {
+        <div class="landing-admin-layout">
+            <aside class="landing-page-list" aria-label='@T("Landingsbladsye", "Landing pages")'>
+                <div class="landing-list-controls">
+                    <label class="landing-field">
+                        <span>@T("Soek", "Search")</span>
+                        <input type="search" value="@_searchText" @oninput="OnSearchInput" placeholder='@T("Titel of slug", "Title or slug")' />
+                    </label>
+                    <label class="landing-field">
+                        <span>@T("Wys", "Show")</span>
+                        <select value="@_statusFilter" @onchange="OnStatusFilterChanged">
+                            <option value="all">@T("Alles", "All")</option>
+                            <option value="draft">@T("Konsep", "Draft")</option>
+                            <option value="published">@T("Gepubliseer", "Published")</option>
+                            <option value="changes">@T("Ongepubliseerde veranderinge", "Unpublished changes")</option>
+                        </select>
+                    </label>
+                </div>
+
+                @if (FilteredPages.Count == 0)
+                {
+                    <div class="landing-list-empty">
+                        @(_pages.Count == 0
+                            ? T("Geen landingsbladsye is geskep nie.", "No landing pages have been created.")
+                            : T("Geen bladsye pas by jou filters nie.", "No pages match these filters."))
+                    </div>
+                }
+                else
+                {
+                    <ul class="landing-page-items">
+                        @foreach (var page in FilteredPages)
+                        {
+                            <li>
+                                <button type="button"
+                                        class="landing-page-item @GetPageItemClass(page)"
+                                        aria-current="@(_selectedPageId == page.PageId ? "true" : null)"
+                                        @onclick="() => SelectPageAsync(page)"
+                                        disabled="@IsBusy">
+                                    <span class="landing-page-item-title">@(string.IsNullOrWhiteSpace(page.Draft.Title) ? T("Naamlose bladsy", "Untitled page") : page.Draft.Title)</span>
+                                    <span class="landing-page-item-slug">/veldtog/@(page.Slug)</span>
+                                    <span class="landing-status @GetStatusClass(page)">@GetStatusLabel(page)</span>
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </aside>
+
+            <div class="landing-editor-column" inert="@IsBusy">
+                @if (_workingContent is null)
+                {
+                    <div class="landing-empty-state landing-select-state">
+                        <h3>@T("Kies 'n bladsy of begin nuut", "Choose a page or start a new one")</h3>
+                        <p>@T("Jou konsepte en gepubliseerde bladsye verskyn hier.", "Your drafts and published pages will appear here.")</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="landing-editor-toolbar">
+                        <div>
+                            <p class="landing-eyebrow">@(_selectedPageId is null ? T("Nuwe bladsy", "New page") : GetStatusLabel(_selectedPage!))</p>
+                            @if (HasUnsavedChanges)
+                            {
+                                <span class="landing-dirty-indicator"><span aria-hidden="true">●</span> @T("Ongestoor", "Unsaved")</span>
+                            }
+                            @if (_selectedPage is { IsPublished: true })
+                            {
+                                <a class="landing-public-page-link" href="@($"/veldtog/{_selectedPage.Slug}")" target="_blank" rel="noopener noreferrer">@T("Maak openbare bladsy oop", "Open public page")</a>
+                                <button type="button" class="landing-secondary-button" @onclick="CopyUrlAsync">@T("Kopieer skakel", "Copy URL")</button>
+                                <input class="landing-public-url" aria-label='@T("Gepubliseerde skakel", "Published URL")' readonly value="@PublishedUrl" />
+                            }
+                        </div>
+                        <div class="landing-editor-actions">
+                            <button type="button" class="landing-secondary-button" @onclick="SaveDraftAsync" disabled="@(IsBusy || !HasUnsavedChanges)">
+                                @(IsSaving ? T("Stoor...", "Saving...") : T("Stoor konsep", "Save draft"))
+                            </button>
+                            @if (_selectedPage is { IsPublished: true })
+                            {
+                                @if (_selectedPage.HasUnpublishedChanges)
+                                {
+                                    <button type="button" class="landing-primary-button" @onclick="PublishAsync" disabled="@(!CanPublish)">
+                                        @(IsPublishing ? T("Publiseer...", "Publishing...") : T("Werk regstreeks by", "Update live page"))
+                                    </button>
+                                }
+                                <button type="button" class="landing-warning-button" @onclick="UnpublishAsync" disabled="@(IsBusy || _hasUnsavedChanges)">
+                                    @(IsUnpublishing ? T("Ontpubliseer...", "Unpublishing...") : T("Ontpubliseer", "Unpublish"))
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="button" class="landing-primary-button" @onclick="PublishAsync" disabled="@(!CanPublish)">
+                                    @(IsPublishing ? T("Publiseer...", "Publishing...") : T("Publiseer", "Publish"))
+                                </button>
+                            }
+                            @if (_selectedPage is not null)
+                            {
+                                <button type="button" class="landing-warning-button" @onclick="DeleteAsync" disabled="@(IsBusy || HasUnsavedChanges)">
+                                    @(_isDeleting ? T("Verwyder...", "Deleting...") : T("Verwyder bladsy", "Delete page"))
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="landing-editor-grid">
+                        <div class="landing-editor-form">
+                            <section class="landing-card">
+                                <div class="landing-card-heading">
+                                    <div>
+                                        <h3>@T("Bladsybesonderhede", "Page details")</h3>
+                                        <p>@T("Titel, adres en sosiale deelteks.", "Title, address, and social sharing text.")</p>
+                                    </div>
+                                </div>
+                                <label class="landing-field">
+                                    <span>@T("Bladsytitel", "Page title")</span>
+                                    <input type="text" maxlength="160" @bind="_workingContent.Title" @bind:after="OnTitleChangedAsync" />
+                                </label>
+                                <label class="landing-field">
+                                    <span>@T("URL-slug", "URL slug")</span>
+                                    <div class="landing-slug-input"><span aria-hidden="true">/veldtog/</span><input type="text" maxlength="100" value="@_workingSlug" @oninput="OnSlugInput" disabled="@IsSlugLocked" /></div>
+                                    @if (IsSlugLocked)
+                                    {
+                                        <small>@T("Die slug is vas omdat hierdie bladsy reeds gepubliseer is.", "The slug is fixed because this page has been published before.")</small>
+                                    }
+                                </label>
+                                <label class="landing-field">
+                                    <span>@T("Deeltitel", "Sharing title")</span>
+                                    <input type="text" maxlength="160" @bind="_workingContent.SharingTitle" @bind:after="MarkChanged" />
+                                </label>
+                                <label class="landing-field">
+                                    <span>@T("Deelbeskrywing", "Sharing description")</span>
+                                    <textarea rows="3" maxlength="320" @bind="_workingContent.SharingDescription" @bind:after="MarkChanged"></textarea>
+                                </label>
+                                <div class="landing-color-row">
+                                    <label class="landing-field landing-color-field">
+                                        <span>@T("Agtergrondkleur", "Background color")</span>
+                                        <input type="color" value="@ColorOrDefault(_workingContent.BackgroundColor, "#ff7133")" @onchange="SetPageBackgroundColor" />
+                                    </label>
+                                    <label class="landing-field landing-color-field">
+                                        <span>@T("Tekskleur", "Text color")</span>
+                                        <input type="color" value="@ColorOrDefault(_workingContent.TextColor, "#ffffff")" @onchange="SetPageTextColor" />
+                                    </label>
+                                </div>
+                            </section>
+
+                            <section class="landing-card landing-blocks-card">
+                                <div class="landing-card-heading landing-card-heading-wrap">
+                                    <div>
+                                        <h3>@T("Blokke", "Blocks")</h3>
+                                        <p>@T("Voeg inhoud by en verander die volgorde.", "Add content and change its order.")</p>
+                                    </div>
+                                    <div class="landing-add-block-actions">
+                                        <button type="button" class="landing-small-button" @onclick="AddImageBlock">@T("＋ Prent", "+ Image")</button>
+                                        <button type="button" class="landing-small-button" @onclick="AddTextBlock">@T("＋ Teks", "+ Text")</button>
+                                        <button type="button" class="landing-small-button" @onclick="AddButtonBlock">@T("＋ Knoppie", "+ Button")</button>
+                                    </div>
+                                </div>
+
+                                @if (_workingContent.Blocks.Count == 0)
+                                {
+                                    <div class="landing-list-empty">@T("Voeg 'n prent-, teks- of knoppieblok by.", "Add an image, text, or button block.")</div>
+                                }
+                                else
+                                {
+                                    <ol class="landing-block-list">
+                                        @for (var index = 0; index < _workingContent.Blocks.Count; index++)
+                                        {
+                                            var block = _workingContent.Blocks[index];
+                                            <li class="landing-block-card">
+                                                <div class="landing-block-heading">
+                                                    <div class="landing-block-heading-copy">
+                                                        <span class="landing-block-index">@(index + 1)</span>
+                                                        <div>
+                                                            <h4>@GetBlockTitle(block)</h4>
+                                                            <p>@GetBlockSummary(block)</p>
+                                                        </div>
+                                                    </div>
+                                                    <div class="landing-block-actions">
+                                                        <button type="button" title='@T("Skuif op", "Move up")' aria-label='@T("Skuif blok op", "Move block up")' @onclick="() => MoveBlock(block.Id, -1)" disabled="@(index == 0)">↑</button>
+                                                        <button type="button" title='@T("Skuif af", "Move down")' aria-label='@T("Skuif blok af", "Move block down")' @onclick="() => MoveBlock(block.Id, 1)" disabled="@(index == _workingContent.Blocks.Count - 1)">↓</button>
+                                                        @if (string.Equals(block.Type, "text", StringComparison.OrdinalIgnoreCase))
+                                                        {
+                                                            <button type="button" class="landing-edit-block" @onclick="() => SelectTextBlock(block.Id)">@T("Redigeer teks", "Edit text")</button>
+                                                        }
+                                                        <button type="button" class="landing-remove-block" @onclick="() => RemoveBlockAsync(block)">@T("Verwyder", "Remove")</button>
+                                                    </div>
+                                                </div>
+
+                                                @if (string.Equals(block.Type, "image", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <div class="landing-block-fields">
+                                                        @if (!string.IsNullOrWhiteSpace(block.ImageUrl))
+                                                        {
+                                                            <img class="landing-block-image-preview" src="@block.ImageUrl" alt="@block.AltText" />
+                                                        }
+                                                        <label class="landing-field">
+                                                            <span>@T("Laai prent op", "Upload image")</span>
+                                                            <InputFile OnChange="@(args => UploadImageAsync(block, args))" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" disabled="@(IsBusy || IsUploadingImage)" />
+                                                            <small>@T("JPEG, PNG of WebP; maksimum 10 MB.", "JPEG, PNG, or WebP; maximum 10 MB.")</small>
+                                                        </label>
+                                                        <label class="landing-field">
+                                                            <span>@T("Alternatiewe teks", "Alternative text")</span>
+                                                            <input type="text" maxlength="250" @bind="block.AltText" @bind:after="MarkChanged" />
+                                                        </label>
+                                                        <label class="landing-field">
+                                                            <span>@T("Prentskakel (opsioneel)", "Image link (optional)")</span>
+                                                            <input type="text" maxlength="2048" @bind="block.Url" @bind:after="MarkChanged" placeholder="https://... or /luister" />
+                                                        </label>
+                                                        <label class="landing-field">
+                                                            <span>@T("Vorm", "Shape")</span>
+                                                            <select value="@block.ImageShape" @onchange="args => SetImageShape(block, args.Value?.ToString())">
+                                                                <option value="square">@T("Vierkant", "Square")</option>
+                                                                <option value="natural">@T("Natuurlike verhouding", "Natural aspect ratio")</option>
+                                                            </select>
+                                                        </label>
+                                                        <label class="landing-field">
+                                                            <span>@T("Belyning", "Alignment")</span>
+                                                            <select value="@block.Alignment" @onchange="args => SetBlockAlignment(block, args.Value?.ToString())">
+                                                                <option value="left">@T("Links", "Left")</option>
+                                                                <option value="center">@T("Middel", "Center")</option>
+                                                                <option value="right">@T("Regs", "Right")</option>
+                                                            </select>
+                                                        </label>
+                                                        @if (IsUploadingImage)
+                                                        {
+                                                            <p class="landing-inline-status" role="status">@T("Laai prent op...", "Uploading image...")</p>
+                                                        }
+                                                    </div>
+                                                }
+                                                else if (string.Equals(block.Type, "button", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <div class="landing-block-fields">
+                                                        <label class="landing-field">
+                                                            <span>@T("Knoppieteks", "Button text")</span>
+                                                            <input type="text" maxlength="100" @bind="block.Text" @bind:after="MarkChanged" />
+                                                        </label>
+                                                        <label class="landing-field">
+                                                            <span>@T("Skakeltipe", "Link type")</span>
+                                                            <select value="@GetButtonLinkType(block)" @onchange="args => SetButtonLinkType(block, args.Value?.ToString())">
+                                                                <option value="custom">@T("Pasgemaakte skakel", "Custom URL")</option>
+                                                                <option value="subscription">@T("Intekeningopsie", "Subscription option")</option>
+                                                            </select>
+                                                        </label>
+                                                        @if (GetButtonLinkType(block) == "subscription")
+                                                        {
+                                                            <label class="landing-field">
+                                                                <span>@T("Intekeningopsie", "Subscription option")</span>
+                                                                <select value="@(LandingPageButtonLinks.GetSubscriptionSlug(block.Url) ?? string.Empty)" @onchange="args => SetButtonSubscription(block, args.Value?.ToString())">
+                                                                    <option value="">@T("Kies 'n intekeningopsie", "Choose a subscription option")</option>
+                                                                    @foreach (var option in LandingPageButtonLinks.SubscriptionOptions)
+                                                                    {
+                                                                        <option value="@option.Slug">@GetSubscriptionLabel(option.Slug)</option>
+                                                                    }
+                                                                </select>
+                                                            </label>
+                                                        }
+                                                        else
+                                                        {
+                                                            <label class="landing-field">
+                                                                <span>@T("Skakel", "Link")</span>
+                                                                <input type="text" maxlength="2048" @bind="block.Url" @bind:after="MarkChanged" placeholder="https://... or /luister" />
+                                                            </label>
+                                                        }
+                                                        <div class="landing-color-row">
+                                                            <label class="landing-field landing-color-field">
+                                                                <span>@T("Knoppiekleur", "Button color")</span>
+                                                                <input type="color" value="@ColorOrDefault(block.BackgroundColor, "#222222")" @onchange="args => SetButtonBackground(block, args.Value?.ToString())" />
+                                                            </label>
+                                                            <label class="landing-field landing-color-field">
+                                                                <span>@T("Knoppietekskleur", "Button text color")</span>
+                                                                <input type="color" value="@ColorOrDefault(block.TextColor, "#ffffff")" @onchange="args => SetButtonTextColor(block, args.Value?.ToString())" />
+                                                            </label>
+                                                        </div>
+                                                        <label class="landing-field">
+                                                            <span>@T("Belyning", "Alignment")</span>
+                                                            <select value="@block.Alignment" @onchange="args => SetBlockAlignment(block, args.Value?.ToString())">
+                                                                <option value="left">@T("Links", "Left")</option>
+                                                                <option value="center">@T("Middel", "Center")</option>
+                                                                <option value="right">@T("Regs", "Right")</option>
+                                                            </select>
+                                                        </label>
+                                                    </div>
+                                                }
+                                            </li>
+                                        }
+                                    </ol>
+                                }
+                            </section>
+
+                                <section class="landing-card landing-rich-text-card" hidden="@(TextBlocks.Count == 0)">
+                                    <div class="landing-card-heading">
+                                        <div>
+                                            <h3>@T("Teksredigeerder", "Text editor")</h3>
+                                            <p>@T("Gebruik opskrifte, vetdruk, kursief, skakels, lyste en belyning.", "Use headings, bold, italic, links, lists, and alignment.")</p>
+                                        </div>
+                                    </div>
+                                    <label class="landing-field">
+                                        <span>@T("Teksblok", "Text block")</span>
+                                        <select value="@(_activeTextBlockId?.ToString("N") ?? string.Empty)" @onchange="OnActiveTextBlockChanged">
+                                            @foreach (var block in TextBlocks)
+                                            {
+                                                <option value="@block.Id.ToString("N")">@GetBlockSummary(block)</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <label class="landing-field">
+                                        <span>@T("Blokbelyning", "Block alignment")</span>
+                                        <select value="@(ActiveTextBlock?.Alignment ?? "left")" @onchange="args => SetActiveTextBlockAlignment(args.Value?.ToString())">
+                                            <option value="left">@T("Links", "Left")</option>
+                                            <option value="center">@T("Middel", "Center")</option>
+                                            <option value="right">@T("Regs", "Right")</option>
+                                        </select>
+                                    </label>
+                                    <div class="landing-rich-editor-shell" @ref="_richTextEditorShell">
+                                        @if (_richTextEditorFailed)
+                                        {
+                                            <button type="button" class="landing-secondary-button landing-rich-editor-retry" @onclick="RetryRichTextEditorAsync">@T("Probeer teksredigeerder weer oopmaak", "Retry opening the text editor")</button>
+                                        }
+                                        <div class="landing-rich-toolbar" data-editor-label='@T("Landingsbladteksredigeerder", "Landing page text editor")'>
+                                            <select class="ql-header" aria-label='@T("Opskrifvlak", "Heading level")'>
+                                                <option value="2">@T("Opskrif 2", "Heading 2")</option>
+                                                <option value="3">@T("Opskrif 3", "Heading 3")</option>
+                                                <option selected>@T("Paragraaf", "Paragraph")</option>
+                                            </select>
+                                            <button type="button" class="ql-bold" aria-label='@T("Vetdruk", "Bold")'></button>
+                                            <button type="button" class="ql-italic" aria-label='@T("Kursief", "Italic")'></button>
+                                            <button type="button" class="ql-link" aria-label='@T("Voeg skakel by", "Add link")'></button>
+                                            <button type="button" class="ql-list" value="ordered" aria-label='@T("Genommerde lys", "Numbered list")'></button>
+                                            <button type="button" class="ql-list" value="bullet" aria-label='@T("Kolpuntlys", "Bulleted list")'></button>
+                                        </div>
+                                        <div class="landing-rich-editor"
+                                             data-placeholder='@T("Skryf jou teks hier...", "Write your text here...")'></div>
+                                    </div>
+                                </section>
+                        </div>
+
+                        <section class="landing-preview-card" aria-label='@T("Regstreekse voorskou", "Live preview")'>
+                            <div class="landing-preview-heading">
+                                <div>
+                                    <h3>@T("Regstreekse voorskou", "Live preview")</h3>
+                                    <p>@T("Die voorskou verander saam met jou konsep.", "The preview updates as you edit your draft.")</p>
+                                </div>
+                                <div class="landing-preview-toggle" role="group" aria-label='@T("Voorskougrootte", "Preview size")'>
+                                    <button type="button" class="@(_previewMode == "desktop" ? "is-active" : null)" aria-pressed="@(_previewMode == "desktop")" @onclick='() => SetPreviewMode("desktop")'>@T("Rekenaar", "Desktop")</button>
+                                    <button type="button" class="@(_previewMode == "mobile" ? "is-active" : null)" aria-pressed="@(_previewMode == "mobile")" @onclick='() => SetPreviewMode("mobile")'>@T("Selfoon", "Mobile")</button>
+                                </div>
+                            </div>
+                            <div class="landing-preview-stage @(_previewMode == "mobile" ? "is-mobile" : "is-desktop")">
+                                <div class="landing-preview-page">
+                                    <LandingPageRenderer Content="_workingContent" />
+                                </div>
+                            </div>
+                            <p class="landing-preview-note">@T("Die openbare bladsy sal in 'n sentreerde kolom van hoogstens 640 px verskyn.", "The public page uses a centered column up to 640 px wide.")</p>
+                        </section>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private const long MaxImageUploadBytes = 10 * 1024 * 1024;
+    private const long MaxImagePixelCount = 40_000_000;
+
+    [Parameter]
+    public string CurrentLanguageCode { get; set; } = "af";
+
+    private IReadOnlyList<LandingPageRecord> _pages = Array.Empty<LandingPageRecord>();
+    private LandingPageRecord? _selectedPage;
+    private LandingPageContent? _workingContent;
+    private Guid? _selectedPageId;
+    private Guid? _activeTextBlockId;
+    private string _workingSlug = string.Empty;
+    private string _searchText = string.Empty;
+    private string _statusFilter = "all";
+    private string _previewMode = "desktop";
+    private string? _errorMessage;
+    private string? _statusMessage;
+    private bool _isAuthorized;
+    private bool _isLoading = true;
+    private bool _loadFailed;
+    private bool _isSaving;
+    private bool _isPublishing;
+    private bool _isUnpublishing;
+    private bool _isDeleting;
+    private bool _isUploadingImage;
+    private bool _hasUnsavedChanges;
+    private bool _slugWasManuallyEdited;
+    private bool _richTextEditorSyncPending;
+    private bool _richTextEditorFailed;
+    private long? _workingRevision;
+    private Guid _newDraftAssetScopeId = Guid.NewGuid();
+    private ElementReference _richTextEditorShell;
+    private IJSObjectReference? _richTextEditorModule;
+    private DotNetObjectReference<AdminLandingPagesPanel>? _dotNetReference;
+
+    public bool HasUnsavedChanges => _hasUnsavedChanges;
+
+    private bool IsSaving => _isSaving;
+    private bool IsPublishing => _isPublishing;
+    private bool IsUnpublishing => _isUnpublishing;
+    private bool IsUploadingImage => _isUploadingImage;
+    private bool IsBusy => _isSaving || _isPublishing || _isUnpublishing || _isDeleting || _isUploadingImage;
+    private bool IsSlugLocked => _selectedPage?.HasEverPublished == true;
+    private bool CanPublish => !IsBusy && !_hasUnsavedChanges && _selectedPage is not null &&
+        (!_selectedPage.IsPublished || _selectedPage.HasUnpublishedChanges) && _workingContent is not null;
+
+    private bool IsR2UploadConfigured
+    {
+        get
+        {
+            var options = CloudflareR2OptionsAccessor.Value;
+            return !string.IsNullOrWhiteSpace(options.AccountId) &&
+                   !string.IsNullOrWhiteSpace(options.BucketName) &&
+                   !string.IsNullOrWhiteSpace(options.AccessKeyId) &&
+                   !string.IsNullOrWhiteSpace(options.SecretAccessKey) &&
+                   Uri.TryCreate(options.PublicBaseUrl, UriKind.Absolute, out var publicBaseUri) &&
+                   string.Equals(publicBaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private IReadOnlyList<LandingPageRecord> FilteredPages => _pages
+        .Where(MatchesStatusFilter)
+        .Where(MatchesSearch)
+        .OrderByDescending(page => page.UpdatedAt)
+        .ThenBy(page => page.Draft.Title, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private IReadOnlyList<LandingPageBlock> TextBlocks => _workingContent?.Blocks
+        .Where(block => string.Equals(block.Type, "text", StringComparison.OrdinalIgnoreCase))
+        .ToArray() ?? Array.Empty<LandingPageBlock>();
+
+    private LandingPageBlock? ActiveTextBlock => _workingContent?.Blocks
+        .FirstOrDefault(block => block.Id == _activeTextBlockId && string.Equals(block.Type, "text", StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_richTextEditorModule is not null)
+        {
+            try
+            {
+                await _richTextEditorModule.InvokeVoidAsync("setRichTextEditorDisabled", _richTextEditorShell, IsBusy);
+            }
+            catch (JSDisconnectedException)
+            {
+                return;
+            }
+        }
+
+        if (_workingContent is null || ActiveTextBlock is null || !_richTextEditorSyncPending)
+        {
+            return;
+        }
+
+        try
+        {
+            _richTextEditorModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/AdminLandingPagesPanel.razor.js");
+            _dotNetReference ??= DotNetObjectReference.Create(this);
+            await _richTextEditorModule.InvokeVoidAsync("syncRichTextEditor", _richTextEditorShell, _dotNetReference, ActiveTextBlock.Html, IsBusy);
+            _richTextEditorSyncPending = false;
+            _richTextEditorFailed = false;
+        }
+        catch (Exception exception) when (exception is JSException or InvalidOperationException)
+        {
+            _richTextEditorSyncPending = false;
+            _richTextEditorFailed = true;
+            Logger.LogWarning(exception, "The landing page rich text editor could not be initialized.");
+            _errorMessage = T("Die teksredigeerder kon nie oopmaak nie. Verfris die bladsy en probeer weer.", "The text editor could not open. Refresh the page and try again.");
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async Task<bool> ConfirmDiscardAsync()
+    {
+        if (!HasUnsavedChanges)
+        {
+            return true;
+        }
+
+        try
+        {
+            var confirmed = await JSRuntime.InvokeAsync<bool>(
+                "confirm",
+                T("Jy het ongestoorde landingsbladveranderinge. Is jy seker jy wil dit weggooi?", "You have unsaved landing page changes. Are you sure you want to discard them?"));
+            if (confirmed)
+            {
+                _hasUnsavedChanges = false;
+            }
+
+            return confirmed;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Landing page discard confirmation could not be displayed.");
+            return false;
+        }
+    }
+
+    [JSInvokable]
+    public Task OnLandingRichTextEditorInput(string html)
+    {
+        if (ActiveTextBlock is { } block && !string.Equals(block.Html, html, StringComparison.Ordinal))
+        {
+            block.Html = html;
+            MarkChanged();
+        }
+
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ReloadAsync()
+    {
+        _isLoading = true;
+        _loadFailed = false;
+        _errorMessage = null;
+
+        try
+        {
+            _isAuthorized = await LandingPageAdminService.EnsureAdminAsync();
+            if (!_isAuthorized)
+            {
+                _pages = Array.Empty<LandingPageRecord>();
+                return;
+            }
+
+            _pages = await LandingPageAdminService.GetPagesAsync();
+        }
+        catch (Exception exception)
+        {
+            _loadFailed = true;
+            Logger.LogError(exception, "Could not load landing pages for the admin panel.");
+            _errorMessage = GetOperationError(exception, T("Landingsbladsye kon nie laai nie.", "Landing pages could not be loaded."));
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private bool MatchesStatusFilter(LandingPageRecord page) => _statusFilter switch
+    {
+        "draft" => !page.IsPublished,
+        "published" => page.IsPublished,
+        "changes" => page.HasUnpublishedChanges,
+        _ => true
+    };
+
+    private bool MatchesSearch(LandingPageRecord page)
+    {
+        var search = _searchText.Trim();
+        return string.IsNullOrWhiteSpace(search) ||
+               page.Slug.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+               page.Draft.Title.Contains(search, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string GetPageItemClass(LandingPageRecord page) => _selectedPageId == page.PageId ? "is-selected" : string.Empty;
+
+    private string GetStatusClass(LandingPageRecord page) => page.IsPublished
+        ? page.HasUnpublishedChanges ? "status-changes" : "status-published"
+        : "status-draft";
+
+    private string GetStatusLabel(LandingPageRecord page)
+    {
+        if (page.IsPublished && page.HasUnpublishedChanges)
+        {
+            return T("Gepubliseer · konsepveranderinge", "Published · draft changes");
+        }
+
+        return page.IsPublished ? T("Gepubliseer", "Published") : T("Konsep", "Draft");
+    }
+
+    private async Task StartNewPageAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        if (!await ConfirmDiscardAsync())
+        {
+            return;
+        }
+
+        _selectedPage = null;
+        _selectedPageId = null;
+        _workingRevision = null;
+        _workingSlug = string.Empty;
+        _slugWasManuallyEdited = false;
+        ResetButtonLinkChoices();
+        _workingContent = CreateDefaultContent();
+        _newDraftAssetScopeId = Guid.NewGuid();
+        _activeTextBlockId = _workingContent.Blocks.FirstOrDefault(block => string.Equals(block.Type, "text", StringComparison.OrdinalIgnoreCase))?.Id;
+        _richTextEditorSyncPending = _activeTextBlockId is not null;
+        _hasUnsavedChanges = false;
+        _errorMessage = null;
+        _statusMessage = null;
+    }
+
+    private async Task SelectPageAsync(LandingPageRecord page)
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        if (_selectedPageId == page.PageId && _workingContent is not null)
+        {
+            return;
+        }
+
+        if (!await ConfirmDiscardAsync())
+        {
+            return;
+        }
+
+        LoadPage(page);
+    }
+
+    private void LoadPage(LandingPageRecord page)
+    {
+        ResetButtonLinkChoices();
+        _selectedPage = page;
+        _selectedPageId = page.PageId;
+        _workingRevision = page.Revision;
+        _workingSlug = page.Slug;
+        _slugWasManuallyEdited = false;
+        _workingContent = CloneContent(page.Draft);
+        _activeTextBlockId = TextBlocks.FirstOrDefault()?.Id;
+        _richTextEditorSyncPending = _activeTextBlockId is not null;
+        _hasUnsavedChanges = false;
+        _errorMessage = null;
+        _statusMessage = null;
+    }
+
+    private async Task OnTitleChangedAsync()
+    {
+        if (!_slugWasManuallyEdited && _selectedPage is null && _workingContent is not null)
+        {
+            _workingSlug = CreateSlug(_workingContent.Title);
+        }
+
+        MarkChanged();
+    }
+
+    private void OnSlugInput(ChangeEventArgs args)
+    {
+        _workingSlug = args.Value?.ToString() ?? string.Empty;
+        _slugWasManuallyEdited = true;
+        MarkChanged();
+    }
+
+    private void OnSearchInput(ChangeEventArgs args) => _searchText = args.Value?.ToString() ?? string.Empty;
+
+    private void OnStatusFilterChanged(ChangeEventArgs args) => _statusFilter = args.Value?.ToString() ?? "all";
+
+    private void SetPageBackgroundColor(ChangeEventArgs args)
+    {
+        if (_workingContent is not null)
+        {
+            _workingContent.BackgroundColor = ColorOrDefault(args.Value?.ToString(), "#ff7133");
+            MarkChanged();
+        }
+    }
+
+    private void SetPageTextColor(ChangeEventArgs args)
+    {
+        if (_workingContent is not null)
+        {
+            _workingContent.TextColor = ColorOrDefault(args.Value?.ToString(), "#ffffff");
+            MarkChanged();
+        }
+    }
+
+    private void AddImageBlock() => AddBlock(new LandingPageBlock { Type = "image", ImageShape = "square" });
+
+    private void AddTextBlock()
+    {
+        var block = new LandingPageBlock { Type = "text", Html = "<p></p>", Alignment = "left" };
+        AddBlock(block);
+        _activeTextBlockId = block.Id;
+        _richTextEditorSyncPending = true;
+    }
+
+    private void AddButtonBlock() => AddBlock(new LandingPageBlock
+    {
+        Type = "button",
+        Text = T("Lees meer", "Learn more"),
+        BackgroundColor = "#222222",
+        TextColor = "#ffffff"
+    });
+
+    private void AddBlock(LandingPageBlock block)
+    {
+        if (_workingContent is null)
+        {
+            return;
+        }
+
+        _workingContent.Blocks.Add(block);
+        MarkChanged();
+    }
+
+    private void MoveBlock(Guid blockId, int direction)
+    {
+        if (_workingContent is null)
+        {
+            return;
+        }
+
+        var index = _workingContent.Blocks.FindIndex(block => block.Id == blockId);
+        var destination = index + direction;
+        if (index < 0 || destination < 0 || destination >= _workingContent.Blocks.Count)
+        {
+            return;
+        }
+
+        var block = _workingContent.Blocks[index];
+        _workingContent.Blocks.RemoveAt(index);
+        _workingContent.Blocks.Insert(destination, block);
+        MarkChanged();
+    }
+
+    private async Task RemoveBlockAsync(LandingPageBlock block)
+    {
+        if (_workingContent is null)
+        {
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            T("Verwyder hierdie blok uit die konsep? Die opgelaaide prent bly gestoor.", "Remove this block from the draft? Its uploaded image will remain stored."));
+        if (!confirmed)
+        {
+            return;
+        }
+
+        _workingContent.Blocks.Remove(block);
+        if (_activeTextBlockId == block.Id)
+        {
+            _activeTextBlockId = TextBlocks.FirstOrDefault()?.Id;
+            _richTextEditorSyncPending = _activeTextBlockId is not null;
+        }
+
+        MarkChanged();
+    }
+
+    private void SelectTextBlock(Guid blockId)
+    {
+        if (_activeTextBlockId == blockId)
+        {
+            return;
+        }
+
+        _activeTextBlockId = blockId;
+        _richTextEditorSyncPending = true;
+    }
+
+    private void OnActiveTextBlockChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        _activeTextBlockId = Guid.TryParseExact(value, "N", out var blockId) ? blockId : null;
+        _richTextEditorSyncPending = _activeTextBlockId is not null;
+    }
+
+    private void SetImageShape(LandingPageBlock block, string? shape)
+    {
+        block.ImageShape = string.Equals(shape, "natural", StringComparison.OrdinalIgnoreCase) ? "natural" : "square";
+        MarkChanged();
+    }
+
+    private void SetBlockAlignment(LandingPageBlock block, string? alignment)
+    {
+        block.Alignment = NormalizeAlignment(alignment);
+        MarkChanged();
+    }
+
+    private void SetActiveTextBlockAlignment(string? alignment)
+    {
+        if (ActiveTextBlock is { } block)
+        {
+            block.Alignment = NormalizeAlignment(alignment);
+            MarkChanged();
+        }
+    }
+
+    private void SetButtonBackground(LandingPageBlock block, string? color)
+    {
+        block.BackgroundColor = ColorOrDefault(color, "#222222");
+        MarkChanged();
+    }
+
+    private void SetButtonTextColor(LandingPageBlock block, string? color)
+    {
+        block.TextColor = ColorOrDefault(color, "#ffffff");
+        MarkChanged();
+    }
+
+    private void SetPreviewMode(string mode) => _previewMode = mode == "mobile" ? "mobile" : "desktop";
+
+    private async Task UploadImageAsync(LandingPageBlock block, InputFileChangeEventArgs args)
+    {
+        if (_workingContent is null)
+        {
+            return;
+        }
+
+        var file = args.File;
+        _errorMessage = null;
+        _statusMessage = null;
+
+        if (file.Size is <= 0 or > MaxImageUploadBytes)
+        {
+            _errorMessage = T("Kies 'n JPEG-, PNG- of WebP-prent van hoogstens 10 MB.", "Choose a JPEG, PNG, or WebP image no larger than 10 MB.");
+            return;
+        }
+
+        _isUploadingImage = true;
+        try
+        {
+            if (!await LandingPageAdminService.EnsureAdminAsync())
+            {
+                _errorMessage = T("Jou adminregte is nie bevestig nie. Die prent is nie opgelaai nie.", "Your admin access could not be confirmed. The image was not uploaded.");
+                return;
+            }
+
+            if (!IsR2UploadConfigured)
+            {
+                _errorMessage = T("Cloudflare R2 is nie opgestel vir prentoplaaie nie.", "Cloudflare R2 is not configured for image uploads.");
+                return;
+            }
+
+            var image = await ValidateAndNormalizeImageAsync(file, CancellationToken.None);
+            var pageScopeId = _selectedPageId ?? _newDraftAssetScopeId;
+            await using var content = image.Content;
+            var uploaded = await StoryMediaStorageService.UploadImageAsync(
+                $"landing-{pageScopeId:N}-{block.Id:N}",
+                StoryImageKind.Inline,
+                $"landing-{block.Id:N}{image.Extension}",
+                image.ContentType,
+                content,
+                CancellationToken.None);
+
+            block.ImageUrl = uploaded.PublicUrl;
+            MarkChanged();
+            _statusMessage = T("Die prent is opgelaai. Stoor die konsep om die bladsyverandering te behou.", "The image is uploaded. Save the draft to keep this page change.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Landing page image upload failed for block {BlockId}.", block.Id);
+            _errorMessage = GetOperationError(exception, T("Die prent kon nie opgelaai word nie.", "The image could not be uploaded."));
+        }
+        finally
+        {
+            _isUploadingImage = false;
+        }
+    }
+
+    private static async Task<ValidatedLandingImage> ValidateAndNormalizeImageAsync(IBrowserFile file, CancellationToken cancellationToken)
+    {
+        await using var source = file.OpenReadStream(MaxImageUploadBytes, cancellationToken);
+        var buffer = new MemoryStream(checked((int)file.Size));
+        try
+        {
+            await source.CopyToAsync(buffer, cancellationToken);
+            buffer.Position = 0;
+
+            var decoderOptions = new SixLabors.ImageSharp.Formats.DecoderOptions
+            {
+                MaxFrames = 1,
+                SkipMetadata = true
+            };
+            var format = await Image.DetectFormatAsync(decoderOptions, buffer, cancellationToken);
+            if (format is null ||
+                (format != JpegFormat.Instance && format != PngFormat.Instance && format != WebpFormat.Instance))
+            {
+                throw new InvalidOperationException("unsupported_image_format");
+            }
+
+            buffer.Position = 0;
+            var imageInfo = await Image.IdentifyAsync(decoderOptions, buffer, cancellationToken);
+            if (imageInfo is null || imageInfo.Width <= 0 || imageInfo.Height <= 0 ||
+                (long)imageInfo.Width * imageInfo.Height > MaxImagePixelCount)
+            {
+                throw new InvalidOperationException("image_dimensions_invalid");
+            }
+
+            buffer.Position = 0;
+            using var decoded = await Image.LoadAsync<Rgba32>(decoderOptions, buffer, cancellationToken);
+            if (decoded.Width != imageInfo.Width || decoded.Height != imageInfo.Height)
+            {
+                throw new InvalidOperationException("image_decode_failed");
+            }
+
+            var (contentType, extension) = format == JpegFormat.Instance
+                ? ("image/jpeg", ".jpg")
+                : format == PngFormat.Instance
+                    ? ("image/png", ".png")
+                    : ("image/webp", ".webp");
+
+            buffer.Position = 0;
+            return new ValidatedLandingImage(buffer, contentType, extension);
+        }
+        catch
+        {
+            await buffer.DisposeAsync();
+            throw;
+        }
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        if (_workingContent is null || !_hasUnsavedChanges || IsBusy)
+        {
+            return;
+        }
+
+        _errorMessage = null;
+        _statusMessage = null;
+        if (string.IsNullOrWhiteSpace(_workingSlug))
+        {
+            _errorMessage = T("Voer 'n geldige URL-slug in voordat jy stoor.", "Enter a valid URL slug before saving.");
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var result = await LandingPageAdminService.SaveDraftAsync(
+                new LandingPageSaveRequest(_selectedPageId, _workingSlug.Trim(), CloneContent(_workingContent), _workingRevision));
+            if (!result.Success || result.Page is null)
+            {
+                _errorMessage = GetResultError(result.ErrorCode, T("Die konsep kon nie gestoor word nie.", "The draft could not be saved."));
+                return;
+            }
+
+            ReplacePage(result.Page);
+            _statusMessage = T("Konsep gestoor.", "Draft saved.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Landing page draft save failed for {PageId}.", _selectedPageId);
+            _errorMessage = GetOperationError(exception, T("Die konsep kon nie gestoor word nie.", "The draft could not be saved."));
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task PublishAsync()
+    {
+        if (!CanPublish || _selectedPage is null)
+        {
+            return;
+        }
+
+        _errorMessage = null;
+        _statusMessage = null;
+        _isPublishing = true;
+        try
+        {
+            var result = await LandingPageAdminService.PublishAsync(_selectedPage.PageId, _selectedPage.Revision);
+            if (!result.Success || result.Page is null)
+            {
+                _errorMessage = GetResultError(result.ErrorCode, T("Die bladsy kon nie gepubliseer word nie.", "The page could not be published."));
+                return;
+            }
+
+            ReplacePage(result.Page);
+            _statusMessage = T("Die bladsy is gepubliseer.", "The page has been published.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Landing page publish failed for {PageId}.", _selectedPage.PageId);
+            _errorMessage = GetOperationError(exception, T("Die bladsy kon nie gepubliseer word nie.", "The page could not be published."));
+        }
+        finally
+        {
+            _isPublishing = false;
+        }
+    }
+
+    private async Task UnpublishAsync()
+    {
+        if (_selectedPage is null || !_selectedPage.IsPublished || IsBusy)
+        {
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            T("Ontpubliseer hierdie bladsy? Die openbare bladsy sal nie meer beskikbaar wees nie.", "Unpublish this page? The public page will no longer be available."));
+        if (!confirmed)
+        {
+            return;
+        }
+
+        _errorMessage = null;
+        _statusMessage = null;
+        _isUnpublishing = true;
+        try
+        {
+            var result = await LandingPageAdminService.UnpublishAsync(_selectedPage.PageId, _selectedPage.Revision);
+            if (!result.Success || result.Page is null)
+            {
+                _errorMessage = GetResultError(result.ErrorCode, T("Die bladsy kon nie ontpubliseer word nie.", "The page could not be unpublished."));
+                return;
+            }
+
+            ReplacePage(result.Page);
+            _statusMessage = T("Die bladsy is ontpubliseer.", "The page has been unpublished.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Landing page unpublish failed for {PageId}.", _selectedPage.PageId);
+            _errorMessage = GetOperationError(exception, T("Die bladsy kon nie ontpubliseer word nie.", "The page could not be unpublished."));
+        }
+        finally
+        {
+            _isUnpublishing = false;
+        }
+    }
+
+    private readonly Dictionary<Guid, string> _customButtonUrls = new();
+    private readonly Dictionary<Guid, string> _subscriptionButtonUrls = new();
+
+    private string GetButtonLinkType(LandingPageBlock block) =>
+        block.LinkType is "custom" or "subscription" ? block.LinkType :
+        LandingPageButtonLinks.GetSubscriptionSlug(block.Url) is null ? "custom" : "subscription";
+
+    private void SetButtonLinkType(LandingPageBlock block, string? type)
+    {
+        var nextType = type == "subscription" ? "subscription" : "custom";
+        if (GetButtonLinkType(block) == nextType) return;
+        if (nextType == "subscription")
+        {
+            _customButtonUrls[block.Id] = block.Url;
+            block.Url = _subscriptionButtonUrls.GetValueOrDefault(block.Id, string.Empty);
+        }
+        else
+        {
+            _subscriptionButtonUrls[block.Id] = block.Url;
+            block.Url = _customButtonUrls.GetValueOrDefault(block.Id, block.Url);
+        }
+        block.LinkType = nextType;
+        MarkChanged();
+    }
+
+    private void SetButtonSubscription(LandingPageBlock block, string? slug)
+    {
+        block.Url = string.IsNullOrWhiteSpace(slug) ? string.Empty : LandingPageButtonLinks.BuildSubscriptionUrl(slug);
+        MarkChanged();
+    }
+
+    private string GetSubscriptionLabel(string slug) => slug switch
+    {
+        "storie-hoekie-maandeliks" => T("Storie Hoekie - Maandeliks", "Story Corner - Monthly"),
+        "schink-stories-maandeliks" => T("Schink Stories - Maandeliks", "Schink Stories - Monthly"),
+        "schink-stories-jaarliks" => T("Schink Stories - Jaarliks", "Schink Stories - Yearly"),
+        _ => LandingPageButtonLinks.SubscriptionOptions.First(option => option.Slug == slug).Name
+    };
+
+    private void ResetButtonLinkChoices()
+    {
+        _customButtonUrls.Clear();
+        _subscriptionButtonUrls.Clear();
+    }
+
+    private string PublishedUrl => _selectedPage is null ? string.Empty : NavigationManager.ToAbsoluteUri($"/veldtog/{_selectedPage.Slug}").AbsoluteUri;
+
+    private async Task CopyUrlAsync()
+    {
+        if (_selectedPage is not { IsPublished: true } || IsBusy) return;
+        _errorMessage = null;
+        try
+        {
+            _richTextEditorModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/AdminLandingPagesPanel.razor.js");
+            await _richTextEditorModule.InvokeVoidAsync("copyPageUrl", PublishedUrl);
+            _statusMessage = T("Skakel gekopieer.", "URL copied.");
+        }
+        catch (JSException)
+        {
+            _errorMessage = T("Kies en kopieer die skakel in die skakelveld.", "Select and copy the URL in the URL field.");
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_selectedPage is null || IsBusy || HasUnsavedChanges) return;
+        var page = _selectedPage;
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", T(
+            $"Verwyder '{page.Draft.Title}'? Dit sal uit die lys verdwyn en die openbare skakel sal nie meer werk nie.",
+            $"Delete '{page.Draft.Title}'? It will disappear from the list and its public URL will no longer work."))) return;
+        _isDeleting = true;
+        _errorMessage = null;
+        _statusMessage = null;
+        try
+        {
+            var result = await LandingPageAdminService.DeleteAsync(page.PageId, page.Revision);
+            if (!result.Success)
+            {
+                _errorMessage = GetResultError(result.ErrorCode, T("Die bladsy kon nie verwyder word nie.", "The page could not be deleted."));
+                return;
+            }
+            _pages = _pages.Where(existing => existing.PageId != page.PageId).ToArray();
+            _selectedPage = null;
+            _selectedPageId = null;
+            _workingRevision = null;
+            _workingContent = null;
+            _workingSlug = string.Empty;
+            _activeTextBlockId = null;
+            _richTextEditorSyncPending = false;
+            _hasUnsavedChanges = false;
+            _statusMessage = T("Die bladsy is verwyder.", "The page has been deleted.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Landing page deletion failed for {PageId}.", page.PageId);
+            _errorMessage = GetOperationError(exception, T("Die bladsy kon nie verwyder word nie.", "The page could not be deleted."));
+        }
+        finally { _isDeleting = false; }
+    }
+
+    private void ReplacePage(LandingPageRecord page)
+    {
+        _pages = _pages.Where(existing => existing.PageId != page.PageId).Append(page).ToArray();
+        LoadPage(page);
+    }
+
+    private string GetBlockTitle(LandingPageBlock block) => block.Type.ToLowerInvariant() switch
+    {
+        "image" => T("Prentblok", "Image block"),
+        "button" => T("Knoppieblok", "Button block"),
+        _ => T("Teksblok", "Text block")
+    };
+
+    private string GetBlockSummary(LandingPageBlock block) => block.Type.ToLowerInvariant() switch
+    {
+        "image" => string.IsNullOrWhiteSpace(block.ImageUrl) ? T("Geen prent opgelaai nie", "No image uploaded") : string.IsNullOrWhiteSpace(block.AltText) ? T("Prent opgelaai", "Image uploaded") : block.AltText,
+        "button" => string.IsNullOrWhiteSpace(block.Text) ? T("Nuwe knoppie", "New button") : block.Text,
+        _ => GetTextBlockSummary(block)
+    };
+
+    private string GetTextBlockSummary(LandingPageBlock block)
+    {
+        var text = System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(block.Html ?? string.Empty, "<[^>]+>", " "));
+        text = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return text.Length > 55 ? $"{text[..52]}…" : string.IsNullOrWhiteSpace(text) ? T("Leë teksblok", "Empty text block") : text;
+    }
+
+    private LandingPageContent CreateDefaultContent() => new()
+    {
+        SchemaVersion = 1,
+        Title = string.Empty,
+        BackgroundColor = "#ff7133",
+        TextColor = "#ffffff",
+        SharingTitle = string.Empty,
+        SharingDescription = string.Empty,
+        Blocks =
+        [
+            new LandingPageBlock { Type = "image", ImageShape = "square", Alignment = "center" },
+            new LandingPageBlock { Type = "text", Html = "<p></p>", Alignment = "left" },
+            new LandingPageBlock { Type = "button", Text = T("Lees meer", "Learn more"), Url = string.Empty, BackgroundColor = "#222222", TextColor = "#ffffff", Alignment = "center" }
+        ]
+    };
+
+    private static LandingPageContent CloneContent(LandingPageContent content) => new()
+    {
+        SchemaVersion = content.SchemaVersion,
+        Title = content.Title ?? string.Empty,
+        BackgroundColor = content.BackgroundColor ?? "#ff7133",
+        TextColor = content.TextColor ?? "#ffffff",
+        SharingTitle = content.SharingTitle ?? string.Empty,
+        SharingDescription = content.SharingDescription ?? string.Empty,
+        Blocks = content.Blocks?.Select(block => new LandingPageBlock
+        {
+            Id = block.Id == Guid.Empty ? Guid.NewGuid() : block.Id,
+            Type = block.Type ?? "text",
+            ImageUrl = block.ImageUrl ?? string.Empty,
+            AltText = block.AltText ?? string.Empty,
+            ImageShape = block.ImageShape ?? "square",
+            Html = block.Html ?? string.Empty,
+            Alignment = block.Alignment ?? "left",
+            Text = block.Text ?? string.Empty,
+            Url = block.Url ?? string.Empty,
+            LinkType = block.LinkType ?? string.Empty,
+            BackgroundColor = block.BackgroundColor ?? string.Empty,
+            TextColor = block.TextColor ?? string.Empty
+        }).ToList() ?? []
+    };
+
+    private static string CreateSlug(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var normalized = value.Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+        var previousWasSeparator = true;
+        foreach (var character in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
+            {
+                continue;
+            }
+
+            if (char.IsAsciiLetterOrDigit(character))
+            {
+                builder.Append(char.ToLowerInvariant(character));
+                previousWasSeparator = false;
+            }
+            else if (!previousWasSeparator)
+            {
+                builder.Append('-');
+                previousWasSeparator = true;
+            }
+        }
+
+        return builder.ToString().Trim('-');
+    }
+
+    private static string ColorOrDefault(string? color, string fallback) =>
+        !string.IsNullOrWhiteSpace(color) && System.Text.RegularExpressions.Regex.IsMatch(color.Trim(), "^#[0-9a-fA-F]{6}$")
+            ? color.Trim()
+            : fallback;
+
+    private static string NormalizeAlignment(string? alignment) => alignment?.Trim().ToLowerInvariant() switch
+    {
+        "center" => "center",
+        "right" => "right",
+        _ => "left"
+    };
+
+    private void MarkChanged()
+    {
+        _hasUnsavedChanges = true;
+        _statusMessage = null;
+    }
+
+    private Task RetryRichTextEditorAsync()
+    {
+        _richTextEditorFailed = false;
+        _richTextEditorSyncPending = ActiveTextBlock is not null;
+        _errorMessage = null;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private string GetResultError(string? errorCode, string fallback) => errorCode switch
+    {
+        LandingPageErrorCodes.AdminRequired => T("Jou adminregte kon nie bevestig word nie.", "Your admin access could not be confirmed."),
+        LandingPageErrorCodes.SupabaseNotConfigured => T("Die bestuursdatabasis is nie opgestel nie.", "The admin database is not configured."),
+        LandingPageErrorCodes.SchemaNotReady => T("Die landingsblad-databasisskema is nog nie beskikbaar nie.", "The landing page database schema is not ready yet."),
+        LandingPageErrorCodes.SlugInvalid => T("Die slug moet kleinletters, syfers en koppeltekens bevat.", "The slug must use lowercase letters, numbers, and hyphens."),
+        LandingPageErrorCodes.SlugTaken => T("Daardie slug word reeds gebruik.", "That slug is already in use."),
+        LandingPageErrorCodes.SlugImmutable => T("'n Gepubliseerde bladsy se slug kan nie verander word nie.", "A published page's slug cannot be changed."),
+        LandingPageErrorCodes.ContentInvalid => T("Kontroleer die titel, kleure, blokke en skakels voordat jy stoor.", "Check the title, colors, blocks, and links before saving."),
+        LandingPageErrorCodes.PublishValidationFailed => T("Voeg 'n geldige titel en ten minste een volledige inhoudsblok by voordat jy publiseer.", "Add a valid title and at least one complete content block before publishing."),
+        LandingPageErrorCodes.PageNotFound => T("Hierdie bladsy bestaan nie meer nie. Verfris die lys.", "This page no longer exists. Refresh the list."),
+        LandingPageErrorCodes.PageNotPublished => T("Hierdie bladsy is reeds ontpubliseer.", "This page has already been unpublished."),
+        LandingPageErrorCodes.RevisionRequired or LandingPageErrorCodes.RevisionConflict => T("Hierdie bladsy is intussen verander. Verfris die bladsy en pas jou veranderinge weer toe.", "This page changed while you were editing. Refresh it and reapply your changes."),
+        _ => fallback
+    };
+
+    private string GetOperationError(Exception exception, string fallback) => exception is LandingPageServiceException landingException
+        ? GetResultError(landingException.ErrorCode, fallback)
+        : exception.Message switch
+        {
+            "unsupported_image_format" => T("Kies 'n geldige JPEG-, PNG- of WebP-prent.", "Choose a valid JPEG, PNG, or WebP image."),
+            "image_dimensions_invalid" => T("Die prent is ongeldig of groter as die toegelate 40 megapixels.", "The image is invalid or exceeds the 40-megapixel limit."),
+            "image_decode_failed" => T("Die prentlêer kon nie volledig gelees word nie.", "The image file could not be decoded."),
+            "Cloudflare R2 is not fully configured for admin uploads." => T("Cloudflare R2 is nie opgestel vir prentoplaaie nie.", "Cloudflare R2 is not configured for image uploads."),
+            _ => fallback
+        };
+
+    private string T(string afrikaans, string english) =>
+        string.Equals(CurrentLanguageCode, "en", StringComparison.OrdinalIgnoreCase) ? english : afrikaans;
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetReference?.Dispose();
+        if (_richTextEditorModule is not null)
+        {
+            try
+            {
+                await _richTextEditorModule.InvokeVoidAsync("disposeRichTextEditor", _richTextEditorShell);
+                await _richTextEditorModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // The browser has already disconnected.
+            }
+        }
+    }
+
+    private sealed record ValidatedLandingImage(MemoryStream Content, string ContentType, string Extension);
+}

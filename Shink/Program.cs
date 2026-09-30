@@ -193,11 +193,17 @@ builder.Services.AddHttpClient<ICharacterTrackingService, SupabaseCharacterServi
 builder.Services.AddSingleton<IBlogContentRenderer, BlogContentRenderer>();
 builder.Services.AddHttpClient<IBlogCatalogService, SupabaseBlogService>();
 builder.Services.AddHttpClient<IBlogAdminService, SupabaseBlogService>();
+builder.Services.AddScoped<LandingPageContentValidator>();
+builder.Services.AddHttpClient<ILandingPageAdminService, SupabaseLandingPageService>();
+builder.Services.AddHttpClient<ILandingPageCatalogService, SupabaseLandingPageService>();
 builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificationService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
-builder.Services.AddHostedService<PaystackAuthorizationSubscriptionBillingWorker>();
-builder.Services.AddHostedService<SubscriptionPaymentRecoveryWorker>();
-builder.Services.AddHostedService<AbandonedCartRecoveryCancellationWorker>();
+if (builder.Configuration.GetValue("BackgroundJobs:Enabled", true))
+{
+    builder.Services.AddHostedService<PaystackAuthorizationSubscriptionBillingWorker>();
+    builder.Services.AddHostedService<SubscriptionPaymentRecoveryWorker>();
+    builder.Services.AddHostedService<AbandonedCartRecoveryCancellationWorker>();
+}
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

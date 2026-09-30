@@ -1,0 +1,155 @@
+.landing-renderer {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    background-color: var(--landing-background-color, #ffffff);
+    color: var(--landing-text-color, #222222);
+}
+
+.landing-renderer-column {
+    box-sizing: border-box;
+    display: grid;
+    gap: clamp(1.15rem, 3.5vw, 1.7rem);
+    width: min(100%, 640px);
+    margin-inline: auto;
+    padding: clamp(1.25rem, 4vw, 2rem) clamp(1rem, 4vw, 1.5rem);
+}
+
+.landing-page-accessible-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+}
+
+.landing-image-block {
+    width: 100%;
+    margin: 0;
+}
+
+.landing-align-left {
+    justify-self: start;
+    text-align: left;
+}
+
+.landing-align-center {
+    justify-self: center;
+    text-align: center;
+}
+
+.landing-align-right {
+    justify-self: end;
+    text-align: right;
+}
+
+.landing-image-block a {
+    display: block;
+    max-width: 100%;
+}
+
+.landing-image {
+    display: block;
+    max-width: 100%;
+}
+
+.landing-image-square {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: contain;
+}
+
+.landing-image-natural {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+.landing-text-block {
+    min-width: 0;
+    max-width: 100%;
+    color: var(--landing-block-text-color, var(--landing-text-color, #222222));
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+}
+
+.landing-rich-text ::deep p,
+.landing-rich-text ::deep li,
+.landing-rich-text ::deep blockquote,
+.landing-rich-text ::deep h2,
+.landing-rich-text ::deep h3,
+.landing-rich-text ::deep h4,
+.landing-rich-text ::deep strong,
+.landing-rich-text ::deep em,
+.landing-rich-text ::deep a,
+.landing-rich-text ::deep span {
+    color: var(--landing-block-text-color, var(--landing-text-color, #222222)) !important;
+}
+
+.landing-rich-text ::deep p:first-child {
+    margin-top: 0;
+}
+
+.landing-rich-text ::deep p:last-child {
+    margin-bottom: 0;
+}
+
+.landing-rich-text ::deep a {
+    text-decoration: underline;
+    text-underline-offset: 0.16em;
+}
+
+.landing-button-block {
+    max-width: 100%;
+}
+
+.landing-button {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 100%;
+    min-height: 3rem;
+    padding: 0.8rem 1.25rem;
+    border-radius: 999px;
+    background-color: var(--landing-button-background, #0e495d);
+    color: var(--landing-button-text, #ffffff) !important;
+    font-weight: 700;
+    line-height: 1.35;
+    text-align: center;
+    text-decoration: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+}
+
+a.landing-button:hover,
+a.landing-button:focus-visible {
+    filter: brightness(1.06);
+    text-decoration: underline;
+    text-underline-offset: 0.16em;
+}
+
+a.landing-button:focus-visible {
+    outline: 3px solid currentColor;
+    outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+    .landing-renderer-column {
+        gap: 1.15rem;
+        padding: 1.1rem 0.9rem;
+    }
+
+    .landing-button {
+        min-height: 2.85rem;
+        padding: 0.72rem 1rem;
+    }
+}

@@ -1,0 +1,106 @@
+@using Shink.Services
+
+@if (Content is not null)
+{
+    <div class="landing-renderer" style="@RendererStyle">
+        <article class="landing-renderer-column">
+            @if (!string.IsNullOrWhiteSpace(Content.Title))
+            {
+                <h1 class="landing-page-accessible-title">@Content.Title</h1>
+            }
+
+            @if (Content.Blocks is not null)
+            {
+                @foreach (var block in Content.Blocks)
+                {
+                    @if (block is not null)
+                    {
+                        @switch (block.Type?.Trim().ToLowerInvariant())
+                        {
+                            case "image":
+                            {
+                                var imageUrl = LandingPageRenderSafety.ImageUrl(block.ImageUrl);
+                                var linkUrl = LandingPageRenderSafety.LinkUrl(block.Url);
+                                if (imageUrl is not null)
+                                {
+                                    <figure class="landing-image-block @LandingPageRenderSafety.AlignmentClass(block.Alignment)">
+                                        @if (linkUrl is not null)
+                                        {
+                                            <a href="@linkUrl">
+                                                <img class="landing-image @(string.Equals(block.ImageShape, "natural", StringComparison.OrdinalIgnoreCase) ? "landing-image-natural" : "landing-image-square")"
+                                                     src="@imageUrl"
+                                                     alt="@(block.AltText ?? string.Empty)"
+                                                     loading="lazy"
+                                                     decoding="async"
+                                                     draggable="false" />
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <img class="landing-image @(string.Equals(block.ImageShape, "natural", StringComparison.OrdinalIgnoreCase) ? "landing-image-natural" : "landing-image-square")"
+                                                 src="@imageUrl"
+                                                 alt="@(block.AltText ?? string.Empty)"
+                                                 loading="lazy"
+                                                 decoding="async"
+                                                 draggable="false" />
+                                        }
+                                    </figure>
+                                }
+                                break;
+                            }
+                            case "text":
+                            {
+                                var sanitizedHtml = LandingPageContentValidator.SanitizeRichTextHtml(block.Html);
+                                <section class="landing-text-block @LandingPageRenderSafety.AlignmentClass(block.Alignment)"
+                                         style="@TextBlockStyle(block)">
+                                    <div class="landing-rich-text">
+                                        @if (!string.IsNullOrWhiteSpace(sanitizedHtml))
+                                        {
+                                            @((MarkupString)sanitizedHtml)
+                                        }
+                                        else
+                                        {
+                                            @block.Text
+                                        }
+                                    </div>
+                                </section>
+                                break;
+                            }
+                            case "button":
+                            {
+                                var linkUrl = LandingPageRenderSafety.LinkUrl(block.Url);
+                                <div class="landing-button-block @LandingPageRenderSafety.AlignmentClass(block.Alignment)">
+                                    @if (linkUrl is not null)
+                                    {
+                                        <a class="landing-button" style="@ButtonStyle(block)" href="@linkUrl">@block.Text</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="landing-button" style="@ButtonStyle(block)" aria-disabled="true">@block.Text</span>
+                                    }
+                                </div>
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        </article>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public LandingPageContent? Content { get; set; }
+
+    private string RendererStyle =>
+        $"--landing-background-color: {LandingPageRenderSafety.CssColor(Content?.BackgroundColor, "#ffffff")}; " +
+        $"--landing-text-color: {LandingPageRenderSafety.CssColor(Content?.TextColor, "#222222")};";
+
+    private static string TextBlockStyle(LandingPageBlock block) =>
+        $"--landing-block-text-color: {LandingPageRenderSafety.CssColor(block.TextColor, "var(--landing-text-color)")};";
+
+    private static string ButtonStyle(LandingPageBlock block) =>
+        $"--landing-button-background: {LandingPageRenderSafety.CssColor(block.BackgroundColor, "#0e495d")}; " +
+        $"--landing-button-text: {LandingPageRenderSafety.CssColor(block.TextColor, "#ffffff")};";
+}
