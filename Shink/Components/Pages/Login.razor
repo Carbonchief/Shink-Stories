@@ -70,6 +70,15 @@
                     <span>Teken in met Google</span>
                 </a>
 
+                <a class="login-submit login-submit-apple" href="@AppleSignInHref" data-enhance-nav="false" aria-label="Teken in met Apple">
+                    <span class="apple-brand-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="20" height="20" focusable="false">
+                            <path fill="currentColor" d="M17.05 12.54c.03 3.27 2.87 4.36 2.9 4.38-.02.08-.45 1.55-1.49 3.07-.9 1.31-1.83 2.62-3.3 2.65-1.44.03-1.9-.85-3.55-.85s-2.16.82-3.53.88c-1.42.05-2.5-1.42-3.41-2.73-1.85-2.67-3.26-7.54-1.36-10.83.94-1.63 2.62-2.66 4.43-2.68 1.39-.03 2.7.93 3.55.93.85 0 2.44-1.15 4.12-.98.7.03 2.67.28 3.93 2.13-.1.06-2.35 1.37-2.32 4.03ZM14.37 4.6c.75-.91 1.26-2.17 1.12-3.43-1.08.04-2.4.72-3.18 1.63-.7.8-1.32 2.08-1.15 3.31 1.2.1 2.43-.61 3.21-1.51Z" />
+                        </svg>
+                    </span>
+                    <span>Teken in met Apple</span>
+                </a>
+
                 <div class="login-divider">
                     <span>of</span>
                 </div>
@@ -141,6 +150,11 @@
         GetSafeReturnUrl(ReturnUrl) is { } safeReturnUrl
             ? $"/api/auth/google/start?returnUrl={Uri.EscapeDataString(safeReturnUrl)}"
             : "/api/auth/google/start";
+
+    private string AppleSignInHref =>
+        GetSafeReturnUrl(ReturnUrl) is { } safeReturnUrl
+            ? $"/api/auth/apple/start?returnUrl={Uri.EscapeDataString(safeReturnUrl)}"
+            : "/api/auth/apple/start";
 
     protected override void OnInitialized()
     {

@@ -196,6 +196,35 @@
     gap: 0.65rem;
 }
 
+.login-submit-apple {
+    margin-top: 0.65rem;
+    min-height: 44px;
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid #000000;
+    box-shadow: none;
+    font-weight: 600;
+    gap: 0.65rem;
+}
+
+.login-submit-apple:hover:not(:disabled) {
+    transform: none;
+    background: #222222;
+    color: #ffffff;
+    box-shadow: none;
+}
+
+.login-submit-apple:focus-visible {
+    outline: 3px solid #17677d;
+    outline-offset: 3px;
+}
+
+.apple-brand-icon {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 20px;
+}
+
 .login-divider {
     display: flex;
     align-items: center;

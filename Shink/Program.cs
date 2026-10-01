@@ -2275,10 +2275,55 @@ app.MapGet("/api/auth/google/start", async (
     return Results.Redirect(startResult.RedirectUri.ToString());
 });
 
+app.MapGet("/api/auth/apple/start", async (
+    string? returnUrl,
+    ISupabaseAuthService supabaseAuthService,
+    IDataProtectionProvider dataProtectionProvider,
+    IOptions<SiteOptions> siteOptions,
+    HttpContext httpContext) =>
+{
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
+    var safeReturnUrl = GetSafeAuthReturnUrl(returnUrl);
+    var callbackUri = BuildPublicAbsoluteUrl(siteOptions.Value, "/auth/callback");
+
+    var startResult = await supabaseAuthService.StartAppleSignInAsync(
+        callbackUri,
+        httpContext.RequestAborted);
+    if (!startResult.IsSuccess ||
+        startResult.RedirectUri is null ||
+        string.IsNullOrWhiteSpace(startResult.CodeVerifier))
+    {
+        var errorPath = BuildGoogleAuthErrorRedirectPath("Kon nie Apple-aanmelding begin nie. Probeer asseblief weer.");
+        return Results.Redirect(errorPath);
+    }
+
+    var protector = dataProtectionProvider.CreateProtector(GooglePkceProtectorPurpose);
+    var protectedState = protector.Protect(System.Text.Json.JsonSerializer.Serialize(new GooglePkceStateCookiePayload(
+        ExpiresAtUtc: DateTimeOffset.UtcNow.AddMinutes(10),
+        CodeVerifier: startResult.CodeVerifier ?? string.Empty,
+        ReturnUrl: safeReturnUrl,
+        UseImplicitFlow: false,
+        Provider: "apple")));
+
+    httpContext.Response.Cookies.Append(
+        GooglePkceCookieName,
+        protectedState,
+        new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = httpContext.Request.IsHttps,
+            SameSite = SameSiteMode.Lax,
+            IsEssential = true,
+            MaxAge = TimeSpan.FromMinutes(10),
+            Path = "/auth/callback"
+        });
+
+    return Results.Redirect(startResult.RedirectUri.ToString());
+});
+
 app.MapGet("/auth/callback", async (
     string? code,
     string? error,
-    string? error_description,
     ISupabaseAuthService supabaseAuthService,
     IAuthSessionService authSessionService,
     IAdminManagementService adminManagementService,
@@ -2288,11 +2333,6 @@ app.MapGet("/auth/callback", async (
     HttpContext httpContext) =>
 {
     ClearGooglePkceCookie(httpContext);
-
-    if (!string.IsNullOrWhiteSpace(error))
-    {
-        return Results.Redirect(BuildGoogleAuthErrorRedirectPath(error_description));
-    }
 
     GooglePkceStateCookiePayload? payload = null;
     if (httpContext.Request.Cookies.TryGetValue(GooglePkceCookieName, out var protectedCookie) &&
@@ -2305,8 +2345,22 @@ app.MapGet("/auth/callback", async (
         }
         catch
         {
-            return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Kon nie jou Google-aanmeldsessie verifieer nie. Probeer asseblief weer."));
+            return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Kon nie jou aanmeldsessie verifieer nie. Probeer asseblief weer."));
         }
+    }
+
+    if (payload is null || payload.ExpiresAtUtc <= DateTimeOffset.UtcNow ||
+        (payload.Provider != "google" && payload.Provider != "apple"))
+    {
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Jou aanmeldsessie het verval. Probeer asseblief weer."));
+    }
+
+    var isApple = payload.Provider == "apple";
+    var providerName = isApple ? "Apple" : "Google";
+    if (!string.IsNullOrWhiteSpace(error))
+    {
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath(
+            $"{providerName}-aanmelding het misluk. Probeer asseblief weer."));
     }
 
     SupabaseOAuthExchangeResult exchangeResult;
@@ -2319,22 +2373,21 @@ app.MapGet("/auth/callback", async (
             payload.UseImplicitFlow ||
             string.IsNullOrWhiteSpace(payload.CodeVerifier))
         {
-            return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
+            return Results.Redirect(BuildGoogleAuthErrorRedirectPath($"Jou {providerName}-aanmeldsessie het verval. Probeer asseblief weer."));
         }
 
         requestedReturnUrl = payload.ReturnUrl;
-        exchangeResult = await supabaseAuthService.ExchangeGoogleAuthCodeAsync(
-            code,
-            payload.CodeVerifier,
-            httpContext.RequestAborted);
+        exchangeResult = isApple
+            ? await supabaseAuthService.ExchangeAppleAuthCodeAsync(code, payload.CodeVerifier, httpContext.RequestAborted)
+            : await supabaseAuthService.ExchangeGoogleAuthCodeAsync(code, payload.CodeVerifier, httpContext.RequestAborted);
     }
-    else if (HasImplicitGoogleAuthSession(httpContext.Request))
+    else if (!isApple && HasImplicitGoogleAuthSession(httpContext.Request))
     {
         if (payload is null ||
             payload.ExpiresAtUtc <= DateTimeOffset.UtcNow ||
             !payload.UseImplicitFlow)
         {
-            return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
+            return Results.Redirect(BuildGoogleAuthErrorRedirectPath($"Jou {providerName}-aanmeldsessie het verval. Probeer asseblief weer."));
         }
 
         requestedReturnUrl = payload.ReturnUrl;
@@ -2344,12 +2397,12 @@ app.MapGet("/auth/callback", async (
     }
     else
     {
-        return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer."));
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath($"{providerName}-aanmelding kon nie bevestig word nie. Probeer asseblief weer."));
     }
 
     if (!exchangeResult.IsSuccess || string.IsNullOrWhiteSpace(exchangeResult.UserEmail))
     {
-        return Results.Redirect(BuildGoogleAuthErrorRedirectPath(exchangeResult.ErrorMessage));
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath(exchangeResult.ErrorMessage ?? $"{providerName}-aanmelding het misluk. Probeer asseblief weer."));
     }
 
     var signedInEmail = exchangeResult.UserEmail;
@@ -8605,4 +8658,5 @@ sealed record GooglePkceStateCookiePayload(
     string CodeVerifier,
     string? ReturnUrl,
     bool UseImplicitFlow,
-    bool UseMobileCustomSchemeCallback = false);
+    bool UseMobileCustomSchemeCallback = false,
+    string Provider = "google");

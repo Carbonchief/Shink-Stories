@@ -52,6 +52,13 @@ public interface ISupabaseAuthService
         string redirectTo,
         bool useImplicitFlow,
         CancellationToken cancellationToken = default);
+    Task<SupabaseOAuthStartResult> StartAppleSignInAsync(
+        string redirectTo,
+        CancellationToken cancellationToken = default);
+    Task<SupabaseOAuthExchangeResult> ExchangeAppleAuthCodeAsync(
+        string authCode,
+        string codeVerifier,
+        CancellationToken cancellationToken = default);
     Task<SupabaseOAuthExchangeResult> ExchangeGoogleAuthCodeAsync(
         string authCode,
         string codeVerifier,

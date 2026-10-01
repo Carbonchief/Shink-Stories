@@ -161,6 +161,29 @@ public sealed class MobilePersistentPlaybackSourceTests
     }
 
     [TestMethod]
+    public void DownloadedReorderWaitsForNativeDragCallbacksBeforeChangingRows()
+    {
+        var source = ReadSource("Shink.Mobile", "Pages", "DownloadedPage.cs");
+        var drop = ExtractMethod(source, "private void HandleRowDrop(", "private void MoveRow(");
+        var finish = ExtractMethod(source, "private void FinishDragging(", "private static List<OfflineStoryDownload> ApplySavedOrder(");
+        var load = ExtractMethod(source, "private async Task LoadAsync()", "private View BuildHeader(");
+
+        // Android enumerates interested native children during DragAction.Ended.
+        // Reparenting a row (including a ZIndex change) in that callback crashes
+        // subsequent drags with java.util.ConcurrentModificationException.
+        Assert.IsFalse(drop.Contains("MoveRow(", StringComparison.Ordinal));
+        StringAssert.Contains(drop, "_pendingDropDestinationIndex = destinationIndex;");
+        var dispatchIndex = finish.IndexOf("Dispatcher.Dispatch(", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, dispatchIndex);
+        Assert.IsGreaterThan(dispatchIndex, finish.IndexOf("MoveRow(", StringComparison.Ordinal));
+        Assert.IsGreaterThan(dispatchIndex, finish.IndexOf("row.ZIndex = 0;", StringComparison.Ordinal));
+        StringAssert.Contains(finish, "_pendingDropDestinationIndex = null;");
+        StringAssert.Contains(finish, "SaveDownloadOrder();");
+        Assert.IsLessThan(load.IndexOf("_content.Children.Clear();", StringComparison.Ordinal),
+            load.IndexOf("_reloadAfterDrag = true;", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void DownloadedContentStartsBelowTheFloatingNavbarSafeArea()
     {
         var downloadedPage = ReadSource("Shink.Mobile", "Pages", "DownloadedPage.cs");

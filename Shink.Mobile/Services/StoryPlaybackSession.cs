@@ -128,9 +128,8 @@ public sealed class StoryPlaybackSession
         _isChangingPlayback = true;
         try
         {
-            await _audioPlaybackService.PlayAsync(
-                playbackUrl,
-                new AudioPlaybackMetadata(story.Title, "Schink Stories", artworkUrl));
+            var playedUrl = await PlayAudioWithRetryAsync(playbackItem, playbackUrl);
+            playbackItem = playbackItem with { PlaybackUrl = playedUrl };
         }
         catch
         {
@@ -182,12 +181,10 @@ public sealed class StoryPlaybackSession
         _isChangingPlayback = true;
         try
         {
-            await _audioPlaybackService.PlayAsync(
-                playbackUrl,
-                new AudioPlaybackMetadata(current.Story.Title, "Schink Stories", current.ArtworkUrl));
-            if (switchToDownload)
+            var playedUrl = await PlayAudioWithRetryAsync(current, playbackUrl);
+            if (!string.Equals(current.PlaybackUrl, playedUrl, StringComparison.Ordinal))
             {
-                _current = current with { PlaybackUrl = playbackUrl };
+                _current = current with { PlaybackUrl = playedUrl };
                 await _audioPlaybackService.SeekAsync(position);
             }
         }
@@ -200,6 +197,23 @@ public sealed class StoryPlaybackSession
         StartTrackingTimer();
         RaiseChanged();
     }
+
+    private Task<string> PlayAudioWithRetryAsync(StoryPlaybackItem item, string playbackUrl) =>
+        AudioPlaybackRetry.PlayAsync(playbackUrl,
+            url => _audioPlaybackService.PlayAsync(url,
+                new AudioPlaybackMetadata(item.Story.Title, "Schink Stories", item.ArtworkUrl,
+                    item.Story.Slug, item.Story.Source, item.PlaylistSlug, ContentType: "story",
+                    PlaybackSource: AudioPlaybackMetadata.ResolvePlaybackSource(url))),
+            async () =>
+            {
+                if (Connectivity.Current.NetworkAccess != NetworkAccess.Internet) return null;
+                // The authorization endpoint issues a fresh, expiring audio URL.
+                var detail = await _apiClient.GetStoryAsync(item.Story.Slug, item.Story.Source);
+                if (detail is null || detail.RequiresSubscription || string.IsNullOrWhiteSpace(detail.AudioUrl))
+                    return null;
+                return await _apiClient.PrepareAudioPlaybackSourceAsync(
+                    detail.AudioUrl, item.Story.Slug, item.Story.Source);
+            });
 
     public async Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
     {

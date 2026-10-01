@@ -1,7 +1,6 @@
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 #if ANDROID
 using Android.Runtime;
 #endif
@@ -17,9 +16,6 @@ public sealed class MobileCrashReporter
     private const int MaxStoredStackTraceLength = 24_000;
     private static readonly TimeSpan FatalFlushTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ReplayFlushTimeout = TimeSpan.FromSeconds(10);
-    private static readonly Regex SensitiveValuePattern = new(
-        @"(?i)((?:bearer\s+)|(?:(?:access_token|refresh_token|token|authorization|password|secret|signature|sig|code)\s*[=:]\s*))[^&\s,;]+",
-        RegexOptions.CultureInvariant);
 
     private readonly MobileAnalyticsService _analytics;
     private int _isStarted;
@@ -80,21 +76,24 @@ public sealed class MobileCrashReporter
             return;
         }
 
-        var pendingCrashPath = PersistPendingCrash(exception, origin, isTerminating);
+        var crashReportId = Guid.NewGuid().ToString("N");
+        var identity = _analytics.CurrentIdentity;
+        var pendingCrashPath = PersistPendingCrash(exception, origin, isTerminating, crashReportId, identity);
         var delivered = false;
 
         try
         {
-            delivered = _analytics.TrackExceptionAndFlushAsync(
+            delivered = _analytics.TrackOriginalExceptionAndFlushAsync(
                     exception,
                     origin,
                     new Dictionary<string, object>
                     {
                         ["global_exception_handler"] = true,
                         ["is_terminating"] = isTerminating,
-                        ["managed_thread_id"] = Environment.CurrentManagedThreadId
+                        ["managed_thread_id"] = Environment.CurrentManagedThreadId,
+                        ["crash_report_id"] = crashReportId
                     },
-                    FatalFlushTimeout)
+                    FatalFlushTimeout, identity)
                 .GetAwaiter()
                 .GetResult();
         }
@@ -151,7 +150,12 @@ public sealed class MobileCrashReporter
             }
 
             var exception = CreateReplayException(pendingCrash);
-            var delivered = await _analytics.TrackExceptionAndFlushAsync(
+            // Older reports have no account attribution. Never infer their
+            // owner from whichever account happens to be signed in now.
+            var identity = string.IsNullOrWhiteSpace(pendingCrash.AnalyticsDistinctId)
+                ? _analytics.AnonymousIdentity
+                : new MobileAnalyticsIdentity(pendingCrash.AnalyticsDistinctId, pendingCrash.AnalyticsEmail);
+            var delivered = await _analytics.TrackOriginalExceptionAndFlushAsync(
                     exception,
                     "previous_session_managed_crash",
                     new Dictionary<string, object>
@@ -164,9 +168,13 @@ public sealed class MobileCrashReporter
                         ["original_app_version"] = pendingCrash.AppVersion,
                         ["original_app_build"] = pendingCrash.AppBuild,
                         ["original_platform"] = pendingCrash.Platform,
-                        ["original_os_version"] = pendingCrash.OsVersion
+                        ["original_os_version"] = pendingCrash.OsVersion,
+                        ["crash_report_id"] = string.IsNullOrWhiteSpace(pendingCrash.CrashReportId)
+                            ? System.IO.Path.GetFileNameWithoutExtension(pendingCrashPath) : pendingCrash.CrashReportId,
+                        ["original_stack_trace"] = SanitizeForStorage(pendingCrash.StackTrace, MaxStoredStackTraceLength),
+                        ["native_stack_trace"] = SanitizeForStorage(pendingCrash.NativeStackTrace, MaxStoredStackTraceLength)
                     },
-                    ReplayFlushTimeout)
+                    ReplayFlushTimeout, identity)
                 .ConfigureAwait(false);
 
             if (!delivered)
@@ -178,7 +186,8 @@ public sealed class MobileCrashReporter
         }
     }
 
-    private static string? PersistPendingCrash(Exception exception, string origin, bool isTerminating)
+    private static string? PersistPendingCrash(Exception exception, string origin, bool isTerminating,
+        string crashReportId, MobileAnalyticsIdentity identity)
     {
         try
         {
@@ -192,7 +201,13 @@ public sealed class MobileCrashReporter
                 ReadSafely(() => AppInfo.VersionString),
                 ReadSafely(() => AppInfo.BuildString),
                 ReadSafely(() => DeviceInfo.Platform.ToString()),
-                ReadSafely(() => DeviceInfo.VersionString));
+                ReadSafely(() => DeviceInfo.VersionString))
+            {
+                CrashReportId = crashReportId,
+                NativeStackTrace = MobileCrashDiagnostics.NativeStackTrace(exception),
+                AnalyticsDistinctId = identity.DistinctId,
+                AnalyticsEmail = identity.Email
+            };
 
             var appDataDirectory = FileSystem.AppDataDirectory;
             Directory.CreateDirectory(appDataDirectory);
@@ -235,15 +250,7 @@ public sealed class MobileCrashReporter
 
     private static string SanitizeForStorage(string? value, int maximumLength)
     {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        var sanitized = SensitiveValuePattern.Replace(value, "$1[redacted]");
-        return sanitized.Length <= maximumLength
-            ? sanitized
-            : sanitized[..maximumLength];
+        return MobileCrashDiagnostics.Sanitize(value, maximumLength);
     }
 
     private static string ReadSafely(Func<string> read)
@@ -301,7 +308,13 @@ internal sealed record PendingMobileCrash(
     string AppVersion,
     string AppBuild,
     string Platform,
-    string OsVersion);
+    string OsVersion)
+{
+    public string CrashReportId { get; init; } = string.Empty;
+    public string NativeStackTrace { get; init; } = string.Empty;
+    public string AnalyticsDistinctId { get; init; } = string.Empty;
+    public string? AnalyticsEmail { get; init; }
+}
 
 [JsonSourceGenerationOptions(WriteIndented = false)]
 [JsonSerializable(typeof(PendingMobileCrash))]

@@ -1,10 +1,5 @@
 namespace Shink.Mobile.Services;
 
-public sealed record AudioPlaybackMetadata(
-    string Title,
-    string? Artist = null,
-    string? ArtworkUrl = null);
-
 public interface IAudioPlaybackService
 {
     bool IsPlaying { get; }
@@ -184,7 +179,6 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         AVFoundation.AVPlayerItem? playerItem = null;
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
-            _metadata = metadata;
             ConfigureAudioSession();
             ConfigureRemoteCommands();
 
@@ -227,12 +221,26 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             }
             else
             {
+                _metadata = metadata ?? _metadata;
                 playerItem = _player?.CurrentItem;
             }
         });
 
         _ = LoadArtworkForMetadataAsync(metadata);
-        await WaitUntilReadyToPlayAsync(playerItem);
+        try
+        {
+            await WaitUntilReadyToPlayAsync(playerItem);
+        }
+        catch
+        {
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                // AVPlayerItem remains Failed after a load error. A subsequent
+                // attempt must create a new item, even when the URL is unchanged.
+                if (playerItem is not null && ReferenceEquals(_player?.CurrentItem, playerItem)) Stop();
+            });
+            throw;
+        }
 
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
@@ -242,7 +250,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             ApplyPlaybackSpeed();
             UpdateNowPlayingInfo();
             PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
-            _analytics.TrackEvent("mobile_audio_played", BuildPlaybackProperties(metadata));
+            _analytics.TrackEvent("mobile_audio_played", BuildPlaybackProperties(_metadata));
         });
     }
 
@@ -252,10 +260,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         ApplyPlaybackSpeed();
         UpdateNowPlayingInfo();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
-        _analytics.TrackEvent("mobile_audio_speed_changed", new Dictionary<string, object>
-        {
-            ["playback_speed"] = _playbackSpeed
-        });
+        _analytics.TrackEvent("mobile_audio_speed_changed", BuildPlaybackProperties(_metadata));
     }
 
     public async Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
@@ -282,11 +287,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             await MainThread.InvokeOnMainThreadAsync(UpdateNowPlayingInfo);
         }
 
-        _analytics.TrackEvent("mobile_audio_seeked", new Dictionary<string, object>
-        {
-            ["position_seconds"] = targetSeconds,
-            ["duration_seconds"] = duration?.TotalSeconds ?? 0
-        });
+        if (seekCompleted && ReferenceEquals(_player, player))
+            _analytics.TrackEvent("mobile_audio_seeked", BuildPlaybackProperties(_metadata, targetSeconds, duration?.TotalSeconds ?? 0));
     }
 
     public void Pause()
@@ -295,7 +297,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         IsPlaying = false;
         UpdateNowPlayingInfo();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
-        _analytics.TrackEvent("mobile_audio_paused", BuildPlaybackProperties(_metadata));
+        if (_player is not null)
+            _analytics.TrackEvent("mobile_audio_paused", BuildPlaybackProperties(_metadata));
     }
 
     public void Stop()
@@ -317,7 +320,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         IsPlaying = false;
         ClearNowPlayingInfo();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
-        _analytics.TrackEvent("mobile_audio_stopped", BuildPlaybackProperties(metadata, position, duration));
+        if (player is not null)
+            _analytics.TrackEvent("mobile_audio_stopped", BuildPlaybackProperties(metadata, position, duration));
 
         if (_endedObserver is not null)
         {
@@ -559,7 +563,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             {
                 var errorMessage = await MainThread.InvokeOnMainThreadAsync(() =>
                     playerItem.Error?.LocalizedDescription);
-                throw new InvalidOperationException(
+                throw new AudioPlaybackLoadException(
                     string.IsNullOrWhiteSpace(errorMessage)
                         ? "Kon nie die audio stroom oopmaak nie."
                         : $"Kon nie die audio stroom oopmaak nie: {errorMessage}");
@@ -591,14 +595,9 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         AudioPlaybackMetadata? metadata,
         double? positionSeconds = null,
         double? durationSeconds = null) =>
-        new()
-        {
-            ["title"] = string.IsNullOrWhiteSpace(metadata?.Title) ? "Schink Stories" : metadata.Title,
-            ["artist"] = string.IsNullOrWhiteSpace(metadata?.Artist) ? "Schink Stories" : metadata.Artist,
-            ["position_seconds"] = positionSeconds ?? CurrentPosition.TotalSeconds,
-            ["duration_seconds"] = durationSeconds ?? Duration?.TotalSeconds ?? 0,
-            ["playback_speed"] = _playbackSpeed
-        };
+        (metadata ?? new AudioPlaybackMetadata("Schink Stories")).ToAnalyticsProperties(
+            positionSeconds ?? CurrentPosition.TotalSeconds,
+            durationSeconds ?? Duration?.TotalSeconds ?? 0, _playbackSpeed);
 }
 #elif ANDROID
 public sealed class AudioPlaybackService : IAudioPlaybackService
@@ -840,10 +839,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         _playbackSpeed = NormalizePlaybackSpeed(speed);
         ApplyPlaybackSpeed();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
-        _analytics.TrackEvent("mobile_audio_speed_changed", new Dictionary<string, object>
-        {
-            ["playback_speed"] = _playbackSpeed
-        });
+        _analytics.TrackEvent("mobile_audio_speed_changed", BuildPlaybackProperties(_metadata));
     }
 
     public async Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
@@ -891,11 +887,9 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             player.SeekComplete -= seekCompletedHandler;
         }
 
-        _analytics.TrackEvent("mobile_audio_seeked", new Dictionary<string, object>
-        {
-            ["position_seconds"] = targetMilliseconds / 1000d,
-            ["duration_seconds"] = durationMilliseconds / 1000d
-        });
+        if (ReferenceEquals(_player, player))
+            _analytics.TrackEvent("mobile_audio_seeked", BuildPlaybackProperties(_metadata,
+                targetMilliseconds / 1000d, durationMilliseconds / 1000d));
     }
 
     public void Pause()
@@ -904,7 +898,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         IsPlaying = false;
         StopBackgroundPlaybackService();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
-        _analytics.TrackEvent("mobile_audio_paused", BuildPlaybackProperties(_metadata));
+        if (_player is not null)
+            _analytics.TrackEvent("mobile_audio_paused", BuildPlaybackProperties(_metadata));
     }
 
     public void SetBackgroundPlaybackActive(bool isActive)
@@ -944,7 +939,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
         StopBackgroundPlaybackService();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
-        _analytics.TrackEvent("mobile_audio_stopped", BuildPlaybackProperties(metadata, position, duration));
+        if (player is not null)
+            _analytics.TrackEvent("mobile_audio_stopped", BuildPlaybackProperties(metadata, position, duration));
     }
 
     private Android.Media.MediaPlayer? TakePreparedPlayer(string audioUrl)
@@ -985,7 +981,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         EventHandler<Android.Media.MediaPlayer.ErrorEventArgs> errorHandler = (_, args) =>
         {
             args.Handled = true;
-            ready.TrySetException(new InvalidOperationException("Kon nie die audio stroom oopmaak nie."));
+            ready.TrySetException(new AudioPlaybackLoadException("Kon nie die audio stroom oopmaak nie."));
         };
         player.Prepared += preparedHandler;
         player.Error += errorHandler;
@@ -1124,14 +1120,9 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         AudioPlaybackMetadata? metadata,
         double? positionSeconds = null,
         double? durationSeconds = null) =>
-        new()
-        {
-            ["title"] = string.IsNullOrWhiteSpace(metadata?.Title) ? "Schink Stories" : metadata.Title,
-            ["artist"] = string.IsNullOrWhiteSpace(metadata?.Artist) ? "Schink Stories" : metadata.Artist,
-            ["position_seconds"] = positionSeconds ?? CurrentPosition.TotalSeconds,
-            ["duration_seconds"] = durationSeconds ?? Duration?.TotalSeconds ?? 0,
-            ["playback_speed"] = _playbackSpeed
-        };
+        (metadata ?? new AudioPlaybackMetadata("Schink Stories")).ToAnalyticsProperties(
+            positionSeconds ?? CurrentPosition.TotalSeconds,
+            durationSeconds ?? Duration?.TotalSeconds ?? 0, _playbackSpeed);
 }
 #else
 public sealed class AudioPlaybackService : IAudioPlaybackService

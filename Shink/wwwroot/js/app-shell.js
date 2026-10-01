@@ -72,7 +72,8 @@
             window.posthog.init(apiKey, {
                 api_host: hostUrl,
                 person_profiles: "identified_only",
-                capture_pageview: true,
+                // Blazor changes routes without reloading the document.
+                capture_pageview: "history_change",
                 capture_pageleave: true
             });
             identifyPostHogUser();

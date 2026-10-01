@@ -105,7 +105,8 @@
         <MudTabs Class="admin-tabs"
                  Rounded="true"
                  OnPreviewInteraction="HandleAdminTabPreviewInteraction"
-                 @bind-ActivePanelIndex="_activeAdminTabIndex">
+                 @bind-ActivePanelIndex="_activeAdminTabIndex"
+                 @bind-ActivePanelIndex:after="EnsureActiveAdminTabDataAsync">
             <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
                 <section class="admin-section">
                     <div class="admin-section-head admin-subscriber-section-head">
@@ -941,6 +942,14 @@
             </MudTabPanel>
 
             <MudTabPanel Text='@T("Stories", "Stories")'>
+                @if (IsLoadingStoryCatalog)
+                {
+                    <section class="admin-state" role="status" aria-live="polite">
+                        <h2>@T("Laai stories...", "Loading stories...")</h2>
+                    </section>
+                }
+                else
+                {
                 <section class="admin-section">
             <div class="admin-section-head">
                 <div class="admin-search">
@@ -1130,9 +1139,18 @@
                 </PagerContent>
             </MudTable>
                 </section>
+                }
             </MudTabPanel>
 
             <MudTabPanel Text='@T("Playlists", "Playlists")'>
+                @if (IsLoadingStoryCatalog)
+                {
+                    <section class="admin-state" role="status" aria-live="polite">
+                        <h2>@T("Laai playlists...", "Loading playlists...")</h2>
+                    </section>
+                }
+                else
+                {
                 <section class="admin-section">
             <div class="admin-section-head">
                 <div class="admin-search">
@@ -1455,6 +1473,7 @@
             </MudTable>
 
                 </section>
+                }
             </MudTabPanel>
 
             <MudTabPanel Text='@T("Karakters", "Characters")'>
@@ -1486,6 +1505,14 @@
             </MudTabPanel>
 
             <MudTabPanel Text='@T("Analitika", "Analytics")'>
+                @if (IsLoadingAnalyticsTab)
+                {
+                    <section class="admin-state" role="status" aria-live="polite">
+                        <h2>@T("Laai analitika...", "Loading analytics...")</h2>
+                    </section>
+                }
+                else
+                {
                 <section class="admin-section admin-analytics-section">
                     <div class="admin-section-head">
                         <div class="admin-analytics-copy">
@@ -3269,6 +3296,7 @@
                         </MudTabPanel>
                     </MudTabs>
                 </section>
+                }
             </MudTabPanel>
 
             <MudTabPanel Text='@T("Instellings", "Settings")'>
@@ -5153,7 +5181,7 @@
     private IJSObjectReference? AdminUploadModule { get; set; }
     private IJSObjectReference? AdminGridModule { get; set; }
     private bool SubscriberGridEnhancementPending { get; set; } = true;
-    private bool SubscriberTableReloadPending { get; set; } = true;
+    private bool SubscriberTableReloadPending { get; set; }
     private TableState? LastSubscriberTableState { get; set; }
 
     private IReadOnlyList<AdminStoryRecord> AvailableStoriesForPlaylist =>
@@ -5508,7 +5536,9 @@
                 return;
             }
 
-            await LoadAllAsync();
+            // The subscriber table loads its first page when it renders. Catalogs and
+            // historical reports are only needed after their tabs are selected.
+            IsLoading = false;
         }
         catch (Exception exception)
         {
@@ -5547,15 +5577,6 @@
             {
                 // Ignore storage availability issues (private mode / blocked storage).
                 Logger.LogDebug(exception, "Admin language preference load skipped.");
-            }
-
-            try
-            {
-                AdminUploadModule = await GetAdminUploadModuleAsync();
-            }
-            catch (Exception exception)
-            {
-                Logger.LogWarning(exception, "Admin direct-upload module could not be loaded during first render.");
             }
         }
 
@@ -5676,14 +5697,56 @@
             : AdminLanguage.Afrikaans;
     }
 
-    private async Task LoadAllAsync()
+    private Task? StoryCatalogLoadTask;
+    private Task? AnalyticsTabLoadTask;
+    private bool HasLoadedStories;
+    private bool HasLoadedPlaylists;
+    private bool HasLoadedAnalytics;
+    private bool IsLoadingStoryCatalog => StoryCatalogLoadTask is { IsCompleted: false };
+    private bool IsLoadingAnalyticsTab => AnalyticsTabLoadTask is { IsCompleted: false };
+
+    private Task EnsureActiveAdminTabDataAsync() => _activeAdminTabIndex switch
     {
-        IsLoading = true;
-        var storiesTask = RefreshStoriesAsync();
-        var playlistsTask = RefreshPlaylistsAsync();
-        var analyticsTask = RefreshAnalyticsAsync();
-        await Task.WhenAll(storiesTask, playlistsTask, analyticsTask);
-        IsLoading = false;
+        1 or 2 => EnsureStoryCatalogAsync(),
+        10 => EnsureAnalyticsTabAsync(),
+        _ => Task.CompletedTask
+    };
+
+    private Task EnsureStoryCatalogAsync()
+    {
+        if (StoryCatalogLoadTask is { IsCompleted: false })
+        {
+            return StoryCatalogLoadTask;
+        }
+
+        if (HasLoadedStories && HasLoadedPlaylists)
+        {
+            return Task.CompletedTask;
+        }
+
+        // Both editors use the story/playlist relationship. Share one load when
+        // switching tabs while requests are still running, and retry failed loads.
+        return StoryCatalogLoadTask = Task.WhenAll(
+            HasLoadedStories ? Task.CompletedTask : RefreshStoriesAsync(),
+            HasLoadedPlaylists ? Task.CompletedTask : RefreshPlaylistsAsync());
+    }
+
+    private Task EnsureAnalyticsTabAsync()
+    {
+        if (AnalyticsTabLoadTask is { IsCompleted: false })
+        {
+            return AnalyticsTabLoadTask;
+        }
+
+        if (HasLoadedAnalytics && HasLoadedSubscriberReports)
+        {
+            return EnsureStoryCatalogAsync();
+        }
+
+        // Story statistics also include catalog entries with no recorded activity.
+        return AnalyticsTabLoadTask = Task.WhenAll(
+            EnsureStoryCatalogAsync(),
+            RefreshAnalyticsAsync());
     }
 
     private async Task SearchSubscribersAsync()
@@ -6045,6 +6108,7 @@
         {
             var targetStoryId = selectedStoryId ?? StoryEditor?.StoryId;
             Stories = await AdminManagementService.GetStoriesAsync(CurrentAdminEmail, StorySearch);
+            HasLoadedStories = true;
             var selectedStory = targetStoryId is not null
                 ? Stories.FirstOrDefault(story => story.StoryId == targetStoryId.Value)
                 : Stories.FirstOrDefault();
@@ -6061,6 +6125,7 @@
         catch (Exception exception)
         {
             Logger.LogError(exception, "Failed to refresh stories.");
+            HasLoadedStories = false;
             Stories = Array.Empty<AdminStoryRecord>();
             StoryEditor = null;
             StoryEditorStateSignature = null;
@@ -6075,6 +6140,7 @@
         {
             var targetPlaylistId = selectedPlaylistId ?? PlaylistEditor?.PlaylistId;
             Playlists = await AdminManagementService.GetPlaylistsAsync(CurrentAdminEmail);
+            HasLoadedPlaylists = true;
             ResetPlaylistOrderDraft();
 
             var selectedPlaylist = targetPlaylistId is not null
@@ -6104,6 +6170,7 @@
         catch (Exception exception)
         {
             Logger.LogError(exception, "Failed to refresh playlists.");
+            HasLoadedPlaylists = false;
             Playlists = Array.Empty<AdminPlaylistRecord>();
             PlaylistOrderDraftPositions.Clear();
             SavedPlaylistOrderSignature = null;
@@ -6127,11 +6194,13 @@
         try
         {
             Analytics = await analyticsTask;
+            HasLoadedAnalytics = true;
             EnsureSelectedAnalyticsStory();
         }
         catch (Exception exception)
         {
             Logger.LogError(exception, "Failed to refresh admin analytics.");
+            HasLoadedAnalytics = false;
             Analytics = AdminAnalyticsSnapshot.Empty;
             SelectedAnalyticsStorySlug = string.Empty;
             SetError(T("Kon nie analitika nou laai nie.", "Could not load analytics right now."));

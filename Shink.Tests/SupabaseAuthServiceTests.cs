@@ -142,6 +142,96 @@ public class SupabaseAuthServiceTests
     }
 
     [TestMethod]
+    [DataRow("apple", false)]
+    [DataRow("google", false)]
+    [DataRow("google", true)]
+    public async Task OAuthStart_UsesSelectedProviderAndCorrectPkceChallenge(string provider, bool implicitFlow)
+    {
+        using var httpClient = new HttpClient();
+        var service = CreateService(httpClient);
+        const string callback = "https://www.schink.co.za/auth/callback";
+        var result = provider == "apple"
+            ? await service.StartAppleSignInAsync(callback)
+            : await service.StartGoogleSignInAsync(callback, implicitFlow);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(result.RedirectUri!.Query);
+        Assert.AreEqual(provider, query["provider"].ToString());
+        Assert.AreEqual(callback, query["redirect_to"].ToString());
+        if (implicitFlow)
+        {
+            Assert.IsFalse(query.ContainsKey("code_challenge"));
+            return;
+        }
+
+        Assert.IsFalse(string.IsNullOrWhiteSpace(result.CodeVerifier));
+        var expectedChallenge = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(
+            System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(result.CodeVerifier!)));
+        Assert.AreEqual(expectedChallenge, query["code_challenge"].ToString());
+        Assert.AreEqual("s256", query["code_challenge_method"].ToString().ToLowerInvariant());
+    }
+
+    [TestMethod]
+    [DataRow("", "verifier")]
+    [DataRow("code", "")]
+    public async Task ExchangeAppleAuthCodeAsync_RejectsMissingCodeOrVerifier(string code, string verifier)
+    {
+        using var httpClient = new HttpClient();
+        var result = await CreateService(httpClient).ExchangeAppleAuthCodeAsync(code, verifier);
+        Assert.IsFalse(result.IsSuccess);
+        StringAssert.Contains(result.ErrorMessage!, "Apple-aanmelding");
+    }
+
+    [TestMethod]
+    public async Task ExchangeAppleAuthCodeAsync_SendsPkceVerifierAndReadsAppleRelayProfile()
+    {
+        var portProbe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        portProbe.Start();
+        var port = ((IPEndPoint)portProbe.LocalEndpoint).Port;
+        portProbe.Stop();
+        using var listener = new HttpListener();
+        var baseUrl = $"http://127.0.0.1:{port}/";
+        listener.Prefixes.Add(baseUrl);
+        listener.Start();
+        var requestTask = Task.Run(async () =>
+        {
+            var context = await listener.GetContextAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            try
+            {
+                Assert.AreEqual("POST", context.Request.HttpMethod);
+                Assert.AreEqual("/auth/v1/token", context.Request.Url!.AbsolutePath);
+                Assert.AreEqual("pkce", context.Request.QueryString["grant_type"]);
+                using var reader = new StreamReader(context.Request.InputStream);
+                var body = await reader.ReadToEndAsync();
+                using var json = System.Text.Json.JsonDocument.Parse(body);
+                Assert.AreEqual("apple-code", json.RootElement.GetProperty("auth_code").GetString());
+                Assert.AreEqual("browser-verifier", json.RootElement.GetProperty("code_verifier").GetString());
+                var bytes = Encoding.UTF8.GetBytes("""
+                    {"access_token":"access-token","refresh_token":"refresh-token","expires_in":3600,
+                     "token_type":"bearer","user":{"id":"12345678-1234-1234-1234-123456789012",
+                     "email":"parent@privaterelay.appleid.com","user_metadata":{"full_name":"Apple Parent"}}}
+                    """);
+                context.Response.ContentType = "application/json";
+                await context.Response.OutputStream.WriteAsync(bytes);
+            }
+            finally
+            {
+                context.Response.Close();
+            }
+        });
+        using var httpClient = new HttpClient();
+        var service = new SupabaseAuthService(httpClient,
+            Options.Create(new SupabaseOptions { Url = baseUrl.TrimEnd('/'), PublishableKey = "publishable-key" }),
+            new EmptyWordPressMigrationService(), new WordPressPasswordVerifier(),
+            NullLogger<SupabaseAuthService>.Instance);
+        var result = await service.ExchangeAppleAuthCodeAsync("apple-code", "browser-verifier").WaitAsync(TimeSpan.FromSeconds(15));
+        await requestTask;
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual("parent@privaterelay.appleid.com", result.UserEmail);
+        Assert.AreEqual("Apple Parent", result.DisplayName);
+    }
+
+    [TestMethod]
     public async Task ExchangeAppleIdentityTokenAsync_PostsNativeIdTokenWithRawNonceAndReturnsUserEmail()
     {
         string? requestBody = null;

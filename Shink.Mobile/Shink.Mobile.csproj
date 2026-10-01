@@ -15,7 +15,7 @@
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
     <ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
-		<ApplicationVersion>34</ApplicationVersion>
+		<ApplicationVersion>35</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' == 'true'">24.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' != 'true'">21.0</SupportedOSPlatformVersion>
@@ -77,9 +77,15 @@
   <ItemGroup>
     <MauiIcon Include="Resources/AppIcon/schink_appicon.png"
               Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'" />
-    <MauiIcon Include="Resources/AppIcon/schink_appicon.png"
+    <!-- Adaptive launchers crop a 108dp layer to roughly 72dp. Keep the original
+         artwork centred inside the 66dp safe zone for both launcher shapes. -->
+    <MauiIcon Include="Resources/AppIcon/schink_appicon.svg"
+              ForegroundFile="Resources/AppIcon/schink_appicon.png"
+              ForegroundScale="0.6"
               Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'" />
-    <MauiIcon Include="Resources/AppIcon/schink_android_round_icon.png"
+    <MauiIcon Include="Resources/AppIcon/schink_android_round_icon.svg"
+              ForegroundFile="Resources/AppIcon/schink_appicon.png"
+              ForegroundScale="0.6"
               Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'" />
     <MauiFont Include="../Shink/wwwroot/lib/fontawesome/webfonts/fa-regular-400.ttf"
               Alias="FontAwesomeRegular" />

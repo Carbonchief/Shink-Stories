@@ -53,6 +53,8 @@ public sealed class MobileAnalyticsService
     private readonly SessionState _sessionState;
     private readonly string _anonymousDistinctId;
     private string? _lastScreenName;
+    private readonly object _identityGate = new();
+    private string? _lastIdentifiedEmail;
 
     public MobileAnalyticsService(
         IPostHogClient postHog,
@@ -63,6 +65,7 @@ public sealed class MobileAnalyticsService
         _settings = settings;
         _sessionState = sessionState;
         _anonymousDistinctId = GetOrCreateAnonymousDistinctId();
+        _sessionState.Changed += _ => IdentifyCurrentSession();
     }
 
     public bool IsConfigured => _settings.IsConfigured;
@@ -86,12 +89,17 @@ public sealed class MobileAnalyticsService
         }
 
         screenName = screenName.Trim();
-        Volatile.Write(ref _lastScreenName, screenName);
-        var distinctId = ResolveDistinctId();
-        var eventProperties = BuildProperties(properties);
-        eventProperties["screen_name"] = screenName;
-
-        TryCapture(() => _postHog.CaptureScreenView(distinctId, screenName, eventProperties));
+        var previousScreen = Interlocked.Exchange(ref _lastScreenName, screenName);
+        TryCapture(() =>
+        {
+            var session = _sessionState.Current;
+            var identity = MobileAnalyticsIdentity.FromSession(session, _anonymousDistinctId);
+            var eventProperties = BuildProperties("$screen", session, identity, properties);
+            eventProperties["screen_name"] = screenName;
+            if (!string.IsNullOrWhiteSpace(previousScreen))
+                eventProperties["previous_screen_name"] = previousScreen;
+            return _postHog.CaptureScreenView(identity.DistinctId, screenName, eventProperties);
+        });
     }
 
     public void TrackEvent(string eventName, IReadOnlyDictionary<string, object>? properties = null)
@@ -101,10 +109,37 @@ public sealed class MobileAnalyticsService
             return;
         }
 
-        TryCapture(() => _postHog.Capture(ResolveDistinctId(), eventName, BuildProperties(properties)));
+        TryCapture(() =>
+        {
+            var session = _sessionState.Current;
+            var identity = MobileAnalyticsIdentity.FromSession(session, _anonymousDistinctId);
+            return _postHog.Capture(identity.DistinctId, eventName, BuildProperties(eventName, session, identity, properties));
+        });
+    }
+
+    public void TrackRecoverableFailure(Exception exception, string context,
+        IReadOnlyDictionary<string, object>? properties = null)
+    {
+        var reason = MobileTransientFailure.Reason(exception);
+        if (reason is null)
+        {
+            TrackException(exception, context, properties);
+            return;
+        }
+
+        var eventProperties = properties?.ToDictionary(pair => pair.Key, pair => pair.Value)
+            ?? new Dictionary<string, object>();
+        eventProperties["failure_reason"] = reason;
+        eventProperties["exception_type"] = exception.GetType().Name;
+        eventProperties["outcome"] = "deferred";
+        TrackEvent(context, eventProperties);
     }
 
     public bool TrackException(Exception exception, string context, IReadOnlyDictionary<string, object>? properties = null)
+        => TrackExceptionCore(exception, context, properties);
+
+    private bool TrackExceptionCore(Exception exception, string context,
+        IReadOnlyDictionary<string, object>? properties, MobileAnalyticsIdentity? originalIdentity = null)
     {
         if (!_settings.IsConfigured)
         {
@@ -113,10 +148,21 @@ public sealed class MobileAnalyticsService
 
         return TryCapture(() =>
         {
-            var eventProperties = BuildProperties(properties);
+            var session = _sessionState.Current;
+            var identity = originalIdentity ?? MobileAnalyticsIdentity.FromSession(session, _anonymousDistinctId);
+            var eventProperties = BuildProperties("$exception", session, identity, properties, isException: true);
+            if (originalIdentity is not null)
+            {
+                // A replay may run after a different account signs in.
+                eventProperties["is_signed_in"] = identity.Email is not null;
+                eventProperties.Remove("has_paid_subscription");
+            }
             eventProperties["context"] = context;
             eventProperties["exception_type"] = exception.GetType().Name;
-            return _postHog.CaptureException(exception, ResolveDistinctId(), eventProperties);
+            eventProperties["exception_details"] = MobileCrashDiagnostics.Sanitize(exception.ToString(), 24_000);
+            var nativeStack = MobileCrashDiagnostics.NativeStackTrace(exception);
+            if (!string.IsNullOrWhiteSpace(nativeStack)) eventProperties["native_stack_trace"] = nativeStack;
+            return _postHog.CaptureException(exception, identity.DistinctId, eventProperties);
         });
     }
 
@@ -136,8 +182,39 @@ public sealed class MobileAnalyticsService
 
     public void IdentifyCurrentSession()
     {
-        // Analytics intentionally stays anonymous. Do not attach email addresses
-        // or other account identifiers to the PostHog person profile.
+        if (!_settings.IsConfigured) return;
+        lock (_identityGate)
+        {
+            var identity = CurrentIdentity;
+            if (identity.Email is null)
+            {
+                _lastIdentifiedEmail = null;
+                return;
+            }
+            if (identity.Email == _lastIdentifiedEmail) return;
+            // The .NET SDK has explicit distinct IDs rather than a stateful
+            // frontend identify/reset API. Set this account's person properties
+            // without aliasing the shared installation to it.
+            if (TryCapture(() =>
+            {
+                var properties = new Dictionary<string, object>();
+                identity.ApplyTo(properties);
+                return _postHog.Capture(identity.DistinctId, "$set", properties);
+            }))
+                _lastIdentifiedEmail = identity.Email;
+        }
+    }
+
+    internal MobileAnalyticsIdentity CurrentIdentity =>
+        MobileAnalyticsIdentity.FromSession(_sessionState.Current, _anonymousDistinctId);
+
+    internal MobileAnalyticsIdentity AnonymousIdentity => new(_anonymousDistinctId, null);
+
+    internal async Task<bool> TrackOriginalExceptionAndFlushAsync(Exception exception, string context,
+        IReadOnlyDictionary<string, object> properties, TimeSpan timeout, MobileAnalyticsIdentity identity)
+    {
+        if (!TrackExceptionCore(exception, context, properties, identity)) return false;
+        return await FlushAsync(timeout).ConfigureAwait(false);
     }
 
     public void Flush() =>
@@ -171,27 +248,30 @@ public sealed class MobileAnalyticsService
         }
     }
 
-    private Dictionary<string, object> BuildProperties(IReadOnlyDictionary<string, object>? properties = null)
+    private Dictionary<string, object> BuildProperties(string eventName,
+        MobileSession session, MobileAnalyticsIdentity identity,
+        IReadOnlyDictionary<string, object>? properties = null, bool isException = false)
     {
-        var result = new Dictionary<string, object>
-        {
-            ["app"] = "schink_stories_mobile",
-            ["platform"] = DeviceInfo.Platform.ToString(),
-            ["device_model"] = DeviceInfo.Model,
-            ["device_manufacturer"] = DeviceInfo.Manufacturer,
-            ["os_version"] = DeviceInfo.VersionString,
-            ["app_version"] = AppInfo.VersionString,
-            ["app_build"] = AppInfo.BuildString,
-            ["network_access"] = Connectivity.Current.NetworkAccess.ToString(),
-            ["is_signed_in"] = _sessionState.Current.IsSignedIn,
-            ["has_paid_subscription"] = _sessionState.Current.HasPaidSubscription,
-            ["anonymous_distinct_id"] = _anonymousDistinctId
-        };
+        var result = MobileAnalyticsSchema.DeviceProperties(
+            DeviceInfo.Platform.ToString(), DeviceInfo.Manufacturer, DeviceInfo.Model,
+            DeviceInfo.Idiom.ToString(), DeviceInfo.DeviceType == DeviceType.Virtual,
+            DeviceInfo.VersionString, AppInfo.VersionString, AppInfo.BuildString);
+        result["app"] = "schink_stories_mobile";
+        result["network_access"] = Connectivity.Current.NetworkAccess.ToString();
+        result["is_signed_in"] = session.IsSignedIn;
+        result["has_paid_subscription"] = session.HasPaidSubscription;
+        result["anonymous_distinct_id"] = _anonymousDistinctId;
+#if DEBUG
+        result["build_configuration"] = "debug";
+#else
+        result["build_configuration"] = "release";
+#endif
 
         var lastScreenName = Volatile.Read(ref _lastScreenName);
         if (!string.IsNullOrWhiteSpace(lastScreenName))
         {
             result["last_screen_name"] = lastScreenName;
+            result["screen_name"] = lastScreenName;
         }
 
         if (properties is not null)
@@ -205,10 +285,10 @@ public sealed class MobileAnalyticsService
             }
         }
 
+        identity.ApplyTo(result);
+        MobileAnalyticsSchema.EnrichEvent(result, eventName, lastScreenName, isException);
         return result;
     }
-
-    private string ResolveDistinctId() => _anonymousDistinctId;
 
     private static object NormalizePropertyValue(object value) =>
         value switch

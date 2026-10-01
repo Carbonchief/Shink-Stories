@@ -1625,7 +1625,7 @@ public class MobileAbsoluteUrlSourceTests
         var androidMainActivity = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "MainActivity.cs"));
         var iconPath = GetRepoPath("Shink.Mobile", "Resources", "AppIcon", "schink_appicon.png");
         var playStoreIconPath = GetRepoPath("Shink.Mobile", "Resources", "AppIcon", "schink_appicon_playstore.png");
-        var roundIconPath = GetRepoPath("Shink.Mobile", "Resources", "AppIcon", "schink_android_round_icon.png");
+        var roundIconPath = GetRepoPath("Shink.Mobile", "Resources", "AppIcon", "schink_android_round_icon.svg");
         var macPlayBuild = File.ReadAllText(GetRepoPath("scripts", "build-mobile-play-aab.sh"));
         var windowsPlayBuild = File.ReadAllText(GetRepoPath("scripts", "build-mobile-play-aab.ps1"));
         var testFlightBuild = File.ReadAllText(GetRepoPath("scripts", "build-mobile-testflight-archive.sh"));
@@ -1634,7 +1634,7 @@ public class MobileAbsoluteUrlSourceTests
         var playStoreIconBytes = File.ReadAllBytes(playStoreIconPath);
         var roundIconBytes = File.ReadAllBytes(roundIconPath);
         const string expectedIconSha256 = "8A5D7A16984AD1343D2C7263F0712272B582BB19BA5A9339933ABC2FE2BC7F22";
-        const string expectedRoundIconSha256 = "F2A9CD3EAB2572C096809A8B92CD6D8EF5F77EF2F7F8F6B658891C1C5FD04D2C";
+        const string expectedRoundIconSha256 = "891D3A7C086054FA2070470D62B7748E76F931D981BB1D0B6E85E88B56C8CA3B";
 
         var icons = System.Xml.Linq.XDocument.Parse(project).Descendants("MauiIcon").ToArray();
         Assert.AreEqual(3, icons.Length);
@@ -1642,12 +1642,17 @@ public class MobileAbsoluteUrlSourceTests
             (string?)icon.Attribute("Include") == "Resources/AppIcon/schink_appicon.png" &&
             ((string?)icon.Attribute("Condition") ?? "").Contains("!= 'android'", StringComparison.Ordinal));
         var androidIcon = icons.Single(icon =>
-            (string?)icon.Attribute("Include") == "Resources/AppIcon/schink_appicon.png" &&
+            (string?)icon.Attribute("Include") == "Resources/AppIcon/schink_appicon.svg" &&
             ((string?)icon.Attribute("Condition") ?? "").Contains("== 'android'", StringComparison.Ordinal));
-        var androidRoundIcon = icons.Single(icon => (string?)icon.Attribute("Include") == "Resources/AppIcon/schink_android_round_icon.png");
+        var androidRoundIcon = icons.Single(icon => (string?)icon.Attribute("Include") == "Resources/AppIcon/schink_android_round_icon.svg");
         StringAssert.Contains((string?)iosIcon.Attribute("Condition") ?? "", "!= 'android'");
         StringAssert.Contains((string?)androidIcon.Attribute("Condition") ?? "", "== 'android'");
         StringAssert.Contains((string?)androidRoundIcon.Attribute("Condition") ?? "", "== 'android'");
+        foreach (var androidLauncherIcon in new[] { androidIcon, androidRoundIcon })
+        {
+            Assert.AreEqual("Resources/AppIcon/schink_appicon.png", (string?)androidLauncherIcon.Attribute("ForegroundFile"));
+            Assert.AreEqual("0.6", (string?)androidLauncherIcon.Attribute("ForegroundScale"));
+        }
         StringAssert.Contains(infoPlist, "<key>XSAppIconAssets</key>");
         StringAssert.Contains(infoPlist, "<string>Assets.xcassets/schink_appicon.appiconset</string>");
         StringAssert.Contains(androidManifest, "android:icon=\"@mipmap/schink_appicon\"");

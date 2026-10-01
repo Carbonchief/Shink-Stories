@@ -725,14 +725,27 @@ public sealed class SupabaseAuthService(
                 resolveResult.ErrorMessage ?? "Kon nie jou bevestiging-skakel bevestig nie. Probeer asseblief weer.");
     }
 
-    public async Task<SupabaseOAuthStartResult> StartGoogleSignInAsync(
+    public Task<SupabaseOAuthStartResult> StartGoogleSignInAsync(
         string redirectTo,
         bool useImplicitFlow,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        StartOAuthSignInAsync(Constants.Provider.Google, "Google", redirectTo, useImplicitFlow, cancellationToken);
+
+    public Task<SupabaseOAuthStartResult> StartAppleSignInAsync(
+        string redirectTo,
+        CancellationToken cancellationToken = default) =>
+        StartOAuthSignInAsync(Constants.Provider.Apple, "Apple", redirectTo, false, cancellationToken);
+
+    private async Task<SupabaseOAuthStartResult> StartOAuthSignInAsync(
+        Constants.Provider provider,
+        string providerName,
+        string redirectTo,
+        bool useImplicitFlow,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(redirectTo))
         {
-            return SupabaseOAuthStartResult.Failure("Kon nie Google-aanmelding begin nie. Probeer asseblief weer.");
+            return SupabaseOAuthStartResult.Failure($"Kon nie {providerName}-aanmelding begin nie. Probeer asseblief weer.");
         }
 
         var supabaseClient = await CreateSupabaseClientAsync(cancellationToken);
@@ -744,7 +757,7 @@ public sealed class SupabaseAuthService(
         try
         {
             var providerState = await supabaseClient.Auth.SignIn(
-                Constants.Provider.Google,
+                provider,
                 new SignInOptions
                 {
                     RedirectTo = redirectTo,
@@ -755,26 +768,39 @@ public sealed class SupabaseAuthService(
 
             if (providerState?.Uri is null)
             {
-                return SupabaseOAuthStartResult.Failure("Kon nie Google-aanmelding begin nie. Probeer asseblief weer.");
+                return SupabaseOAuthStartResult.Failure($"Kon nie {providerName}-aanmelding begin nie. Probeer asseblief weer.");
             }
 
             return SupabaseOAuthStartResult.Success(providerState.Uri, providerState.PKCEVerifier);
         }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Supabase Google OAuth start failed.");
-            return SupabaseOAuthStartResult.Failure("Kon nie nou met Google koppel nie. Probeer asseblief weer.");
+            _logger.LogWarning(exception, "Supabase {Provider} OAuth start failed.", providerName);
+            return SupabaseOAuthStartResult.Failure($"Kon nie nou met {providerName} koppel nie. Probeer asseblief weer.");
         }
     }
 
-    public async Task<SupabaseOAuthExchangeResult> ExchangeGoogleAuthCodeAsync(
+    public Task<SupabaseOAuthExchangeResult> ExchangeGoogleAuthCodeAsync(
         string authCode,
         string codeVerifier,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ExchangeOAuthAuthCodeAsync("Google", authCode, codeVerifier, cancellationToken);
+
+    public Task<SupabaseOAuthExchangeResult> ExchangeAppleAuthCodeAsync(
+        string authCode,
+        string codeVerifier,
+        CancellationToken cancellationToken = default) =>
+        ExchangeOAuthAuthCodeAsync("Apple", authCode, codeVerifier, cancellationToken);
+
+    private async Task<SupabaseOAuthExchangeResult> ExchangeOAuthAuthCodeAsync(
+        string providerName,
+        string authCode,
+        string codeVerifier,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(authCode) || string.IsNullOrWhiteSpace(codeVerifier))
         {
-            return SupabaseOAuthExchangeResult.Failure("Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer.");
+            return SupabaseOAuthExchangeResult.Failure($"{providerName}-aanmelding kon nie bevestig word nie. Probeer asseblief weer.");
         }
 
         var supabaseClient = await CreateSupabaseClientAsync(cancellationToken);
@@ -786,12 +812,12 @@ public sealed class SupabaseAuthService(
         try
         {
             var session = await supabaseClient.Auth.ExchangeCodeForSession(codeVerifier, authCode);
-            return CreateGoogleOAuthExchangeResult(session);
+            return CreateGoogleOAuthExchangeResult(session, providerName);
         }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Supabase Google OAuth code exchange failed.");
-            return SupabaseOAuthExchangeResult.Failure("Google-aanmelding het misluk. Probeer asseblief weer.");
+            _logger.LogWarning(exception, "Supabase {Provider} OAuth code exchange failed.", providerName);
+            return SupabaseOAuthExchangeResult.Failure($"{providerName}-aanmelding het misluk. Probeer asseblief weer.");
         }
     }
 
@@ -1638,12 +1664,12 @@ public sealed class SupabaseAuthService(
          (errorMessage.Contains("verval", StringComparison.OrdinalIgnoreCase) ||
           errorMessage.Contains("jwt", StringComparison.OrdinalIgnoreCase)));
 
-    private static SupabaseOAuthExchangeResult CreateGoogleOAuthExchangeResult(Session? session)
+    private static SupabaseOAuthExchangeResult CreateGoogleOAuthExchangeResult(Session? session, string providerName = "Google")
     {
         var email = session?.User?.Email;
         if (string.IsNullOrWhiteSpace(email))
         {
-            return SupabaseOAuthExchangeResult.Failure("Kon nie jou Google-profiel lees nie. Probeer asseblief weer.");
+            return SupabaseOAuthExchangeResult.Failure($"Kon nie jou {providerName}-profiel lees nie. Probeer asseblief weer.");
         }
 
         var userMetadata = session?.User?.UserMetadata;

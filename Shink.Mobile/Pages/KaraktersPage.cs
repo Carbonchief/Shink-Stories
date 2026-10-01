@@ -18,6 +18,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
     private static bool IsIOS => DeviceInfo.Current.Platform == DevicePlatform.iOS;
     private readonly MobileApiClient _apiClient;
+    private readonly MobileAnalyticsService _analytics;
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
     private readonly StoryPlaybackSession _storyPlaybackSession;
@@ -50,9 +51,11 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         MobileApiClient apiClient,
         SessionState sessionState,
         IAudioPlaybackService audioPlaybackService,
-        StoryPlaybackSession storyPlaybackSession)
+        StoryPlaybackSession storyPlaybackSession,
+        MobileAnalyticsService analytics)
     {
         _apiClient = apiClient;
+        _analytics = analytics;
         _sessionState = sessionState;
         _audioPlaybackService = audioPlaybackService;
         _storyPlaybackSession = storyPlaybackSession;
@@ -1109,6 +1112,10 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         profileCard.Scale = 0.94;
         profileCard.Opacity = 0;
         _profileOverlay.IsVisible = true;
+        _analytics.TrackEvent("mobile_character_profile_viewed", new Dictionary<string, object>
+        {
+            ["character_slug"] = character.Slug
+        });
         StartProfileAnimations();
         CharacterAnimations.Pop(imageButton);
         await Task.WhenAll(
@@ -1392,8 +1399,15 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 new AudioPlaybackMetadata(
                     character.DisplayName,
                     "Schink Stories Karakters",
-                    _apiClient.BuildImageUrl(character.ImageUrl)));
+                    _apiClient.BuildImageUrl(character.ImageUrl),
+                    ContentType: "character_preview", CharacterSlug: character.Slug,
+                    PlaybackSource: AudioPlaybackMetadata.ResolvePlaybackSource(playbackUrl)));
             token.ThrowIfCancellationRequested();
+            _analytics.TrackEvent("mobile_character_preview_played", new Dictionary<string, object>
+            {
+                ["character_slug"] = character.Slug,
+                ["clip_slug"] = clip.StreamSlug
+            });
             OnPreviewPlaybackChanged(this, EventArgs.Empty);
             _ = _apiClient.TrackCharacterProfileListenAsync(character.Slug, clip.StreamSlug);
         }

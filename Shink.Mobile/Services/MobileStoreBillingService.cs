@@ -476,7 +476,7 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         {
             if (!await billing.ConnectAsync(true, cancellationToken))
             {
-                throw new InvalidOperationException("Die winkel kon nie vir herstel verbind word nie.");
+                throw new MobileStoreUnavailableException();
             }
 
             var purchases = await billing.GetPurchasesAsync(ItemType.Subscription, cancellationToken);

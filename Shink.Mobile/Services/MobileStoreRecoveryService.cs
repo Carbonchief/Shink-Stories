@@ -8,6 +8,7 @@ public sealed class MobileStoreRecoveryService(
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly StoreRecoveryBackoff _backoff = new();
     private string? _account;
     private bool _started;
 
@@ -15,7 +16,7 @@ public sealed class MobileStoreRecoveryService(
     {
         if (_started) return;
         _started = true;
-        billing.PurchasesUpdated += (_, _) => _ = RecoverAsync();
+        billing.PurchasesUpdated += (_, _) => _ = RecoverAsync(force: true);
         lifecycle.Resumed += (_, _) => _ = RecoverAsync();
         lifecycle.Destroying += (_, _) => _lifetime.Cancel();
         session.Changed += value =>
@@ -23,7 +24,7 @@ public sealed class MobileStoreRecoveryService(
             var account = value.IsSignedIn ? value.Email : null;
             if (string.Equals(_account, account, StringComparison.OrdinalIgnoreCase)) return;
             _account = account;
-            _ = RecoverAsync();
+            _ = RecoverAsync(force: true);
         };
         _ = RunAsync();
     }
@@ -39,17 +40,24 @@ public sealed class MobileStoreRecoveryService(
         catch (OperationCanceledException) { }
     }
 
-    public async Task RecoverAsync()
+    public async Task RecoverAsync(bool force = false)
     {
-        if (lifecycle.IsBackgrounded || !await _gate.WaitAsync(0)) return;
+        if (_lifetime.IsCancellationRequested || lifecycle.IsBackgrounded) return;
+#if ANDROID
+        if (Connectivity.Current.NetworkAccess != NetworkAccess.Internet) return;
+#endif
+        if (!await _gate.WaitAsync(0)) return;
         try
         {
+            if (!force && !_backoff.CanAttempt(DateTimeOffset.UtcNow)) return;
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             timeout.CancelAfter(TimeSpan.FromSeconds(25));
             // Also attaches Apple's observer at startup, before any paywall is opened.
             var purchases = await MainThread.InvokeOnMainThreadAsync(() => billing.GetPendingPurchasesAsync(timeout.Token));
+            _backoff.Succeeded();
             var email = session.Current.Email;
-            if (!session.Current.IsSignedIn || string.IsNullOrWhiteSpace(email)) return;
+            if (!session.Current.IsSignedIn || string.IsNullOrWhiteSpace(email) ||
+                Connectivity.Current.NetworkAccess != NetworkAccess.Internet) return;
             var synced = false;
             foreach (var purchase in purchases.Where(p => p.ProductId is "schink_stories_maandeliks" or "schink_stories_jaarliks"))
             {
@@ -67,8 +75,15 @@ public sealed class MobileStoreRecoveryService(
             }
             if (synced) await api.GetSessionAsync(timeout.Token);
         }
-        catch (OperationCanceledException) { }
-        catch (Exception exception) { analytics.TrackException(exception, "mobile_store_recovery_retry"); }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            var delay = _backoff.Failed(DateTimeOffset.UtcNow);
+            analytics.TrackRecoverableFailure(exception, "mobile_store_recovery_retry", new Dictionary<string, object>
+            {
+                ["retry_after_seconds"] = delay.TotalSeconds
+            });
+        }
         finally { _gate.Release(); }
     }
 }

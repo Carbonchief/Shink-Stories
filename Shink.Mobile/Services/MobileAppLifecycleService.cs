@@ -146,7 +146,7 @@ public sealed class MobileAppLifecycleService
         }
         catch (Exception ex)
         {
-            _analytics.TrackException(ex, "mobile_resume_sync_failed");
+            _analytics.TrackRecoverableFailure(ex, "mobile_resume_sync_failed");
             // Resume refresh is opportunistic; pages still handle their own visible refresh paths.
         }
         finally

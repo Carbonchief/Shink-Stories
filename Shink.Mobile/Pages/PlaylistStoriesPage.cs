@@ -47,6 +47,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         };
 
     private readonly MobileApiClient _apiClient;
+    private readonly MobileAnalyticsService _analytics;
     private readonly SessionState _sessionState;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
@@ -64,9 +65,11 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         SessionState sessionState,
         PlaylistPlaybackState playlistPlaybackState,
         StoryPlaybackSession storyPlaybackSession,
-        PlayerTransitionBackdropState transitionBackdropState)
+        PlayerTransitionBackdropState transitionBackdropState,
+        MobileAnalyticsService analytics)
     {
         _apiClient = apiClient;
+        _analytics = analytics;
         _sessionState = sessionState;
         _playlistPlaybackState = playlistPlaybackState;
         _transitionBackdropState = transitionBackdropState;
@@ -121,6 +124,17 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         {
             SetPlaylist(playlist);
         }
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        if (_playlist is not null)
+            _analytics.TrackEvent("mobile_playlist_viewed", new Dictionary<string, object>
+            {
+                ["playlist_slug"] = _playlist.Slug,
+                ["story_count"] = _playlist.Stories.Count
+            });
     }
 
     protected override void OnSizeAllocated(double width, double height)
@@ -595,6 +609,14 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         {
             return;
         }
+
+        _analytics.TrackEvent("mobile_playlist_story_selected", new Dictionary<string, object>
+        {
+            ["playlist_slug"] = _playlist.Slug,
+            ["story_slug"] = story.Slug,
+            ["source"] = story.Source,
+            ["is_locked"] = story.IsLocked
+        });
 
         if (story.IsLocked)
         {

@@ -1008,7 +1008,7 @@ public sealed class MobileApiClient
                     isCompleted,
                     DateTimeOffset.UtcNow),
                 cancellationToken);
-            _analytics.TrackException(ex, "mobile_story_listen_tracking_queued", new Dictionary<string, object>
+            _analytics.TrackRecoverableFailure(ex, "mobile_story_listen_tracking_queued", new Dictionary<string, object>
             {
                 ["story_slug"] = slug,
                 ["story_source"] = source,
@@ -1026,10 +1026,12 @@ public sealed class MobileApiClient
     {
         await EnsureAuthCookiesLoadedAsync(cancellationToken);
         var startedAt = DateTimeOffset.UtcNow;
+        HttpStatusCode? statusCode = null;
 
         try
         {
             using var response = await SendGetWithTransientRetryAsync(path, cancellationToken);
+            statusCode = response.StatusCode;
             await SaveAuthCookiesAsync(cancellationToken);
             await EnsureSuccessAsync(response, cancellationToken);
             var result = await ReadJsonResponseAsync<T>(response, path, cancellationToken);
@@ -1039,7 +1041,7 @@ public sealed class MobileApiClient
         }
         catch (Exception ex)
         {
-            TrackMobileApiRequest("GET", path, null, startedAt, false, ex);
+            TrackMobileApiRequest("GET", path, statusCode, startedAt, false, ex);
             throw;
         }
     }
@@ -1327,6 +1329,7 @@ public sealed class MobileApiClient
     {
         await EnsureAuthCookiesLoadedAsync(cancellationToken);
         var startedAt = DateTimeOffset.UtcNow;
+        HttpStatusCode? statusCode = null;
 
         try
         {
@@ -1337,12 +1340,13 @@ public sealed class MobileApiClient
             AddMobileAppHeaderIfNeeded(request, path);
 
             using var response = await _httpClient.SendAsync(request, cancellationToken);
+            statusCode = response.StatusCode;
             await SaveAuthCookiesAsync(cancellationToken);
             await EnsureSuccessAsync(response, cancellationToken);
-            TrackMobileApiRequest("POST", path, response.StatusCode, startedAt, true);
 
             if (response.Content.Headers.ContentLength == 0)
             {
+                TrackMobileApiRequest("POST", path, response.StatusCode, startedAt, true);
                 if (flushQueuedListens)
                 {
                     _ = FlushQueuedStoryListensAsync();
@@ -1352,6 +1356,7 @@ public sealed class MobileApiClient
             }
 
             var result = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+            TrackMobileApiRequest("POST", path, response.StatusCode, startedAt, true);
             if (flushQueuedListens)
             {
                 _ = FlushQueuedStoryListensAsync();
@@ -1361,7 +1366,7 @@ public sealed class MobileApiClient
         }
         catch (Exception ex)
         {
-            TrackMobileApiRequest("POST", path, null, startedAt, false, ex);
+            TrackMobileApiRequest("POST", path, statusCode, startedAt, false, ex);
             throw;
         }
     }
@@ -2200,13 +2205,21 @@ public sealed class MobileApiClient
         bool isSuccess,
         Exception? exception = null)
     {
+        var durationMilliseconds = Math.Max(0, (DateTimeOffset.UtcNow - startedAt).TotalMilliseconds);
+        if (!MobileApiRequestSampling.ShouldCapture(isSuccess, durationMilliseconds, Random.Shared.NextDouble()))
+            return;
+        var sampleRate = MobileApiRequestSampling.SampleRate(isSuccess, durationMilliseconds);
         var properties = new Dictionary<string, object>
         {
             ["method"] = method,
             ["path"] = NormalizeAnalyticsPath(path),
             ["status_code"] = statusCode.HasValue ? (int)statusCode.Value : 0,
-            ["duration_ms"] = Math.Max(0, (DateTimeOffset.UtcNow - startedAt).TotalMilliseconds),
-            ["success"] = isSuccess
+            ["duration_ms"] = durationMilliseconds,
+            ["success"] = isSuccess,
+            ["sample_rate"] = sampleRate,
+            ["sample_weight"] = 1 / sampleRate,
+            ["sampling_reason"] = !isSuccess ? "failed"
+                : sampleRate == 1 ? "slow" : "routine_success"
         };
 
         if (exception is not null)

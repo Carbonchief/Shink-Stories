@@ -29,6 +29,8 @@ public sealed class DownloadedPage : ContentPage
     private readonly Dictionary<string, Border> _downloadRowsByKey = new(StringComparer.OrdinalIgnoreCase);
     private List<OfflineStoryDownload> _orderedDownloads = [];
     private Border? _draggingRow;
+    private int? _pendingDropDestinationIndex;
+    private bool _reloadAfterDrag;
     private bool _suppressNextRowTap;
     private bool _isStartingPlaylist;
 
@@ -168,6 +170,8 @@ public sealed class DownloadedPage : ContentPage
     {
         if (_draggingRow is { } row)
         {
+            _pendingDropDestinationIndex = null;
+            _reloadAfterDrag = false;
             FinishDragging(row);
         }
 
@@ -180,6 +184,12 @@ public sealed class DownloadedPage : ContentPage
 
     private async Task LoadAsync()
     {
+        if (_draggingRow is not null)
+        {
+            _reloadAfterDrag = true;
+            return;
+        }
+
         _downloadRowsByKey.Clear();
         _content.Children.Clear();
         _content.Children.Add(BuildHeader());
@@ -525,6 +535,12 @@ public sealed class DownloadedPage : ContentPage
         var drag = new DragGestureRecognizer();
         drag.DragStarting += (_, args) =>
         {
+            if (_draggingRow is not null)
+            {
+                args.Cancel = true;
+                return;
+            }
+
             args.Data.Properties.Add(DraggedDownloadOrderKeyProperty, orderKey);
             StartDragging(row);
         };
@@ -558,6 +574,7 @@ public sealed class DownloadedPage : ContentPage
     private void StartDragging(Border row)
     {
         _draggingRow = row;
+        _pendingDropDestinationIndex = null;
         _suppressNextRowTap = true;
         row.ZIndex = 10;
         row.Opacity = 0.86;
@@ -569,7 +586,8 @@ public sealed class DownloadedPage : ContentPage
     {
         if (!args.Data.Properties.TryGetValue(DraggedDownloadOrderKeyProperty, out var draggedKeyValue) ||
             draggedKeyValue is not string draggedKey ||
-            !_downloadRowsByKey.TryGetValue(draggedKey, out var draggedRow))
+            !_downloadRowsByKey.TryGetValue(draggedKey, out var draggedRow) ||
+            !ReferenceEquals(_draggingRow, draggedRow))
         {
             return;
         }
@@ -598,14 +616,16 @@ public sealed class DownloadedPage : ContentPage
             return;
         }
 
-        MoveRow(draggedRow, destinationIndex + 1);
-        SaveDownloadOrder();
+        // Keep the native child tree intact until Android finishes the drag.
+        _pendingDropDestinationIndex = destinationIndex;
     }
 
     private void MoveRow(Border row, int newViewIndex)
     {
         var oldViewIndex = _content.Children.IndexOf(row);
-        if (oldViewIndex <= 0 || newViewIndex <= 0 || oldViewIndex == newViewIndex)
+        if (oldViewIndex <= 0 || oldViewIndex > _orderedDownloads.Count ||
+            newViewIndex <= 0 || newViewIndex > _orderedDownloads.Count ||
+            oldViewIndex == newViewIndex)
         {
             return;
         }
@@ -627,14 +647,45 @@ public sealed class DownloadedPage : ContentPage
             return;
         }
 
-        _draggingRow = null;
-        row.Scale = 1;
-        row.Opacity = 1;
-        row.ZIndex = 0;
-        Dispatcher.StartTimer(TimeSpan.FromMilliseconds(700), () =>
+        // DropCompleted runs inside Android's DragAction.Ended dispatch, which
+        // enumerates the native children interested in the drag. Moving a row
+        // or changing its ZIndex there modifies that collection and can throw
+        // ConcurrentModificationException. Post all tree changes to the next
+        // UI turn, after the native dispatch has returned.
+        Dispatcher.Dispatch(async () =>
         {
-            _suppressNextRowTap = false;
-            return false;
+            if (!ReferenceEquals(_draggingRow, row))
+            {
+                return;
+            }
+
+            _draggingRow = null;
+            var destinationIndex = _pendingDropDestinationIndex;
+            _pendingDropDestinationIndex = null;
+            if (destinationIndex is { } index)
+            {
+                MoveRow(row, index + 1);
+                SaveDownloadOrder();
+            }
+
+            row.Scale = 1;
+            row.Opacity = 1;
+            row.ZIndex = 0;
+            Dispatcher.StartTimer(TimeSpan.FromMilliseconds(700), () =>
+            {
+                if (_draggingRow is null)
+                {
+                    _suppressNextRowTap = false;
+                }
+
+                return false;
+            });
+
+            if (_reloadAfterDrag)
+            {
+                _reloadAfterDrag = false;
+                await LoadAsync();
+            }
         });
     }
 

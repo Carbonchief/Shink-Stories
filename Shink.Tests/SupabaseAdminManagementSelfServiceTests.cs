@@ -1200,6 +1200,17 @@ public class SupabaseAdminManagementSelfServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(SupabaseOAuthStartResult.Failure("Not implemented."));
 
+        public Task<SupabaseOAuthStartResult> StartAppleSignInAsync(
+            string redirectTo,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(SupabaseOAuthStartResult.Failure("Not implemented."));
+
+        public Task<SupabaseOAuthExchangeResult> ExchangeAppleAuthCodeAsync(
+            string authCode,
+            string codeVerifier,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(SupabaseOAuthExchangeResult.Failure("Not implemented."));
+
         public Task<SupabaseOAuthExchangeResult> ExchangeGoogleAuthCodeAsync(
             string authCode,
             string codeVerifier,

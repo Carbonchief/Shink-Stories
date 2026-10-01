@@ -34,6 +34,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     private static readonly Color ActiveRowStrokeColor = Color.FromArgb("#9EFF135B");
 
     private readonly MobileApiClient _apiClient;
+    private readonly MobileAnalyticsService _analytics;
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
     private readonly StoryPlaybackSession _storyPlaybackSession;
@@ -66,9 +67,11 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         IAudioPlaybackService audioPlaybackService,
         StoryPlaybackSession storyPlaybackSession,
         PlaylistPlaybackState playlistPlaybackState,
-        IOfflineStoryDownloadService offlineDownloadService)
+        IOfflineStoryDownloadService offlineDownloadService,
+        MobileAnalyticsService analytics)
     {
         _apiClient = apiClient;
+        _analytics = analytics;
         _sessionState = sessionState;
         _audioPlaybackService = audioPlaybackService;
         _storyPlaybackSession = storyPlaybackSession;
@@ -118,6 +121,8 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     {
         base.OnAppearing();
         _isPageActive = true;
+        if (_playlist is not null)
+            TrackPlaylistEvent("mobile_playlist_player_opened");
         SubscribePlaybackEvents();
         if (_currentStory is { IsLocked: false })
         {
@@ -478,6 +483,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         shuffle.Clicked += (_, _) =>
         {
             _playlistPlaybackState.SetShuffle(!_playlistPlaybackState.IsShuffleEnabled, _currentStory);
+            TrackPlaylistEvent("mobile_playlist_shuffle_changed");
             _storyPlaybackSession.RefreshAutoplayPreparation();
             RebuildHeader();
         };
@@ -487,6 +493,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         autoplay.Clicked += (_, _) =>
         {
             _playlistPlaybackState.SetAutoplay(!_playlistPlaybackState.IsAutoplayEnabled);
+            TrackPlaylistEvent("mobile_playlist_autoplay_changed");
             _playlistPlaybackState.TrackManualStorySelection(_currentStory);
             _storyPlaybackSession.RefreshAutoplayPreparation();
             RebuildHeader();
@@ -729,6 +736,14 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
     private async Task SelectStoryAsync(MobileStorySummary story, bool autoplay)
     {
+        _analytics.TrackEvent("mobile_playlist_story_selected", new Dictionary<string, object>
+        {
+            ["playlist_slug"] = _playlist?.Slug ?? string.Empty,
+            ["story_slug"] = story.Slug,
+            ["source"] = story.Source,
+            ["is_locked"] = story.IsLocked,
+            ["autoplay_requested"] = autoplay
+        });
         if (story.IsLocked)
         {
             await PageHelpers.OpenPlansForStoryAsync(story, _sessionState);
@@ -1273,6 +1288,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
             _ => null
         };
         _playlistPlaybackState.SetAutoplayLimit(next, _currentStory);
+        TrackPlaylistEvent("mobile_playlist_limit_changed");
         _storyPlaybackSession.RefreshAutoplayPreparation();
     }
 
@@ -1280,6 +1296,16 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         _playlistPlaybackState.AutoplayLimitStories is { } limit
             ? $"Stop na {limit} stories"
             : "Geen outospeellimiet";
+
+    private void TrackPlaylistEvent(string eventName) =>
+        _analytics.TrackEvent(eventName, new Dictionary<string, object>
+        {
+            ["playlist_slug"] = _playlist?.Slug ?? string.Empty,
+            ["story_count"] = _playlist?.Stories.Count ?? 0,
+            ["shuffle_enabled"] = _playlistPlaybackState.IsShuffleEnabled,
+            ["autoplay_enabled"] = _playlistPlaybackState.IsAutoplayEnabled,
+            ["autoplay_limit_stories"] = _playlistPlaybackState.AutoplayLimitStories ?? 0
+        });
 
     private string FormatPlaybackSpeed() => $"{_audioPlaybackService.PlaybackSpeed:0.##}x";
 

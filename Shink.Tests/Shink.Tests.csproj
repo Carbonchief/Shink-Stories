@@ -19,6 +19,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shink.Mobile\Services\MobileApiRequestSampling.cs" Link="Mobile\MobileApiRequestSampling.cs" />
+    <Compile Include="..\Shink.Mobile\Services\MobileAnalyticsIdentity.cs" Link="Mobile\MobileAnalyticsIdentity.cs" />
+    <Compile Include="..\Shink.Mobile\Services\MobileFailureRecovery.cs" Link="Mobile\MobileFailureRecovery.cs" />
+    <Compile Include="..\Shink.Mobile\Services\MobileCrashDiagnostics.cs" Link="Mobile\MobileCrashDiagnostics.cs" />
+    <Compile Include="..\Shink.Mobile\Services\MobileAnalyticsSchema.cs" Link="Mobile\MobileAnalyticsSchema.cs" />
+    <Compile Include="..\Shink.Mobile\Services\AudioPlaybackMetadata.cs" Link="Mobile\AudioPlaybackMetadata.cs" />
     <Compile Include="..\Shink.Mobile\Services\CharacterPreviewCatalog.cs" Link="Mobile\CharacterPreviewCatalog.cs" />
     <Compile Include="..\Shink.Mobile\Services\StorePurchaseRecovery.cs" Link="Mobile\StorePurchaseRecovery.cs" />
     <Compile Include="..\Shink.Mobile\Games\CharacterMatchGame.cs" Link="Mobile\CharacterMatchGame.cs" />

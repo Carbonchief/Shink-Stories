@@ -25,12 +25,13 @@ $credentialTarget = if ($env:SCHINK_ANDROID_PLAY_UPLOAD_CREDENTIAL_TARGET) {
 }
 $appIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_appicon.png"
 $playStoreIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_appicon_playstore.png"
-$androidRoundIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_android_round_icon.png"
+$androidBackgroundIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_appicon.svg"
+$androidRoundIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_android_round_icon.svg"
 $expectedSourceIconHash = "8a5d7a16984ad1343d2c7263f0712272b582bb19ba5a9339933abc2fe2bc7f22"
-$expectedAndroidIconHash = "dbe36cbe16d7e80afa143c98e50a30765107eec13ce9cbaf73c9e7c6e54f6ef8"
-$expectedAndroidRoundIconSourceHash = "f2a9cd3eab2572c096809a8b92cd6d8ef5f77ef2f7f8f6b658891c1c5fd04d2c"
-$expectedAndroidRoundIconHash = "bc57aa1e40e861d775499e277ba4f921af9edfef68be1fbaad2c25733690d473"
-$expectedAndroidRoundForegroundHash = "1afd6edb14cf2b6cb99adf069663272c318e3105c9b29917dabe932f791017e8"
+$expectedAndroidIconHash = "ff822861a76a00e74c5b7fd050b434ee4bc337717c1aa2e4117c413c012a6c36"
+$expectedAndroidRoundIconSourceHash = "891d3a7c086054fa2070470d62b7748e76f931d981bb1d0b6e85e88b56c8ca3b"
+$expectedAndroidRoundIconHash = "a3b7e3ef51f8e5b95197e5deb56caf961c2d47448b03e657edb3e1d3df85574a"
+$expectedAndroidRoundForegroundHash = "c40f31ff3e9f93178a95f8b3005349fce4ae99be07a0b3b9d1e86a69c3b46b1f"
 
 foreach ($iconPath in @($appIcon, $playStoreIcon)) {
     if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
@@ -45,6 +46,11 @@ foreach ($iconPath in @($appIcon, $playStoreIcon)) {
 
 if (-not (Test-Path -LiteralPath $androidRoundIcon -PathType Leaf)) {
     throw "Missing configured Schink Stories Android round launcher icon: $androidRoundIcon"
+}
+
+$androidBackgroundIconHash = (Get-FileHash -LiteralPath $androidBackgroundIcon -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($androidBackgroundIconHash -ne $expectedAndroidRoundIconSourceHash) {
+    throw "Android launcher background does not match the configured Schink Stories artwork."
 }
 
 $androidRoundIconSourceHash = (Get-FileHash -LiteralPath $androidRoundIcon -Algorithm SHA256).Hash.ToLowerInvariant()

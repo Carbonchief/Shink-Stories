@@ -4,16 +4,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_ICON="$ROOT_DIR/Shink.Mobile/Resources/AppIcon/schink_appicon.png"
 PLAY_STORE_ICON="$ROOT_DIR/Shink.Mobile/Resources/AppIcon/schink_appicon_playstore.png"
-ANDROID_LAUNCHER_ICON="$APP_ICON"
-ANDROID_ROUND_LAUNCHER_ICON="$ROOT_DIR/Shink.Mobile/Resources/AppIcon/schink_android_round_icon.png"
+ANDROID_LAUNCHER_ICON="$ROOT_DIR/Shink.Mobile/Resources/AppIcon/schink_appicon.svg"
+ANDROID_ROUND_LAUNCHER_ICON="$ROOT_DIR/Shink.Mobile/Resources/AppIcon/schink_android_round_icon.svg"
 EXPECTED_SOURCE_SHA256="8a5d7a16984ad1343d2c7263f0712272b582bb19ba5a9339933abc2fe2bc7f22"
-# AAPT2 strips the fully opaque alpha channel from generated PNGs when packaging the AAB.
-EXPECTED_ANDROID_LAUNCHER_SOURCE_SHA256="$EXPECTED_SOURCE_SHA256"
-EXPECTED_ANDROID_ROUND_LAUNCHER_SOURCE_SHA256="f2a9cd3eab2572c096809a8b92cd6d8ef5f77ef2f7f8f6b658891c1c5fd04d2c"
-EXPECTED_ANDROID_XXXHDPI_SHA256="dbe36cbe16d7e80afa143c98e50a30765107eec13ce9cbaf73c9e7c6e54f6ef8"
-EXPECTED_ANDROID_ROUND_XXXHDPI_SHA256="bc57aa1e40e861d775499e277ba4f921af9edfef68be1fbaad2c25733690d473"
-EXPECTED_ANDROID_FOREGROUND_XXXHDPI_SHA256="2781ce62aad7a993225d9cde5b0a2faf7c544d74ff828095d6b27c19c2c9e34d"
-EXPECTED_ANDROID_ROUND_FOREGROUND_XXXHDPI_SHA256="1afd6edb14cf2b6cb99adf069663272c318e3105c9b29917dabe932f791017e8"
+# Baselines are from AAPT2-compiled PNGs, pixel-checked against the generated assets.
+EXPECTED_ANDROID_LAUNCHER_SOURCE_SHA256="891d3a7c086054fa2070470d62b7748e76f931d981bb1d0b6e85e88b56c8ca3b"
+EXPECTED_ANDROID_ROUND_LAUNCHER_SOURCE_SHA256="891d3a7c086054fa2070470d62b7748e76f931d981bb1d0b6e85e88b56c8ca3b"
+EXPECTED_ANDROID_XXXHDPI_SHA256="ff822861a76a00e74c5b7fd050b434ee4bc337717c1aa2e4117c413c012a6c36"
+EXPECTED_ANDROID_ROUND_XXXHDPI_SHA256="a3b7e3ef51f8e5b95197e5deb56caf961c2d47448b03e657edb3e1d3df85574a"
+EXPECTED_ANDROID_FOREGROUND_XXXHDPI_SHA256="c40f31ff3e9f93178a95f8b3005349fce4ae99be07a0b3b9d1e86a69c3b46b1f"
+EXPECTED_ANDROID_ROUND_FOREGROUND_XXXHDPI_SHA256="c40f31ff3e9f93178a95f8b3005349fce4ae99be07a0b3b9d1e86a69c3b46b1f"
+EXPECTED_ANDROID_BACKGROUND_XXXHDPI_SHA256="6339ac1cf568a1e99f9bd97c8e037c023b107597f5ade63d6472566e40060ee1"
 EXPECTED_IOS_MARKETING_SHA256="5fec1012c94a1f0421a57b0bcf5133d8d96679efa8e629c35c660b97ee1b9bf3"
 
 sha256_file() {
@@ -79,6 +80,8 @@ case "$mode" in
     verify_bundle_icon "base/res/mipmap-xxxhdpi-v4/schink_appicon_round.png" "$EXPECTED_ANDROID_ROUND_XXXHDPI_SHA256"
     verify_bundle_icon "base/res/mipmap-xxxhdpi-v4/schink_appicon_foreground.png" "$EXPECTED_ANDROID_FOREGROUND_XXXHDPI_SHA256"
     verify_bundle_icon "base/res/mipmap-xxxhdpi-v4/schink_android_round_icon_foreground.png" "$EXPECTED_ANDROID_ROUND_FOREGROUND_XXXHDPI_SHA256"
+    verify_bundle_icon "base/res/mipmap-xxxhdpi-v4/schink_appicon_background.png" "$EXPECTED_ANDROID_BACKGROUND_XXXHDPI_SHA256"
+    verify_bundle_icon "base/res/mipmap-xxxhdpi-v4/schink_android_round_icon_background.png" "$EXPECTED_ANDROID_BACKGROUND_XXXHDPI_SHA256"
     echo "Google Play bundle contains the configured Schink Stories launcher icon."
     ;;
   ios-artwork)

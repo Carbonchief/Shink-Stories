@@ -78,7 +78,7 @@ public partial class AppShell : Shell
         }
         catch (Exception ex)
         {
-            _analytics.TrackException(ex, "mobile_session_startup_refresh");
+            _analytics.TrackRecoverableFailure(ex, "mobile_session_startup_refresh");
             // If the session endpoint is unavailable, keep the current cached shell.
         }
         finally
@@ -174,24 +174,12 @@ public partial class AppShell : Shell
     {
         var location = args.Current?.Location.OriginalString ?? string.Empty;
         _analytics.TrackScreenView(
-            ResolveScreenName(location),
+            MobileAnalyticsSchema.ScreenName(CurrentPage?.GetType().Name, location),
             new Dictionary<string, object>
             {
-                ["route"] = location,
+                ["route"] = MobileAnalyticsSchema.CleanRoute(location),
                 ["navigation_source"] = args.Source.ToString()
             });
     }
 
-    private static string ResolveScreenName(string location)
-    {
-        if (string.IsNullOrWhiteSpace(location))
-        {
-            return "unknown";
-        }
-
-        var route = location.Trim('/').Split('?', '#')[0];
-        return string.IsNullOrWhiteSpace(route)
-            ? "home"
-            : route.Replace("/", "_", StringComparison.Ordinal).ToLowerInvariant();
-    }
 }

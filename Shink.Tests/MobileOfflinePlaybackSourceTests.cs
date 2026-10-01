@@ -24,7 +24,7 @@ public sealed class MobileOfflinePlaybackSourceTests
         var session = Read("Services/StoryPlaybackSession.cs");
         var resume = session[session.IndexOf("public async Task ResumeAsync()", StringComparison.Ordinal)..session.IndexOf("public async Task SeekAsync", StringComparison.Ordinal)];
         StringAssert.Contains(resume, "ResolvePlayableAudioAsync(");
-        StringAssert.Contains(resume, "_current = current with { PlaybackUrl = playbackUrl }");
+        StringAssert.Contains(resume, "_current = current with { PlaybackUrl = playedUrl }");
         StringAssert.Contains(resume, "await _audioPlaybackService.SeekAsync(position)");
     }
 

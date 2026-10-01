@@ -837,6 +837,13 @@ public sealed class SearchPage : ContentPage
         {
             SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
             var story = candidate.Story;
+            _analytics.TrackEvent("mobile_story_search_result_selected", new Dictionary<string, object>
+            {
+                ["story_slug"] = story.Slug,
+                ["source"] = ResolveStorySource(story),
+                ["is_locked"] = story.IsLocked,
+                ["query_length"] = _searchEntry.Text?.Trim().Length ?? 0
+            });
             if (story.IsLocked)
             {
                 var source = ResolveStorySource(story);

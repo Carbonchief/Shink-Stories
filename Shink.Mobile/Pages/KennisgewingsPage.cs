@@ -396,6 +396,7 @@ public sealed class KennisgewingsPage : ContentPage
         try
         {
             await _apiClient.ClearNotificationsAsync(cancellationToken);
+            _analytics.TrackEvent("mobile_notifications_cleared");
             if (!IsNotificationPageActive(cancellationToken) || _notificationPage is null)
             {
                 return;
@@ -674,6 +675,12 @@ public sealed class KennisgewingsPage : ContentPage
         // independently so a slow/offline mutation can never block its destination.
         var markReadTask = TryMarkNotificationReadAsync(notification.Id);
         var target = await ResolveNotificationTargetAsync(notification);
+        _analytics.TrackEvent("mobile_notification_opened", new Dictionary<string, object>
+        {
+            ["notification_type"] = notification.Type,
+            ["destination_type"] = target.Kind.ToString().ToLowerInvariant(),
+            ["was_read"] = notification.IsRead
+        });
         try
         {
             switch (target.Kind)
