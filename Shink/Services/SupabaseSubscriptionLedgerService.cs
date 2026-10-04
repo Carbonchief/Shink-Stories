@@ -8646,6 +8646,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         DateTimeOffset subscribedAtUtc,
         PaymentPlan plan) =>
         TryParseDateTimeOffset(TryReadNestedString(data, "subscription", "next_payment_date")) ??
+        TryParseDateTimeOffset(TryReadString(data, "next_payment_date")) ??
         TryParseDateTimeOffset(TryReadString(data, "period_end")) ??
         subscribedAtUtc.AddMonths(plan.BillingPeriodMonths);
 

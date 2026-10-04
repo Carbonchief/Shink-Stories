@@ -6446,7 +6446,9 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
-    public async Task RecordPaystackEventAsync_SubscriptionCreateCanonicalizesInitialChargeSuccessRow()
+    [DataRow("2026-06-11T18:10:00Z")]
+    [DataRow("2026-06-23T04:10:10Z")]
+    public async Task RecordPaystackEventAsync_SubscriptionCreateCanonicalizesInitialChargeSuccessRow(string nextPaymentDate)
     {
         var originalSubscriptionId = "22222222-2222-2222-2222-222222222222";
         var subscriptionCode = "SUB_x97u02ht01jysfp";
@@ -6631,7 +6633,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 "id": 1164259,
                 "status": "active",
                 "email_token": "dyx4196k38od3k0",
-                "next_payment_date": "2026-06-11T18:10:00.000Z",
+                "next_payment_date": "{{nextPaymentDate}}",
                 "customer": {
                   "email": "ouer@example.com"
                 },
@@ -6654,6 +6656,11 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.IsTrue(
             handler.SubscriptionPatchPayloads.Any(payload =>
                 payload.Contains($"\"provider_payment_id\":\"{subscriptionCode}\"", StringComparison.Ordinal) &&
+                SubscriptionPatchHasNextRenewalAt(payload, DateTimeOffset.Parse(nextPaymentDate))),
+            "subscription.create must preserve Paystack's top-level next_payment_date instead of shortening access to a calculated month.");
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains($"\"provider_payment_id\":\"{subscriptionCode}\"", StringComparison.Ordinal) &&
                 payload.Contains("\"provider_email_token\":\"dyx4196k38od3k0\"", StringComparison.Ordinal) &&
                 payload.Contains("\"billing_amount_zar\":55", StringComparison.Ordinal)),
             "subscription.create should rewrite the original charge.success row onto the canonical Paystack subscription code.");
@@ -6662,6 +6669,93 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 payload.Contains($"\"provider_payment_id\":\"{subscriptionCode}\"", StringComparison.Ordinal) &&
                 payload.Contains($"\"subscription_id\":\"{originalSubscriptionId}\"", StringComparison.Ordinal)),
             "The subscription.create event should be captured against the original subscription row.");
+    }
+
+    [TestMethod]
+    public async Task RecordPaystackEventAsync_SubscriptionCreatePreservesUpgradedPaidAccess()
+    {
+        const string subscriptionId = "22222222-2222-2222-2222-222222222222";
+        const string subscriptionCode = "SUB_upgraded";
+        var nextPaymentDate = DateTimeOffset.UtcNow.AddMonths(1).AddDays(11);
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events") ||
+                IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [{
+                      "subscription_id": "{{subscriptionId}}",
+                      "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                      "tier_code": "all_stories_monthly",
+                      "provider": "paystack",
+                      "source_system": "shink_app",
+                      "provider_payment_id": "{{subscriptionCode}}",
+                      "provider_transaction_id": "{{subscriptionCode}}",
+                      "provider_token": "AUTH_upgrade",
+                      "status": "active",
+                      "next_renewal_at": "{{nextPaymentDate:O}}",
+                      "billing_amount_zar": 79.00,
+                      "billing_period_months": 1,
+                      "billing_amount_source": "plan_change"
+                    }]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse("""[{ "subscriber_id": "11111111-1111-1111-1111-111111111111", "email": "ouer@example.com", "first_name": "Ouer" }]""");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                StringAssert.Contains(request.RequestUri.Query, "on_conflict=provider,provider_payment_id");
+                return JsonResponse($$"""[{ "subscription_id": "{{subscriptionId}}" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await CreateService(handler).RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "subscription.create",
+              "data": {
+                "id": 1296425,
+                "status": "active",
+                "subscription_code": "{{subscriptionCode}}",
+                "next_payment_date": "{{nextPaymentDate:O}}",
+                "customer": { "email": "ouer@example.com" },
+                "authorization": { "authorization_code": "AUTH_upgrade" },
+                "plan": { "amount": 7900, "interval": "monthly" }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(subscriptionId, result.SubscriptionId);
+        var subscriptionUpsert = handler.SubscriptionCreatePayloads.Single();
+        Assert.IsTrue(SubscriptionPatchHasNextRenewalAt(subscriptionUpsert, nextPaymentDate),
+            "The subscription.create webhook following an upgrade must retain the provider's renewal date, including carried paid time.");
+        StringAssert.Contains(subscriptionUpsert, $"\"provider_payment_id\":\"{subscriptionCode}\"");
     }
 
     [TestMethod]
