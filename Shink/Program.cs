@@ -181,6 +181,7 @@ builder.Services.AddHttpClient<IAbandonedCartRecoveryService, SupabaseAbandonedC
 builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
 builder.Services.AddHttpClient<IEngagementTrackingService, SupabaseEngagementTrackingService>();
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
+builder.Services.AddHttpClient<ISubscriberPlaylistService, SupabaseSubscriberPlaylistService>();
 builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>();
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
 builder.Services.AddHttpClient<IReferralService, SupabaseReferralService>();

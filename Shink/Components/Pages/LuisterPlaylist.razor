@@ -1,4 +1,5 @@
 @page "/luister/speellys/{PlaylistSlug}"
+@page "/my-stories/speellys/{PlaylistSlug:guid}"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
 @using System.Text.Json
@@ -12,11 +13,16 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISubscriptionLedgerService SubscriptionLedgerService
 @inject IStoryFavoriteService StoryFavoriteService
+@inject ISubscriberPlaylistService SubscriberPlaylistService
 @inject IHttpContextAccessor HttpContextAccessor
 @implements IAsyncDisposable
 
 <PageTitle>@PageTitleText</PageTitle>
 <HeadContent>
+    @if (IsPersonalPlaylist)
+    {
+        <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
+    }
     <link rel="canonical" href="@PlaylistCanonicalUrl" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="@ShareTitle" />
@@ -30,7 +36,10 @@
     <meta name="twitter:description" content="@ShareDescription" />
     <meta name="twitter:image" content="@ShareImageUrl" />
     <meta name="twitter:image:alt" content="@ShareImageAlt" />
-    <JsonLdScript Json="@PlaylistJsonLd" />
+    @if (!IsPersonalPlaylist)
+    {
+        <JsonLdScript Json="@PlaylistJsonLd" />
+    }
 </HeadContent>
 
 @if (IsRedirectingToOpsies)
@@ -51,26 +60,38 @@ else if (!AllowEmptyState && (CurrentPlaylist is null || CurrentStory is null ||
     <section class="playlist-loading-state" aria-live="polite" aria-busy="true">
     </section>
 }
+else if (PersonalPlaylistError is not null)
+{
+    <section class="playlist-empty-state">
+        <h1>Ons kon nie jou speellys laai nie.</h1>
+        <p>@PersonalPlaylistError</p>
+        <a href="/my-stories">Terug na my stories</a>
+    </section>
+}
 else if (CurrentPlaylist is null)
 {
     <section class="playlist-empty-state">
         <h1>Ons kon nie daardie speellys kry nie.</h1>
-        <p>Gaan terug na Luister om 'n ander speellys te kies.</p>
-        <a href="/luister">Terug na luister</a>
+        <p>@(IsPersonalPlaylist ? "Kies 'n ander speellys om verder te luister." : "Gaan terug na Luister om 'n ander speellys te kies.")</p>
+        <a href="@(IsPersonalPlaylist ? "/my-stories" : "/luister")">@(IsPersonalPlaylist ? "Terug na my stories" : "Terug na luister")</a>
     </section>
 }
 else if (CurrentStory is null || AccessibleStories.Count == 0)
 {
     <section class="playlist-empty-state">
         <h1>Hierdie speellys is nie nou beskikbaar nie.</h1>
-        <p>Probeer asseblief later weer of kies 'n ander speellys.</p>
-        <a href="/luister">Terug na luister</a>
+        <p>@(IsPersonalPlaylist ? "Voeg stories by jou speellys om te begin luister." : "Probeer asseblief later weer of kies 'n ander speellys.")</p>
+        <a href="@(IsPersonalPlaylist ? "/my-stories" : "/luister")">@(IsPersonalPlaylist ? "Terug na my stories" : "Terug na luister")</a>
     </section>
 }
 else
 {
     <section class="playlist-page story-player-page @(IsManualFullscreenFocus ? "manual-fullscreen-focus" : null)" style="@BuildPlaylistAccentStyle(CurrentPlaylist)">
         <header class="playlist-header">
+            @if (IsPersonalPlaylist)
+            {
+                <a href="/my-stories">Terug na my speellyste</a>
+            }
             <h1>@CurrentPlaylist.Title</h1>
             @if (!string.IsNullOrWhiteSpace(CurrentPlaylist.Description))
             {
@@ -379,6 +400,8 @@ else
     private HashSet<string> FavoriteStoryBusySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, string> SignedAudioUrlsByStorySlug { get; } = new(StringComparer.OrdinalIgnoreCase);
     private string? SignedInEmail { get; set; }
+    private string? PersonalPlaylistError { get; set; }
+    private bool IsPersonalPlaylist => new Uri(NavigationManager.Uri).AbsolutePath.StartsWith("/my-stories/speellys/", StringComparison.OrdinalIgnoreCase);
     private bool ShowStoryAccessPopup { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
     private CancellationTokenSource? _emptyStateDelayCts;
@@ -503,6 +526,7 @@ else
         ResetPlaybackOrder();
         SignedAudioUrlsByStorySlug.Clear();
         CurrentPlaylist = null;
+        PersonalPlaylistError = null;
         AccessibleStories = Array.Empty<StoryItem>();
         CurrentStory = null;
         AudioUrl = null;
@@ -524,6 +548,12 @@ else
                 PendingTrackAutoplay = false;
                 PendingLockedStoryPath = GetCurrentPathAndQuery();
                 ShowStoryAccessPopup = !isSocialPreviewRequest;
+
+                if (IsPersonalPlaylist)
+                {
+                    // Personal lists have no anonymous/social preview.
+                    return;
+                }
 
                 var previewPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync();
                 CurrentPlaylist = previewPlaylists.FirstOrDefault(playlist =>
@@ -553,9 +583,26 @@ else
             var signedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
                                ?? authState.User.Identity?.Name;
 
-            var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(signedInEmail);
-            CurrentPlaylist = playlists.FirstOrDefault(playlist =>
-                string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+            if (IsPersonalPlaylist)
+            {
+                if (Guid.TryParse(PlaylistSlug, out var playlistId))
+                {
+                    var result = await SubscriberPlaylistService.GetPlaylistsAsync(playlistId);
+                    PersonalPlaylistError = result.ErrorMessage;
+                    var personalPlaylist = result.Playlists.SingleOrDefault();
+                    if (result.IsSuccess && personalPlaylist is not null)
+                    {
+                        var catalog = await StoryCatalogService.GetLuisterStoriesAsync();
+                        CurrentPlaylist = SubscriberPlaylistPlayback.BuildPlaylist(personalPlaylist, catalog);
+                    }
+                }
+            }
+            else
+            {
+                var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(signedInEmail);
+                CurrentPlaylist = playlists.FirstOrDefault(playlist =>
+                    string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+            }
 
             if (CurrentPlaylist is null)
             {
@@ -565,6 +612,11 @@ else
                 PreviousStory = null;
                 NextStory = null;
                 ClearFavoriteState();
+                return;
+            }
+
+            if (IsPersonalPlaylist && CurrentPlaylist.Stories.Count == 0)
+            {
                 return;
             }
 
@@ -1307,10 +1359,10 @@ else
         };
     }
 
-    private static string GetPlaylistPath(string? playlistSlug) =>
+    private string GetPlaylistPath(string? playlistSlug) =>
         string.IsNullOrWhiteSpace(playlistSlug)
-            ? "/luister"
-            : $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}";
+            ? IsPersonalPlaylist ? "/my-stories" : "/luister"
+            : $"{(IsPersonalPlaylist ? "/my-stories" : "/luister")}/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}";
 
     private string? BuildPlaylistAccentStyle(StoryPlaylist? playlist)
     {
@@ -1349,7 +1401,7 @@ else
         return normalized.ToUpperInvariant();
     }
 
-    private static string BuildPlaylistHref(string? playlistSlug, string? storySlug)
+    private string BuildPlaylistHref(string? playlistSlug, string? storySlug)
     {
         var path = GetPlaylistPath(playlistSlug);
         if (string.IsNullOrWhiteSpace(storySlug))

@@ -1,4 +1,5 @@
 @page "/my-stories"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Globalization
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
@@ -14,12 +15,12 @@
 
 <PageTitle>Schink Stories | My stories</PageTitle>
 <HeadContent>
-    <meta name="description" content="Kyk wat jy reeds geluister het en gaan maklik voort met stories wat nog besig is." />
+    <meta name="description" content="Skep jou eie speellyste, kyk waarna jy geluister het en gaan voort met jou stories." />
     <meta name="robots" content="noindex, follow, noarchive, nosnippet" />
     <link rel="canonical" href="@MyStoriesCanonicalUrl" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Schink Stories | My stories" />
-    <meta property="og:description" content="Kyk wat jy reeds geluister het en gaan maklik voort met stories wat nog besig is." />
+    <meta property="og:description" content="Skep jou eie speellyste, kyk waarna jy geluister het en gaan voort met jou stories." />
     <meta property="og:url" content="@MyStoriesCanonicalUrl" />
     <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
     <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
@@ -29,7 +30,7 @@
     <meta property="og:image:alt" content="Schink Stories logo" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Schink Stories | My stories" />
-    <meta name="twitter:description" content="Kyk wat jy reeds geluister het en gaan maklik voort met stories wat nog besig is." />
+    <meta name="twitter:description" content="Skep jou eie speellyste, kyk waarna jy geluister het en gaan voort met jou stories." />
     <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
     <meta name="twitter:image:alt" content="Schink Stories logo" />
 </HeadContent>
@@ -38,7 +39,7 @@
     <header class="my-stories-hero">
         <h1>My stories</h1>
         <p>
-            Kyk wat jy reeds geluister het en gaan maklik voort met stories wat nog besig is.
+            Skep jou eie speellyste, kyk waarna jy geluister het en gaan voort met jou stories.
         </p>
     </header>
 
@@ -101,6 +102,8 @@
                 </dl>
             </section>
         }
+
+        <MyPlaylists Stories="PlaylistStories" />
 
         @if (InProgressStories.Count == 0 && CompletedStories.Count == 0 && FavoriteStories.Count == 0)
         {
@@ -259,6 +262,7 @@
     private IReadOnlyList<MyStoryCard> FavoriteStories { get; set; } = Array.Empty<MyStoryCard>();
     private MyStoriesProfileSummary? ProfileSummary { get; set; }
     private MyStoriesStats? UserStats { get; set; }
+    private IReadOnlyList<StoryItem> PlaylistStories { get; set; } = Array.Empty<StoryItem>();
     private IJSObjectReference? _myStoriesModule;
     private bool _myStoriesModuleLoadFailed;
     private string MyStoriesCanonicalUrl => NavigationManager.ToAbsoluteUri("/my-stories").ToString();
@@ -305,6 +309,8 @@
                     .OrderByDescending(item => item.LastListenedAtUtc)
                     .First(),
                 StringComparer.OrdinalIgnoreCase);
+
+        PlaylistStories = luisterStoriesBySlug.Values.ToArray();
 
         var cards = progressTask.Result
             .Select(progress => BuildStoryCard(progress, storiesBySlug))

@@ -1,0 +1,158 @@
+@inject ISubscriberPlaylistService PlaylistService
+@implements IAsyncDisposable
+
+<section class="playlist-manager" aria-labelledby="my-playlists-heading">
+    <header class="playlist-heading">
+        <div>
+            <h2 id="my-playlists-heading">My speellyste</h2>
+            <p>Maak jou eie speellyste vir slaaptyd, reistyd of enige storietyd.</p>
+        </div>
+        <button type="button" class="playlist-btn" @onclick="CreatePlaylist" disabled="@(IsLoading || IsBusy || LoadError is not null || Playlists.Count >= SupabaseSubscriberPlaylistService.MaximumPlaylists)">
+            <i class="fa-solid fa-plus" aria-hidden="true"></i> Skep 'n speellys
+        </button>
+    </header>
+
+    @if (IsLoading)
+    {
+        <p role="status">Laai jou speellyste...</p>
+    }
+    else if (LoadError is not null)
+    {
+        <p class="playlist-error" role="alert">@LoadError</p>
+        <button type="button" class="playlist-btn secondary" @onclick="LoadPlaylistsAsync">Probeer weer</button>
+    }
+    else
+    {
+        @if (Message is not null)
+        {
+            <p class="playlist-message" role="status">@Message</p>
+        }
+        @if (OperationError is not null)
+        {
+            <p class="playlist-error" role="alert">@OperationError</p>
+        }
+
+        @if (Draft is not null)
+        {
+            <div class="playlist-editor">
+                <h3>@(EditingId is null ? "Skep jou speellys" : "Wysig jou speellys")</h3>
+                <EditForm Model="Draft" OnValidSubmit="SavePlaylistAsync" FormName="personal-playlist">
+                    <DataAnnotationsValidator />
+                    <fieldset disabled="@IsBusy">
+                        <label for="playlist-title">Speellysnaam</label>
+                        <InputText id="playlist-title" @bind-Value="Draft.Title" maxlength="80" placeholder="Byvoorbeeld: Slaaptydstories" />
+                        <ValidationMessage For="() => Draft.Title" />
+                        <div class="playlist-editor-columns">
+                            <section class="playlist-selected" aria-label="Stories in jou speellys">
+                                <h4>Jou stories (@SelectedSlugs.Count/100)</h4>
+                                <p class="playlist-hint">Gebruik die pyltjies om die speelvolgorde te verander.</p>
+                                @if (SelectedSlugs.Count == 0)
+                                {
+                                    <p class="playlist-hint">Voeg stories by om jou speellys te begin.</p>
+                                }
+                                <ol class="playlist-selected-list">
+                                    @for (var index = 0; index < SelectedSlugs.Count; index++)
+                                    {
+                                        var position = index;
+                                        var slug = SelectedSlugs[position];
+                                        var story = FindStory(slug);
+                                        var title = story?.Title ?? slug;
+                                        <li @key="slug">
+                                            <span class="playlist-selected-title">
+                                                <span>@title</span>
+                                                @if (story is null)
+                                                {
+                                                    <small>Nie meer beskikbaar nie. Verwyder hierdie storie.</small>
+                                                }
+                                            </span>
+                                            <div class="playlist-order-actions">
+                                                <button type="button" class="playlist-icon-btn" disabled="@(position == 0)" @onclick="() => MoveStory(position, -1)" aria-label="@($"Skuif {title} op")"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i></button>
+                                                <button type="button" class="playlist-icon-btn" disabled="@(position == SelectedSlugs.Count - 1)" @onclick="() => MoveStory(position, 1)" aria-label="@($"Skuif {title} af")"><i class="fa-solid fa-arrow-down" aria-hidden="true"></i></button>
+                                                <button type="button" class="playlist-icon-btn" @onclick="() => RemoveStory(slug)" aria-label="@($"Verwyder {title}")"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                                            </div>
+                                        </li>
+                                    }
+                                </ol>
+                            </section>
+                            <section class="playlist-picker" aria-label="Kies stories">
+                                <h4>Voeg stories by</h4>
+                                <label for="playlist-search">Soek 'n storie of liedjie</label>
+                                <input id="playlist-search" type="search" @bind="SearchTerm" @bind:event="oninput" placeholder="Soek volgens naam..." />
+                                <p class="playlist-hint">Jou gewone intekening bepaal watter stories jy kan speel.</p>
+                                <div class="playlist-picker-list">
+                                    @foreach (var story in MatchingStories)
+                                    {
+                                        var selected = SelectedSlugs.Contains(story.Slug, StringComparer.OrdinalIgnoreCase);
+                                        <div class="playlist-picker-story" @key="story.Slug">
+                                            <img src="@story.ThumbnailPath" alt="" width="52" height="42" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';" />
+                                            <span>@story.Title</span>
+                                            <button type="button" class="playlist-icon-btn" disabled="@(selected || SelectedSlugs.Count >= 100)" @onclick="() => AddStory(story.Slug)" aria-label="@($"Voeg {story.Title} by")">
+                                                <i class="fa-solid @(selected ? "fa-check" : "fa-plus")" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                                @if (!MatchingStories.Any())
+                                {
+                                    <p class="playlist-hint">Geen stories pas by jou soektog nie.</p>
+                                }
+                            </section>
+                        </div>
+                        <div class="playlist-form-actions">
+                            <button type="submit" class="playlist-btn">@(IsBusy ? "Stoor..." : "Stoor speellys")</button>
+                            <button type="button" class="playlist-btn secondary" @onclick="CloseEditor">Kanselleer</button>
+                        </div>
+                    </fieldset>
+                </EditForm>
+            </div>
+        }
+
+        @if (Playlists.Count == 0 && Draft is null)
+        {
+            <div class="playlist-empty">
+                <i class="fa-solid fa-list-ul" aria-hidden="true"></i>
+                <p>Jou eerste speellys wag! Kies 'n naam en voeg jou gunstelingstories by.</p>
+            </div>
+        }
+        @if (Playlists.Count >= SupabaseSubscriberPlaylistService.MaximumPlaylists)
+        {
+            <p class="playlist-hint">Jy het 50 speellyste. Verwyder een om 'n nuwe speellys te skep.</p>
+        }
+        <div class="playlist-grid">
+            @foreach (var playlist in Playlists)
+            {
+                var stories = ResolveStories(playlist);
+                <article class="personal-playlist-card" @key="playlist.PlaylistId">
+                    <div class="playlist-covers" aria-hidden="true">
+                        @foreach (var story in stories.Take(3))
+                        {
+                            <img src="@story.ThumbnailPath" alt="" width="96" height="73" loading="lazy" decoding="async" @key="story.Slug" onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';" />
+                        }
+                        @if (stories.Count == 0)
+                        {
+                            <i class="fa-solid fa-list-ul"></i>
+                        }
+                    </div>
+                    <h3>@playlist.Title</h3>
+                    <p class="playlist-hint">@(stories.Count == 1 ? "1 storie" : $"{stories.Count} stories")</p>
+                    <div class="playlist-card-actions">
+                        @if (stories.Count > 0)
+                        {
+                            <a class="playlist-btn" href="@($"/my-stories/speellys/{playlist.PlaylistId:D}")"><i class="fa-solid fa-play" aria-hidden="true"></i> Speel</a>
+                        }
+                        <button type="button" class="playlist-btn secondary" @onclick="() => EditPlaylist(playlist)" disabled="@IsBusy">Wysig</button>
+                        <button type="button" class="playlist-icon-btn delete" @onclick="() => AskToDelete(playlist.PlaylistId)" disabled="@IsBusy" aria-label="@($"Verwyder {playlist.Title}")"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                    </div>
+                    @if (DeleteId == playlist.PlaylistId)
+                    {
+                        <div class="playlist-delete-confirm" role="group" aria-label="Bevestig verwydering">
+                            <p>Verwyder hierdie speellys?</p>
+                            <button type="button" class="playlist-btn danger" @onclick="DeletePlaylistAsync" disabled="@IsBusy">@(IsBusy ? "Verwyder..." : "Ja, verwyder")</button>
+                            <button type="button" class="playlist-btn secondary" @onclick="() => DeleteId = null" disabled="@IsBusy">Kanselleer</button>
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+    }
+</section>

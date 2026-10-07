@@ -31,6 +31,36 @@ Keep all credentials server-side:
 
 No new database migration is needed; the existing unique `(provider, provider_payment_id)` key is used. No credentials were added to source. Production credentials were not validated by the local implementation tests.
 
+### Google Play setup on Azure
+
+Google purchase verification requires the Google Play Android Developer API (`androidpublisher.googleapis.com`) to be enabled in the service account's Google Cloud project. A Google sign-in OAuth client and a Play upload key do not provide this access.
+
+Perform all Google billing setup while signed in as `admin@prioritybit.co.za`, including Cloud project ownership, API enablement, service account/key creation, and Play permissions. Use the dedicated `Schink Stories Billing` project (`schink-stories-billing`) under that account.
+
+On 6 October 2026, approved setup created the project under `admin@prioritybit.co.za`, enabled the API, created the billing service account and JSON key, granted Schink-only Play billing permissions, and applied the two Google settings to live Azure. The project's IAM page confirmed `admin@prioritybit.co.za` with the Owner role. The local credential is kept outside the repository in a private directory; it is not included in this document.
+
+The dedicated billing service account is `schink-play-billing@schink-stories-billing.iam.gserviceaccount.com`. Grant it access to **Schink Stories only** in the Schink Play developer account (`8275093652983572360`), with the two billing permissions required by Google's [API setup documentation](https://developers.google.com/android-publisher/getting_started):
+
+- View financial data (the app-level equivalent of the account-level "View financial data, orders, and cancellation survey responses" permission).
+- Manage orders and subscriptions.
+
+No Google Cloud project-wide IAM role is needed for these Play permissions. Generate a JSON key for that account and keep it outside the repository. Configure Azure App Service `schink`, resource group `Schink_Stories`, with:
+
+- `MobileStore__GoogleServiceAccountJson`: the complete service account JSON, including its private key.
+- `MobileStore__GooglePackageName`: `com.schink.stories.mobile`.
+
+Preserve the existing Apple settings. Store the JSON as a server setting, never in source, chat, shell arguments, or mobile artifacts. If using the Azure CLI, supply settings from a protected temporary JSON file and suppress setting values in command output. Applying App Service settings restarts the live app and requires explicit production approval under `AGENTS.md`. Creating the account/key and granting Play access also require approval before those actions.
+
+Initial inspection on 6 October 2026 found no Google service-account setting in live Azure and no service account in Play Console. The earlier `schink-stories-492109` Cloud project, visible through the personal Google account, was left unchanged. Missing configuration makes first purchases fail verification before persistence and acknowledgment; Google's [billing integration documentation](https://developer.android.com/google/play/billing/integrate#process) requires acknowledgment within three days or the purchase is automatically refunded.
+
+Azure read-after-write verification confirmed the credential and package name exactly and preserved all unrelated settings. The app restarted successfully and the public mobile plans endpoint returned HTTP 200. Play's exported user list confirmed `ACCESS_GRANTED` for this service account, with `CAN_VIEW_FINANCIAL_DATA`, `CAN_MANAGE_ORDERS`, `CAN_VIEW_NON_FINANCIAL_DATA`, and `CAN_VIEW_APP_QUALITY` for `com.schink.stories.mobile` only, and no account-wide permissions. These match Google's [app-level permission definitions](https://support.google.com/googleplay/android-developer/answer/9844686?hl=en).
+
+OAuth authorization and the subscription catalogue returned HTTP 200. Order and voided-purchase lookups returned HTTP 401 `permissionDenied`; bounded retries of a real subscription purchase lookup still returned the same error at 09:33 UTC on 6 October ("The current user has insufficient permissions to perform the requested operation"). Purchase verification and acknowledgment therefore remain unverified; saved permissions and a healthy website alone do not prove the billing connection is ready. Permission propagation is a possible explanation, but its cause and completion time have not been confirmed.
+
+After approved setup, verify OAuth authorization and read-only Android Publisher access before exercising a new purchase through the documented internal test track. Confirm that the purchase is persisted, grants access on the same Schink account, and becomes `ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED`. Check app-close recovery as well. Already-refunded orders cannot be repaired by acknowledging them, and this configuration issue alone does not identify which store or order belongs to an individual customer.
+
+Focused local verification on 6 October 2026: all 13 `MobileStoreDeliveryTests` and `StorePurchaseRecoveryTests` passed; `git diff --check` passed. No new purchase, acknowledgment, customer entitlement change, application deployment, Git push, or store release was performed during configuration repair.
+
 ## Rollout and acceptance
 
 Local validation on 6 September 2026: 114 focused tests passed, including shared-ledger regressions, ownership failures/races, Apple signed revocation versus outage, Google lifecycle/acknowledgment/reconciliation, restore fault isolation, and paid website paywall routing. The iOS simulator Debug build passed (one existing runtime-identifier warning); the Android Debug build using Google Play configuration passed with zero warnings/errors. `git diff --check` passed. No live deployment, store upload, or actual transaction was performed.
