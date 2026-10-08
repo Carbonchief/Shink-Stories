@@ -9,6 +9,29 @@ namespace Shink.Tests;
 public class BlogContentRendererTests
 {
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void RenderHtml_UsesImageProxyForHtmlAndMarkdownUploads(bool useMarkdown)
+    {
+        const string imageUrl = "https://media.prioritybit.co.za/uploaded/stories/images/2026/10/blog.png";
+        var content = useMarkdown
+            ? $"![Blogprent]({imageUrl})"
+            : $"<figure class=\"blog-media-image\"><img src=\"{imageUrl}\" alt=\"Blogprent\" onerror=\"run()\"></figure>";
+        var renderer = CreateRenderer();
+        var html = renderer.RenderHtml(content);
+        using var document = new HtmlParser().ParseDocument(html);
+        var image = document.QuerySelector("img");
+
+        Assert.IsNotNull(image);
+        Assert.AreEqual($"/media/image?src={Uri.EscapeDataString(imageUrl)}", image.GetAttribute("src"));
+        Assert.AreEqual("Blogprent", image.GetAttribute("alt"));
+        Assert.IsFalse(image.HasAttribute("onerror"));
+        using var savedDocument = new HtmlParser().ParseDocument(renderer.RenderHtml(html));
+        Assert.AreEqual(image.GetAttribute("src"), savedDocument.QuerySelector("img")?.GetAttribute("src"),
+            "Saved proxy URLs must survive rendering without double encoding.");
+    }
+
+    [TestMethod]
     public void RenderHtml_NormalizesNonBreakingSpacesInRegularProse()
     {
         var renderer = CreateRenderer();

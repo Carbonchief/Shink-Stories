@@ -16,6 +16,33 @@ namespace Shink.Tests;
 public class LandingPageHtmlRendererTests
 {
     [TestMethod]
+    public async Task Renderer_UsesImageProxyForUploadedImagesWithAndWithoutLinks()
+    {
+        const string imageUrl = "https://media.prioritybit.co.za/uploaded/stories/images/2026/10/campaign.png";
+        var content = new LandingPageContent
+        {
+            Blocks =
+            [
+                new() { Type = "image", ImageUrl = imageUrl, AltText = "Veldtogprent" },
+                new() { Type = "image", ImageUrl = imageUrl, Url = "/kry-toegang", ImageShape = "natural" }
+            ]
+        };
+
+        using var document = new HtmlParser().ParseDocument(await RenderRendererAsync(content));
+        var images = document.QuerySelectorAll("figure.landing-image-block img");
+
+        Assert.AreEqual(2, images.Length);
+        foreach (var image in images)
+        {
+            Assert.AreEqual($"/media/image?src={Uri.EscapeDataString(imageUrl)}", image.GetAttribute("src"));
+        }
+        Assert.AreEqual("Veldtogprent", images[0].GetAttribute("alt"));
+        Assert.IsTrue(images[1].ClassList.Contains("landing-image-natural"));
+        Assert.AreEqual("/kry-toegang", images[1].ParentElement?.GetAttribute("href"));
+        Assert.AreEqual(imageUrl, content.Blocks[0].ImageUrl);
+    }
+
+    [TestMethod]
     public async Task Renderer_PreservesBlockOrderAndRendersSquareImagesAndWrappingClasses()
     {
         var content = new LandingPageContent

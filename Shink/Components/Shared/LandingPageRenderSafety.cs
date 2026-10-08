@@ -1,3 +1,4 @@
+using Shink.Components.Content;
 using Shink.Services;
 
 namespace Shink.Components.Shared;
@@ -57,7 +58,7 @@ public static class LandingPageRenderSafety
             !string.IsNullOrEmpty(uri.Host) &&
             string.IsNullOrEmpty(uri.UserInfo))
         {
-            return candidate;
+            return StoryItem.RewriteImagePathForBrowser(candidate);
         }
 
         return null;

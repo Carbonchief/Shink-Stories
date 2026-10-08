@@ -853,7 +853,7 @@
             await module.InvokeVoidAsync(
                 "insertBlogImage",
                 _richTextEditorShell,
-                imageUrl,
+                StoryItem.RewriteImagePathForBrowser(imageUrl),
                 string.IsNullOrWhiteSpace(InlineImageAlt)
                     ? T("Blogprent", "Blog image")
                     : InlineImageAlt.Trim());

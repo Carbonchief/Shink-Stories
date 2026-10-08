@@ -251,7 +251,7 @@
                                                     <div class="landing-block-fields">
                                                         @if (!string.IsNullOrWhiteSpace(block.ImageUrl))
                                                         {
-                                                            <img class="landing-block-image-preview" src="@block.ImageUrl" alt="@block.AltText" />
+                                                            <img class="landing-block-image-preview" src="@LandingPageRenderSafety.ImageUrl(block.ImageUrl)" alt="@block.AltText" />
                                                         }
                                                         <label class="landing-field">
                                                             <span>@T("Laai prent op", "Upload image")</span>

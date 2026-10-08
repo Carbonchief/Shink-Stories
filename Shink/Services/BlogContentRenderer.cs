@@ -38,7 +38,8 @@ public sealed partial class BlogContentRenderer : IBlogContentRenderer
             ? normalizedContent
             : Markdown.ToHtml(normalizedContent, MarkdownPipeline);
 
-        return NormalizeRenderedHtmlWhitespace(_sanitizer.Sanitize(rendered));
+        return BlogInlineImageUrlHelper.RewriteForBrowser(
+            NormalizeRenderedHtmlWhitespace(_sanitizer.Sanitize(rendered)));
     }
 
     public string ConvertToPlainText(string? markdown)
