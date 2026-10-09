@@ -2108,8 +2108,8 @@
                                         <h3>@T("Inkomste analitika", "Revenue analytics")</h3>
                                         <p>
                                             @T(
-                                                "Provider-bevestigde Paystack- en PayFast-inkomste, winkelbetalings en herwinde inkomste volgens die huidige betaaldata.",
-                                                "Provider-confirmed Paystack and PayFast revenue, store payments, and recovered revenue from the current payment data.")
+                                                "Paystack- en PayFast-betalings, iOS- en Android-intekeninge, winkelbestellings en herwinde inkomste volgens die huidige betaaldata.",
+                                                "Paystack and PayFast payments, iOS and Android subscriptions, store orders, and recovered revenue from the current payment data.")
                                         </p>
                                     </div>
                                     <div class="admin-revenue-range-controls">
@@ -2221,10 +2221,30 @@
                                         <strong>@FormatAnalyticsNumber(SelectedRevenuePaystackSalesCount) @T("verkope", "sales")</strong>
                                     </div>
                                     <div class="admin-analytics-meta">
+                                        <span>iOS · App Store</span>
+                                        <div class="admin-analytics-story-cell">
+                                            <strong>@FormatCurrency(SelectedRevenueAppleSales.RevenueZar)</strong>
+                                            <span>@FormatAnalyticsNumber(SelectedRevenueAppleSales.SalesCount) @T("intekeninge", "subscriptions")</span>
+                                        </div>
+                                    </div>
+                                    <div class="admin-analytics-meta">
+                                        <span>Android · Google Play</span>
+                                        <div class="admin-analytics-story-cell">
+                                            <strong>@FormatCurrency(SelectedRevenueGooglePlaySales.RevenueZar)</strong>
+                                            <span>@FormatAnalyticsNumber(SelectedRevenueGooglePlaySales.SalesCount) @T("intekeninge", "subscriptions")</span>
+                                        </div>
+                                    </div>
+                                    <div class="admin-analytics-meta">
                                         <span>@T("Herwinde inkomste", "Recovered revenue")</span>
                                         <strong>@FormatCurrency(FilteredRecoveredRevenueDetails.Sum(detail => detail.RevenueZar))</strong>
                                     </div>
                                 </article>
+
+                                <p class="admin-analytics-footnote">
+                                    @T(
+                                        "Mobiele intekeninge word een keer op hul oorspronklike aankoopdatum getel, teen die aangetekende planbedrag vóór winkelgelde. Winkeluitbetalings en afsonderlike hernuwings is nie hier beskikbaar nie.",
+                                        "Mobile subscriptions count once on their original purchase date, using the recorded plan amount before store fees. Store payouts and individual renewals are not available here.")
+                                </p>
 
                                 <section class="admin-revenue-mrr-grid" aria-label='@T("Herhalende inkomste", "Recurring revenue")'>
                                     <article class="admin-analytics-card admin-revenue-mrr-card">
@@ -2423,7 +2443,19 @@
                                                 @BuildRevenueProviderLabel(context.Provider)
                                             </MudTd>
                                             <MudTd DataLabel='@T("Status", "Status")'>@context.Status</MudTd>
-                                            <MudTd DataLabel='@T("Inkomste", "Revenue")'>@FormatCurrency(context.RevenueZar)</MudTd>
+                                            <MudTd DataLabel='@T("Inkomste", "Revenue")'>
+                                                @if (IsMobileStoreRevenueDetail(context))
+                                                {
+                                                    <div class="admin-analytics-story-cell">
+                                                        <strong>@FormatCurrency(context.RevenueZar)</strong>
+                                                        <span>@T("Planwaarde", "Plan value")</span>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    @FormatCurrency(context.RevenueZar)
+                                                }
+                                            </MudTd>
                                         </RowTemplate>
                                         <NoRecordsContent>
                                             <MudText Typo="Typo.body2">@T("Geen verkope vir hierdie periode nie.", "No sales for this period.")</MudText>
@@ -5469,6 +5501,21 @@
 
     private int SelectedRevenuePaystackSalesCount =>
         FilteredRevenueSalesDetails.Count(detail => IsRevenueDetailProvider(detail, "paystack"));
+
+    private AdminSalesRevenueMetric SelectedRevenueAppleSales => GetSelectedRevenueProviderSalesMetric("apple");
+
+    private AdminSalesRevenueMetric SelectedRevenueGooglePlaySales => GetSelectedRevenueProviderSalesMetric("google_play");
+
+    private AdminSalesRevenueMetric GetSelectedRevenueProviderSalesMetric(string provider)
+    {
+        var details = FilteredRevenueSalesDetails
+            .Where(detail => IsRevenueDetailProvider(detail, provider))
+            .ToArray();
+        return new AdminSalesRevenueMetric(
+            provider,
+            details.Length,
+            decimal.Round(details.Sum(detail => detail.RevenueZar), 2, MidpointRounding.AwayFromZero));
+    }
 
     private IReadOnlyList<AdminRecoveredRevenueDetailRecord> FilteredRecoveredRevenueDetails =>
         SubscriberReports.RecoveredRevenueDetails
@@ -10164,6 +10211,9 @@
     private static bool IsRevenueDetailProvider(AdminSalesRevenueDetailRecord detail, string provider) =>
         string.Equals(detail.Provider, provider, StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsMobileStoreRevenueDetail(AdminSalesRevenueDetailRecord detail) =>
+        IsRevenueDetailProvider(detail, "apple") || IsRevenueDetailProvider(detail, "google_play");
+
     private bool IsRecoveredRevenueDetailInSelectedPeriod(AdminRecoveredRevenueDetailRecord detail) =>
         IsAdminDateInRevenuePeriod(detail.RecoveredAt);
 
@@ -10589,6 +10639,8 @@
         {
             "paystack" => "Paystack",
             "payfast" => "PayFast",
+            "apple" => "iOS · App Store",
+            "google_play" => "Android · Google Play",
             _ => provider ?? "-"
         };
 

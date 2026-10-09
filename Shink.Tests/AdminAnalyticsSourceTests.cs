@@ -208,6 +208,11 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "SetRevenueDrilldownPeriod");
         StringAssert.Contains(admin, "SelectedRevenuePayFastSalesCount");
         StringAssert.Contains(admin, "SelectedRevenuePaystackSalesCount");
+        StringAssert.Contains(admin, "SelectedRevenueAppleSales.RevenueZar");
+        StringAssert.Contains(admin, "SelectedRevenueGooglePlaySales.RevenueZar");
+        StringAssert.Contains(admin, "iOS · App Store");
+        StringAssert.Contains(admin, "Android · Google Play");
+        StringAssert.Contains(admin, "@T(\"Planwaarde\", \"Plan value\")");
         StringAssert.Contains(admin, "IsRevenueDetailProvider");
         StringAssert.Contains(admin, "Items=\"FilteredRevenueSalesDetails\"");
         StringAssert.Contains(admin, "Items=\"FilteredRecoveredRevenueDetails\"");
@@ -1086,6 +1091,44 @@ public class AdminAnalyticsSourceTests
         Assert.AreEqual(283m, today.RevenueZar);
         Assert.AreEqual(4, allTime.SalesCount);
         Assert.AreEqual(362m, allTime.RevenueZar);
+    }
+
+    [TestMethod]
+    public void RevenueAnalyticsIncludesMobileSubscriptionsUsingTheirRecordedAmountsAndDates()
+    {
+        var now = EarlierToday(DateTimeOffset.Now, 5);
+        var appleSubscriber = Guid.NewGuid();
+        var androidSubscriber = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(appleSubscriber, "shink_app", "active", now, null, 99m,
+                tierCode: "all_stories_monthly", provider: "apple", providerPaymentId: "apple-original", providerTransactionId: "apple-transaction"),
+            CreateSubscriptionRow(androidSubscriber, "shink_app", "active", now, null, 87.50m,
+                tierCode: "all_stories_monthly", provider: "google_play", providerPaymentId: "google-token", providerTransactionId: "google-order"),
+            CreateSubscriptionRow(appleSubscriber, "shink_app", "cancelled", now.AddDays(-40), now.AddDays(-10), 99m,
+                tierCode: "all_stories_monthly", provider: "apple", providerPaymentId: "old-apple"),
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "failed", now, null, 99m, provider: "apple"));
+        var events = CreateRevenueEvents(CreateRevenueEvent(now, 7900));
+        var metrics = InvokeBuildSalesRevenueMetrics(CreateWordPressRevenueSnapshot("today", 0, 0m), rows, events);
+        var today = metrics.Single(metric => metric.PeriodKey == "today");
+        Assert.AreEqual(3, today.SalesCount);
+        Assert.AreEqual(265.50m, today.RevenueZar);
+        Assert.AreEqual(364.50m, metrics.Single(metric => metric.PeriodKey == "all_time").RevenueZar);
+
+        var subscribers = CreateSubscriberRows(
+            CreateSubscriberRow(appleSubscriber, "ios@example.com"),
+            CreateSubscriberRow(androidSubscriber, "android@example.com"));
+        var method = typeof(SupabaseAdminManagementService).GetMethod("BuildSalesRevenueDetails", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var details = (IReadOnlyList<AdminSalesRevenueDetailRecord>)method.Invoke(null, [subscribers, rows, CreateEmptyTierDetails(), events])!;
+        var apple = details.Single(detail => detail.Reference == "apple-transaction");
+        Assert.AreEqual("apple", apple.Provider);
+        Assert.AreEqual("ios@example.com", apple.Email);
+        Assert.AreEqual(99m, apple.RevenueZar);
+        Assert.AreEqual(now, apple.SoldAt);
+        var android = details.Single(detail => detail.Provider == "google_play");
+        Assert.AreEqual("android@example.com", android.Email);
+        Assert.AreEqual("google-order", android.Reference);
+        Assert.AreEqual(87.50m, android.RevenueZar);
+        Assert.AreEqual(4, details.Count);
     }
 
     [TestMethod]
