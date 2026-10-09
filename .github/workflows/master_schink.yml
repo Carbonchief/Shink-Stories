@@ -196,17 +196,31 @@ jobs:
             fi
 
             migration_name_sql="${migration_name//\'/\'\'}"
+            migration_version="${migration_name%%_*}"
+            migration_slug="${migration_name#*_}"
+            migration_slug="${migration_slug%.sql}"
+            migration_version_sql="${migration_version//\'/\'\'}"
+            migration_slug_sql="${migration_slug//\'/\'\'}"
             already_applied="$(
               supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked --output csv \
-                "select exists(select 1 from supabase_migrations.shink_action_migrations where file_name = '$migration_name_sql');" |
+                "select exists(select 1 from supabase_migrations.shink_action_migrations where file_name = '$migration_name_sql')
+                  or exists(select 1 from supabase_migrations.schema_migrations
+                    where version = '$migration_version_sql' and name = '$migration_slug_sql') as already_applied;" |
               tail -n 1 |
               tr -d '\r'
             )"
 
-            if [ "$already_applied" = "true" ]; then
-              echo "Skipping previously applied migration: $migration_name"
-              continue
-            fi
+            case "$already_applied" in
+              true)
+                echo "Skipping previously applied migration: $migration_name"
+                continue
+                ;;
+              false) ;;
+              *)
+                echo "::error::Unexpected migration history result for $migration_name: $already_applied"
+                exit 1
+                ;;
+            esac
 
             echo "Applying Supabase migration: $migration_name"
             supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked --file "$migration_path"
