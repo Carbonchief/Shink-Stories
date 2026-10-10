@@ -60,6 +60,10 @@
     background: #ffffff;
 }
 
+.site-shell.access-route .site-main {
+    padding: 0;
+}
+
 .luister-peek-mascot {
     --peek-size: clamp(2.7rem, 6.5vw, 4.45rem);
     --peek-x: 50vw;

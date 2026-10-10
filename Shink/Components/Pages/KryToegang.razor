@@ -1,0 +1,66 @@
+@page "/kry-toegang"
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Schink Stories | Kry toegang</PageTitle>
+<HeadContent>
+    <meta name="description" content="@($"Sluit aan vir onbeperkte toegang tot al ons Afrikaanse oudiostories. Kies R{FormatAmount(MonthlyPlan.Amount)} per maand of R{FormatAmount(YearlyPlan.Amount)} per jaar.")" />
+</HeadContent>
+
+<section class="access-page">
+    <article class="access-card">
+        <div class="access-card-content">
+            <div class="access-brand">
+                <img class="access-mascot" src="/branding/Oortjies_Website.png" alt=""
+                     width="643" height="714" decoding="async" />
+                <img class="access-logo" src="/branding/Schink_Stories_Logo_turqoise.webp" alt="Schink Stories"
+                     width="983" height="428" decoding="async" />
+            </div>
+
+            <h1>Sluit aan vir onbeperkte toegang tot al ons stories.</h1>
+
+            <ul class="access-benefits">
+                <li><strong>120+</strong> Afrikaanse oudiostories</li>
+                <li>Opbouende waardes en lewenslesse</li>
+                <li><strong>Geen</strong> advertensies</li>
+                <li><strong>Geen</strong> donker temas</li>
+                <li>Aflaaibare aktiwiteite</li>
+                <li>Toegang tot <strong>Schink Stories-toep</strong></li>
+                <li><strong>Nuwe stories</strong> elke maand</li>
+            </ul>
+
+            <div class="access-plans">
+                <h2>Kies ’n plan</h2>
+                <a class="access-plan access-plan-monthly" href="@MonthlyCheckoutHref" data-enhance-nav="false"
+                   aria-label="@($"Kies volle toegang teen R{FormatAmount(MonthlyPlan.Amount)} per maand")">
+                    <strong>R @FormatAmount(MonthlyPlan.Amount)</strong><span>/maand</span>
+                </a>
+                <p class="access-cancellation">Geen kontrak. Kanselleer enige tyd.</p>
+                <a class="access-plan access-plan-yearly" href="@YearlyCheckoutHref" data-enhance-nav="false"
+                   aria-label="@($"Kies volle toegang teen R{FormatAmount(YearlyPlan.Amount)} per jaar")">
+                    <span><strong>R @FormatAmount(YearlyPlan.Amount)</strong> per jaar <span class="access-saving">( @FreeMonths maande <strong>gratis</strong> )</span></span>
+                </a>
+            </div>
+        </div>
+    </article>
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    private static readonly PaymentPlan MonthlyPlan = PaymentPlanCatalog.FindBySlug("schink-stories-maandeliks")!;
+    private static readonly PaymentPlan YearlyPlan = PaymentPlanCatalog.FindBySlug("schink-stories-jaarliks")!;
+    private bool IsAuthenticated { get; set; }
+    private string MonthlyCheckoutHref => StoryAccessCheckoutLinks.BuildCheckoutHref(MonthlyPlan, IsAuthenticated, ReturnUrl);
+    private string YearlyCheckoutHref => StoryAccessCheckoutLinks.BuildCheckoutHref(YearlyPlan, IsAuthenticated, ReturnUrl);
+    private static int FreeMonths => (int)(YearlyPlan.BillingPeriodMonths - YearlyPlan.Amount / MonthlyPlan.Amount);
+    private static string FormatAmount(decimal amount) => amount.ToString("0.##", CultureInfo.InvariantCulture);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        IsAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+    }
+}

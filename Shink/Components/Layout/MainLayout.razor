@@ -8,7 +8,7 @@
 @inject ISubscriptionLedgerService SubscriptionLedgerService
 @inject ISchoolManagementService SchoolManagementService
 
-<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @(IsOpsiesRoute ? "opsies-route" : null) @((IsWinkelRoute || IsBlogRoute || IsResourcesRoute || IsMeerOorOnsRoute || IsOpsiesRoute || IsSkoolAdminRoute) ? "store-route" : null) @(IsAdminRoute ? "admin-route" : null) @(IsLandingPageRoute ? "landing-route" : null) @(IsFloatingPlaylistRoute ? "playlist-nav-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null)">
+<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @(IsOpsiesRoute ? "opsies-route" : null) @((IsWinkelRoute || IsBlogRoute || IsResourcesRoute || IsMeerOorOnsRoute || IsOpsiesRoute || IsSkoolAdminRoute) ? "store-route" : null) @(IsAdminRoute ? "admin-route" : null) @(IsLandingPageRoute ? "landing-route" : null) @(IsFloatingPlaylistRoute ? "playlist-nav-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null) @(IsAccessRoute ? "access-route" : null)">
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
     @if (!IsFloatingPlaylistRoute)
     {
@@ -822,6 +822,8 @@
                    string.Equals(relativePath, "skoolopsies", StringComparison.OrdinalIgnoreCase);
         }
     }
+
+    private bool IsAccessRoute => string.Equals(GetCurrentRelativePathWithoutQuery(), "kry-toegang", StringComparison.OrdinalIgnoreCase);
 
     private bool IsSkoolAdminRoute
     {

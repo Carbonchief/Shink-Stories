@@ -672,9 +672,9 @@ else
 
     private string HomeCanonicalUrl => NavigationManager.ToAbsoluteUri("/").ToString();
     private string StoryAccessPopupPrimaryHref =>
-        IsSignedIn
-            ? BuildOpsiesHref(PendingLockedStoryPath)
-            : $"/teken-in?returnUrl={Uri.EscapeDataString(PendingLockedStoryPath)}";
+        !IsSignedIn && PendingLockedStoryPath.StartsWith("/gratis/", StringComparison.OrdinalIgnoreCase)
+            ? $"/teken-in?returnUrl={Uri.EscapeDataString(PendingLockedStoryPath)}"
+            : BuildOpsiesHref(PendingLockedStoryPath);
     private string StoryAccessPopupPlanHref => BuildOpsiesHref(PendingLockedStoryPath);
 
     protected override async Task OnInitializedAsync()
@@ -778,8 +778,7 @@ else
 
     private static string BuildOpsiesHref(string returnPath)
     {
-        var safePath = string.IsNullOrWhiteSpace(returnPath) ? "/" : returnPath;
-        return $"/opsies?returnUrl={Uri.EscapeDataString(safePath)}";
+        return StoryAccessCheckoutLinks.BuildPageHref(returnPath);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

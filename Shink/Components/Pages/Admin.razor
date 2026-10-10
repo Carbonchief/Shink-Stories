@@ -1567,8 +1567,8 @@
                                         <h3>@T("Intekenaar analitika", "Subscriber analytics")</h3>
                                         <p>
                                             @T(
-                                                "Nuwe intekenaars, gekanselleerde intekeninge, aktiewe lede en betalingseinligting uit die intekenaarverslae.",
-                                                "New subscribers, cancelled subscriptions, active members, and payment signals from the subscriber reports.")
+                                                "Nuwe en herwinde intekenaars, gekanselleerde intekeninge, aktiewe lede en betalingseinligting uit die intekenaarverslae.",
+                                                "New and recovered subscribers, cancelled subscriptions, active members, and payment signals from the subscriber reports.")
                                         </p>
                                     </div>
                                 </div>
@@ -1649,7 +1649,7 @@
                                         {
                                             <div class="admin-subscriber-analytics-chart-shell"
                                                  role="img"
-                                                 aria-label='@T("Nuwe en gekanselleerde intekenaars per tydperk", "New and cancelled subscribers by period")'>
+                                                 aria-label='@T("Nuwe, herwinde en gekanselleerde intekenaars per tydperk", "New, recovered and cancelled subscribers by period")'>
                                                 <MudChart T="double"
                                                           ChartType="@SubscriberTrendChartType"
                                                           ChartSeries="SubscriberTrendChartSeries"
@@ -1675,6 +1675,8 @@
                                             <div class="admin-subscriber-kpi-secondary">
                                                 <span>@T("Gekanselleer", "Cancelled")</span>
                                                 <strong>@FormatAnalyticsNumber(todaySubscriberMetric.Cancellations)</strong>
+                                                <span>@T("Herwin", "Recovered")</span>
+                                                <strong>@FormatAnalyticsNumber(GetRecoveredSubscriberCount("today"))</strong>
                                             </div>
                                         </button>
 
@@ -1688,6 +1690,8 @@
                                             <div class="admin-subscriber-kpi-secondary">
                                                 <span>@T("Gekanselleer", "Cancelled")</span>
                                                 <strong>@FormatAnalyticsNumber(monthlySubscriberMetric.Cancellations)</strong>
+                                                <span>@T("Herwin", "Recovered")</span>
+                                                <strong>@FormatAnalyticsNumber(GetRecoveredSubscriberCount("this_month"))</strong>
                                             </div>
                                         </button>
 
@@ -1701,6 +1705,8 @@
                                             <div class="admin-subscriber-kpi-secondary">
                                                 <span>@T("Gekanselleer", "Cancelled")</span>
                                                 <strong>@FormatAnalyticsNumber(yearlySubscriberMetric.Cancellations)</strong>
+                                                <span>@T("Herwin", "Recovered")</span>
+                                                <strong>@FormatAnalyticsNumber(GetRecoveredSubscriberCount("this_year"))</strong>
                                             </div>
                                         </button>
 
@@ -1712,8 +1718,8 @@
                                                 <strong>@FormatCurrency(monthlySubscriberSales.RevenueZar)</strong>
                                             </div>
                                             <div class="admin-analytics-meta">
-                                                <span>@T("Herwinde bestellings (30 dae)", "Recovered orders (30 days)")</span>
-                                                <strong>@FormatAnalyticsNumber(pastThirtyDaysSubscriberRecoveries.RecoveredOrders)</strong>
+                                                <span>@T("Herwinde intekenaars (30 dae)", "Recovered subscribers (30 days)")</span>
+                                                <strong>@FormatAnalyticsNumber(GetRecoveredSubscriberCount("past_30_days"))</strong>
                                             </div>
                                         </article>
                                     </div>
@@ -1797,6 +1803,41 @@
                                         <PagerContent>
                                             <MudTablePager />
                                         </PagerContent>
+                                    </MudTable>
+                                </section>
+
+                                <section class="admin-revenue-drilldown">
+                                    <div class="admin-analytics-panel-head">
+                                        <div>
+                                            <h3>@T("Herwinde intekenaars", "Recovered subscribers")</h3>
+                                            <p>@T("Intekenaars wie se betaling ná 'n betalingsprobleem weer geslaag het, sonder 'n handmatige kansellasie. Die gekose detailperiode en toegangsfilter geld ook hier.", "Subscribers whose payment succeeded again after a payment problem, without a manual cancellation. The selected detail period and access filter also apply here.")</p>
+                                        </div>
+                                        <span class="admin-story-stats-filter-summary">@FormatAnalyticsNumber(FilteredRecoveredSubscriberDetails.Count) @T("intekenaars", "subscribers")</span>
+                                    </div>
+                                    <MudTable T="AdminRecoveredSubscriberDetailRecord"
+                                              Class="admin-grid"
+                                              Items="FilteredRecoveredSubscriberDetails"
+                                              RowsPerPage="25"
+                                              Dense="true" Hover="true" Bordered="true" Elevation="0" Breakpoint="Breakpoint.Md">
+                                        <HeaderContent>
+                                            <MudTh>@T("Intekenaar", "Subscriber")</MudTh>
+                                            <MudTh>@T("Vlak", "Tier")</MudTh>
+                                            <MudTh>@T("Bron", "Source")</MudTh>
+                                            <MudTh>@T("Herwin op", "Recovered at")</MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd DataLabel='@T("Intekenaar", "Subscriber")'>
+                                                <strong>@context.DisplayName</strong>
+                                                <span>@context.Email</span>
+                                            </MudTd>
+                                            <MudTd DataLabel='@T("Vlak", "Tier")'>@context.TierName</MudTd>
+                                            <MudTd DataLabel='@T("Bron", "Source")'>@BuildRevenueProviderLabel(context.Provider)</MudTd>
+                                            <MudTd DataLabel='@T("Herwin op", "Recovered at")'>@FormatAdminDateTime(context.RecoveredAt)</MudTd>
+                                        </RowTemplate>
+                                        <NoRecordsContent>
+                                            <p class="admin-analytics-footnote">@T("Geen herwinde intekenaars vir hierdie periode nie.", "No recovered subscribers for this period.")</p>
+                                        </NoRecordsContent>
+                                        <PagerContent><MudTablePager /></PagerContent>
                                     </MudTable>
                                 </section>
 
@@ -5117,6 +5158,11 @@
             },
             new ChartSeries<double>
             {
+                Name = T("Herwinde intekenaars", "Recovered subscribers"),
+                Data = CurrentSubscriberTrendMetrics.Select(metric => (double)GetRecoveredSubscriberTrendCount(metric)).ToArray()
+            },
+            new ChartSeries<double>
+            {
                 Name = T("Gekanselleerde intekeninge", "Cancelled subscriptions"),
                 Data = CurrentSubscriberTrendMetrics
                     .Select(metric => (double)metric.Cancellations)
@@ -5449,6 +5495,30 @@
         SubscriberReports.SignupDetails
             .Where(DoesSubscriberMembershipDetailMatchAccessFilter)
             .ToArray();
+
+    private IReadOnlyList<AdminRecoveredSubscriberDetailRecord> AccessFilteredRecoveredSubscriberDetails =>
+        IsSelectedSubscriberAccessFilter(SubscriberAccessFilterFree) ? [] : SubscriberReports.RecoveredSubscriberDetails;
+
+    private IReadOnlyList<AdminRecoveredSubscriberDetailRecord> FilteredRecoveredSubscriberDetails =>
+        AccessFilteredRecoveredSubscriberDetails
+            .Where(detail => IsAdminDateInCurrentPeriod(detail.RecoveredAt, SelectedSubscriberDrilldownPeriod))
+            .OrderByDescending(detail => detail.RecoveredAt)
+            .DistinctBy(detail => detail.SubscriberId)
+            .ToArray();
+
+    private int GetRecoveredSubscriberCount(string periodKey) =>
+        AccessFilteredRecoveredSubscriberDetails
+            .Where(detail => periodKey == "past_30_days"
+                ? detail.RecoveredAt.ToLocalTime().Date >= DateTime.Today.AddDays(-29) && detail.RecoveredAt.ToLocalTime().Date <= DateTime.Today
+                : IsAdminDateInCurrentPeriod(detail.RecoveredAt, periodKey))
+            .Select(detail => detail.SubscriberId).Distinct().Count();
+
+    private int GetRecoveredSubscriberTrendCount(AdminSubscriberTrendMetric metric) =>
+        AccessFilteredRecoveredSubscriberDetails
+            .Where(detail => detail.RecoveredAt.ToLocalTime().ToString(
+                metric.PeriodType == "year" ? "yyyy" : metric.PeriodType == "month" ? "yyyy-MM" : "yyyy-MM-dd",
+                CultureInfo.InvariantCulture) == metric.PeriodKey)
+            .Select(detail => detail.SubscriberId).Distinct().Count();
 
     private IReadOnlyList<AdminSubscriberMembershipDetailRecord> FilteredSubscriberMembershipDetails =>
         AccessFilteredSubscriberMembershipDetails

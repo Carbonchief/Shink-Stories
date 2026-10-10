@@ -1,0 +1,177 @@
+.access-page {
+    min-height: 720px;
+    min-height: max(720px, calc(100svh - 5.5rem));
+    display: grid;
+    place-items: center;
+    padding: 2.25rem 1rem;
+    background:
+        linear-gradient(180deg, rgba(34, 177, 191, 0.28), rgba(53, 160, 164, 0.62)),
+        url('/branding/Schink_Background.avif') center / cover no-repeat;
+    color: #374352;
+}
+
+.access-card {
+    width: min(100%, 410px);
+    border: 10px solid #faf9f6;
+    border-radius: 29px;
+    background: #faf8f4;
+    box-shadow: 0 8px 13px rgba(29, 66, 70, 0.28);
+}
+
+.access-card-content {
+    border: 2px solid #cececb;
+    border-radius: 20px;
+    padding: 1.3rem 0.75rem 0.75rem;
+    box-shadow: inset 0 0 0 2px #fff;
+}
+
+.access-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.access-mascot {
+    width: 82px;
+    height: auto;
+    display: block;
+}
+
+.access-logo {
+    display: block;
+    width: min(100%, 270px);
+    height: auto;
+    margin-top: -0.1rem;
+}
+
+.access-card h1 {
+    margin: 0.8rem auto 1.2rem;
+    max-width: 340px;
+    font-size: 1.4rem;
+    font-weight: 700;
+    line-height: 1.25;
+    text-align: center;
+    color: #374352;
+}
+
+.access-benefits {
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto 1.6rem;
+    padding-left: 1rem;
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+
+.access-benefits li::marker {
+    font-size: 0.65em;
+}
+
+.access-benefits strong {
+    font-weight: 700;
+}
+
+.access-plans h2 {
+    margin: 0 0 0.4rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    text-align: center;
+    color: #374352;
+}
+
+.access-plan {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 44px;
+    border-radius: 14px;
+    padding: 0.5rem 0.6rem;
+    color: #fff;
+    text-align: center;
+    text-decoration: none;
+    box-shadow: 0 4px 7px rgba(60, 70, 61, 0.13);
+    transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.access-plan:hover {
+    color: #fff;
+    box-shadow: 0 5px 10px rgba(60, 70, 61, 0.23);
+}
+
+.access-plan:focus-visible {
+    outline: 3px solid #374352;
+    outline-offset: 3px;
+}
+
+.access-plan-monthly {
+    min-height: 66px;
+    background: #61ad08;
+    font-size: 1.85rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.access-plan-monthly strong {
+    font-family: 'Schink Rank Rounded', 'Poppins', sans-serif;
+    font-size: 2.15rem;
+    font-weight: 900;
+}
+
+.access-plan-monthly:hover {
+    background: #549507;
+}
+
+.access-cancellation {
+    margin: 0.18rem 0;
+    color: #707477;
+    font-size: 0.62rem;
+    font-style: italic;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.access-plan-yearly {
+    background: #4b909d;
+    font-size: 0.92rem;
+    line-height: 1.3;
+}
+
+.access-plan-yearly:hover {
+    background: #3c7884;
+}
+
+.access-plan-yearly strong {
+    font-weight: 700;
+}
+
+.access-saving {
+    white-space: nowrap;
+}
+
+@media (max-width: 440px) {
+    .access-page {
+        min-height: calc(100svh - 4.5rem);
+        padding: 1.4rem 0.8rem;
+    }
+
+    .access-card {
+        border-width: 8px;
+        border-radius: 25px;
+    }
+
+    .access-card-content {
+        padding: 1rem 0.6rem 0.6rem;
+    }
+
+    .access-card h1 {
+        font-size: clamp(1.15rem, 5.5vw, 1.4rem);
+    }
+
+    .access-benefits {
+        font-size: clamp(0.76rem, 3.55vw, 0.92rem);
+    }
+
+    .access-plan-yearly {
+        font-size: clamp(0.75rem, 3.4vw, 0.92rem);
+    }
+}

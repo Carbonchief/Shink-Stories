@@ -200,6 +200,14 @@ body.schink-night-mode .site-main li {
     color: var(--text);
 }
 
+body.schink-night-mode .site-shell.access-route .access-card :is(h1, h2, li) {
+    color: #374352;
+}
+
+body.schink-night-mode .site-shell.access-route .access-cancellation {
+    color: #707477;
+}
+
 body.schink-night-mode .site-main small,
 body.schink-night-mode .site-main figcaption,
 body.schink-night-mode .site-main .eyebrow,

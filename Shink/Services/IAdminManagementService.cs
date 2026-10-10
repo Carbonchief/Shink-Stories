@@ -951,6 +951,8 @@ public sealed record AdminSubscriberReportsSnapshot(
     IReadOnlyList<AdminCancellationSurveyReasonMetric> CancellationSurveyReasons,
     IReadOnlyList<AdminCancellationSurveyResponseRecord> CancellationSurveyResponses)
 {
+    public IReadOnlyList<AdminRecoveredSubscriberDetailRecord> RecoveredSubscriberDetails { get; init; } = [];
+
     public static AdminSubscriberReportsSnapshot Empty { get; } = new(
         MembershipStats: [],
         MembershipTrend: [],
@@ -998,6 +1000,15 @@ public sealed record AdminSubscriberMembershipDetailRecord(
     string Status,
     DateTimeOffset SubscribedAt,
     DateTimeOffset? CancelledAt);
+
+public sealed record AdminRecoveredSubscriberDetailRecord(
+    Guid SubscriberId,
+    string Email,
+    string DisplayName,
+    string TierCode,
+    string TierName,
+    string Provider,
+    DateTimeOffset RecoveredAt);
 
 public sealed record AdminRecurringRevenueMetric(
     string SegmentKey,

@@ -997,6 +997,222 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
+    public void SuspendedPaystackSubscriberIsRecoveredAtFirstSuccessfulChargeOnly()
+    {
+        var subscriberId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
+        var paidAt = DateTimeOffset.Now.AddHours(-1);
+        var rows = CreateSubscriptionRows(CreateSubscriptionRow(subscriberId, "shink_app", "active",
+            paidAt.AddMonths(-3), null, 79m, "all_stories_monthly", "SUB_returning", "paystack", subscriptionId: subscriptionId));
+        var subscribers = CreateSubscriberRows(CreateSubscriberRow(subscriberId, "returning@shink.dev"));
+        var recoveries = CreateSubscriptionRecoveryRows(CreateSubscriptionRecoveryRow(subscriptionId, "paystack",
+            paidAt.AddDays(-4), "suspended", firstFailedAt: paidAt.AddDays(-10)));
+        var events = CreateRevenueEvents(
+            CreateRevenueEvent(paidAt, 7900m, providerPaymentId: "SUB_returning", customerId: "returning", customerEmail: "returning@shink.dev"),
+            CreateRevenueEvent(paidAt, 7900m, providerPaymentId: "SUB_returning", customerId: "returning", customerEmail: "returning@shink.dev"),
+            CreateRevenueEvent(paidAt.AddDays(1), 7900m, providerPaymentId: "SUB_returning", customerId: "returning", customerEmail: "returning@shink.dev"));
+
+        var details = InvokeBuildRecoveredSubscriberDetails(subscribers, rows, events, recoveries);
+
+        Assert.AreEqual(1, details.Count, "Duplicate webhooks and later regular renewals must not add recoveries.");
+        Assert.AreEqual(subscriberId, details[0].SubscriberId);
+        Assert.AreEqual(paidAt, details[0].RecoveredAt);
+        Assert.AreEqual("paystack", details[0].Provider);
+        Assert.AreEqual(0, InvokeBuildSubscriberSignupDetails(subscribers, rows, CreateEmptyTierDetails(), events).Count);
+    }
+
+    [TestMethod]
+    public void FailedPaidHistoryPreventsReturningSubscriberBeingCountedAsNewPaidOrFree()
+    {
+        var subscriberId = Guid.NewGuid();
+        var paidAt = DateTimeOffset.Now.AddHours(-1);
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(subscriberId, "shink_app", "failed", paidAt.AddMonths(-3), null,
+                79m, "all_stories_monthly", "SUB_old", "paystack"),
+            CreateSubscriptionRow(subscriberId, "shink_app", "active", paidAt.AddMinutes(-1), null,
+                tierCode: "gratis", provider: "free", providerPaymentId: "free-returning"),
+            CreateSubscriptionRow(subscriberId, "shink_app", "active", paidAt, null,
+                79m, "all_stories_monthly", "SUB_returning", "paystack"));
+        var subscribers = CreateSubscriberRows(CreateSubscriberRow(subscriberId, "returning@shink.dev"));
+        var events = CreateRevenueEvents(CreateRevenueEvent(paidAt, 7900m,
+            providerPaymentId: "SUB_returning", customerEmail: "returning@shink.dev"));
+
+        Assert.AreEqual(0, InvokeBuildSubscriberSignupDetails(subscribers, rows, CreateEmptyTierDetails(), events).Count);
+        Assert.AreEqual(0, InvokeBuildSubscriberSignupDetails(subscribers, rows, CreateEmptyTierDetails()).Count,
+            "The ledger fallback must also retain failed paid history.");
+    }
+
+    [TestMethod]
+    public void PaystackRecoveryCanMatchAuthorizationWithoutSubscriptionCode()
+    {
+        var subscriberId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
+        var paidAt = DateTimeOffset.Now;
+        var rows = CreateSubscriptionRows(CreateSubscriptionRow(subscriberId, "shink_app", "active",
+            paidAt.AddMonths(-2), null, 79m, "all_stories_monthly", "SUB_recurring", "paystack",
+            subscriptionId: subscriptionId, providerToken: "AUTH_recurring"));
+        var events = CreateRevenueEvents(CreateRevenueEvent(paidAt, 7900m, authorizationCode: "AUTH_recurring"));
+        var recoveries = CreateSubscriptionRecoveryRows(CreateSubscriptionRecoveryRow(subscriptionId, "paystack",
+            paidAt.AddDays(-2), "suspended", firstFailedAt: paidAt.AddDays(-5)));
+
+        Assert.AreEqual(1, InvokeBuildRecoveredSubscriberDetails(
+            CreateSubscriberRows(CreateSubscriberRow(subscriberId, "returning@shink.dev")), rows, events, recoveries).Count);
+    }
+
+    [TestMethod]
+    public void PaymentForDifferentAgreementDoesNotRecoverSuspendedSubscription()
+    {
+        var subscriberId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
+        var paidAt = DateTimeOffset.Now;
+        var rows = CreateSubscriptionRows(CreateSubscriptionRow(subscriberId, "shink_app", "failed",
+            paidAt.AddMonths(-2), null, 79m, "all_stories_monthly", "SUB_old", "paystack",
+            subscriptionId: subscriptionId, providerToken: "AUTH_shared"));
+        var events = CreateRevenueEvents(CreateRevenueEvent(paidAt, 7900m,
+            authorizationCode: "AUTH_shared", subscriptionCode: "SUB_new"));
+        var recoveries = CreateSubscriptionRecoveryRows(CreateSubscriptionRecoveryRow(subscriptionId, "paystack",
+            paidAt.AddDays(-2), "suspended", firstFailedAt: paidAt.AddDays(-5)));
+
+        Assert.AreEqual(0, InvokeBuildRecoveredSubscriberDetails(CreateSubscriberRows(), rows, events, recoveries).Count);
+    }
+
+    [TestMethod]
+    public void ManuallyCancelledPaystackAgreementDoesNotCountAsRecovered()
+    {
+        var subscriberId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
+        var paidAt = DateTimeOffset.Now;
+        var recoveries = CreateSubscriptionRecoveryRows(CreateSubscriptionRecoveryRow(subscriptionId, "paystack",
+            paidAt.AddDays(-2), "suspended", firstFailedAt: paidAt.AddDays(-5)));
+        var charge = CreateRevenueEvent(paidAt, 7900m, providerPaymentId: "SUB_cancelled");
+        var rows = CreateSubscriptionRows(CreateSubscriptionRow(subscriberId, "shink_app", "active",
+            paidAt.AddMonths(-2), paidAt.AddDays(-1), 79m, "all_stories_monthly", "SUB_cancelled", "paystack",
+            subscriptionId: subscriptionId));
+
+        Assert.AreEqual(0, InvokeBuildRecoveredSubscriberDetails(CreateSubscriberRows(), rows,
+            CreateRevenueEvents(charge), recoveries).Count);
+
+        SetProperty(((IList)rows)[0]!, "CancelledAt", null);
+        var cancellation = CreateRevenueEvent(paidAt.AddDays(-1), 0m,
+            eventType: "subscription.disable", providerPaymentId: "SUB_cancelled");
+        Assert.AreEqual(0, InvokeBuildRecoveredSubscriberDetails(CreateSubscriberRows(), rows,
+            CreateRevenueEvents(charge, cancellation), recoveries).Count,
+            "Cancellation webhooks must remain authoritative even if a later renewal cleared cancelled_at.");
+    }
+
+    [TestMethod]
+    public void LaterCancellationPreservesHistoricalRecovery()
+    {
+        var subscriberId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
+        var paidAt = DateTimeOffset.Now.AddDays(-2);
+        var rows = CreateSubscriptionRows(CreateSubscriptionRow(subscriberId, "shink_app", "cancelled",
+            paidAt.AddMonths(-2), paidAt.AddDays(1), 79m, "all_stories_monthly", "SUB_returned", "paystack",
+            subscriptionId: subscriptionId));
+        var events = CreateRevenueEvents(CreateRevenueEvent(paidAt, 7900m, providerPaymentId: "SUB_returned"));
+        var recoveries = CreateSubscriptionRecoveryRows(CreateSubscriptionRecoveryRow(subscriptionId, "paystack",
+            paidAt.AddDays(-2), "suspended", firstFailedAt: paidAt.AddDays(-5)));
+
+        Assert.AreEqual(paidAt, InvokeBuildRecoveredSubscriberDetails(CreateSubscriberRows(), rows, events, recoveries).Single().RecoveredAt);
+    }
+
+    [TestMethod]
+    public void SuspendedSubscriberWithoutSuccessfulPositivePaymentIsNotRecovered()
+    {
+        var subscriberId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
+        var now = DateTimeOffset.Now;
+        var rows = CreateSubscriptionRows(CreateSubscriptionRow(subscriberId, "shink_app", "failed",
+            now.AddMonths(-2), null, 79m, "all_stories_monthly", "SUB_unpaid", "paystack", subscriptionId: subscriptionId));
+        var recoveries = CreateSubscriptionRecoveryRows(CreateSubscriptionRecoveryRow(subscriptionId, "paystack",
+            now.AddDays(-2), "suspended", firstFailedAt: now.AddDays(-5)));
+        var events = CreateRevenueEvents(
+            CreateRevenueEvent(now, 0m, providerPaymentId: "SUB_unpaid"),
+            CreateRevenueEvent(now, 7900m, providerPaymentId: "SUB_unpaid", eventStatus: "failed"),
+            CreateRevenueEvent(now.AddDays(-6), 7900m, providerPaymentId: "SUB_unpaid"));
+
+        Assert.AreEqual(0, InvokeBuildRecoveredSubscriberDetails(CreateSubscriberRows(), rows, events, recoveries).Count);
+    }
+
+    [TestMethod]
+    public void RecordedRecoveryUsesResolutionWhenChargeHistoryIsUnavailable()
+    {
+        var subscriberId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
+        var paidAt = DateTimeOffset.Now;
+        var rows = CreateSubscriptionRows(CreateSubscriptionRow(subscriberId, "shink_app", "active",
+            paidAt.AddMonths(-2), null, 79m, "all_stories_monthly", "SUB_recovered", "paystack", subscriptionId: subscriptionId));
+        var recoveries = CreateSubscriptionRecoveryRows(CreateSubscriptionRecoveryRow(subscriptionId, "paystack", paidAt, "recovered"));
+
+        Assert.AreEqual(paidAt, InvokeBuildRecoveredSubscriberDetails(CreateSubscriberRows(), rows, CreateRevenueEvents(), recoveries).Single().RecoveredAt);
+    }
+
+    [TestMethod]
+    public void ReportSnapshotMovesReactivationWithUpdatedSignupDateOutOfNewSubscribers()
+    {
+        var subscriberId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
+        var paidAt = DateTimeOffset.Now.AddMinutes(-1);
+        var rows = CreateSubscriptionRows(CreateSubscriptionRow(subscriberId, "shink_app", "active", paidAt,
+            null, 79m, "all_stories_monthly", "SUB_returned", "paystack", subscriptionId: subscriptionId));
+        var subscribers = CreateSubscriberRows(CreateSubscriberRow(subscriberId, "returned@shink.dev"));
+        var events = CreateRevenueEvents(CreateRevenueEvent(paidAt, 7900m,
+            providerPaymentId: "SUB_returned", customerEmail: "returned@shink.dev"));
+        var recoveries = CreateSubscriptionRecoveryRows(CreateSubscriptionRecoveryRow(subscriptionId, "paystack",
+            paidAt.AddDays(-2), "suspended", firstFailedAt: paidAt.AddDays(-5)));
+        var method = typeof(SupabaseAdminManagementService).GetMethod(
+            "BuildSubscriberReportsSnapshot", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var args = method.GetParameters().Select(parameter => parameter.Name switch
+        {
+            "subscribers" => subscribers,
+            "subscriptions" => rows,
+            "revenueEvents" => events,
+            "recoveries" => recoveries,
+            "wordPressSubscriberReports" => null,
+            "paystackSubscriptionCreateIdentifiers" => new HashSet<string>(),
+            _ => Activator.CreateInstance(typeof(List<>).MakeGenericType(parameter.ParameterType.GetGenericArguments()[0]))
+        }).ToArray();
+
+        var snapshot = (AdminSubscriberReportsSnapshot)method.Invoke(null, args)!;
+
+        Assert.IsEmpty(snapshot.SignupDetails);
+        Assert.AreEqual(subscriberId, snapshot.RecoveredSubscriberDetails.Single().SubscriberId);
+        Assert.AreEqual(paidAt, snapshot.RecoveredSubscriberDetails.Single().RecoveredAt);
+    }
+
+    [TestMethod]
+    public void ImportedPaystackSubscriberCanBeRecoveredWithoutBecomingNew()
+    {
+        var subscriberId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
+        var paidAt = DateTimeOffset.Now;
+        var rows = CreateSubscriptionRows(CreateSubscriptionRow(subscriberId, "wordpress_pmpro", "failed",
+            paidAt.AddYears(-1), null, 79m, "all_stories_monthly", "SUB_imported", "paystack", subscriptionId: subscriptionId));
+        var subscribers = CreateSubscriberRows(CreateSubscriberRow(subscriberId, "imported@shink.dev"));
+        var events = CreateRevenueEvents(CreateRevenueEvent(paidAt, 7900m,
+            providerPaymentId: "SUB_imported", customerEmail: "imported@shink.dev"));
+        var recoveries = CreateSubscriptionRecoveryRows(CreateSubscriptionRecoveryRow(subscriptionId, "paystack",
+            paidAt.AddDays(-2), "suspended", firstFailedAt: paidAt.AddDays(-5)));
+
+        Assert.AreEqual(1, InvokeBuildRecoveredSubscriberDetails(subscribers, rows, events, recoveries).Count);
+        Assert.IsEmpty(InvokeBuildSubscriberSignupDetails(subscribers, rows, CreateEmptyTierDetails(), events));
+    }
+
+    [TestMethod]
+    public void FirstPaystackPurchaseRemainsNewSubscriber()
+    {
+        var subscriberId = Guid.NewGuid();
+        var now = DateTimeOffset.Now;
+        var rows = CreateSubscriptionRows(CreateSubscriptionRow(subscriberId, "shink_app", "active", now,
+            null, 79m, "all_stories_monthly", "SUB_first", "paystack"));
+        var subscribers = CreateSubscriberRows(CreateSubscriberRow(subscriberId, "new@shink.dev"));
+        var events = CreateRevenueEvents(CreateRevenueEvent(now, 7900m, providerPaymentId: "SUB_first", customerEmail: "new@shink.dev"));
+
+        Assert.AreEqual(1, InvokeBuildSubscriberSignupDetails(subscribers, rows, CreateEmptyTierDetails(), events).Count);
+        Assert.AreEqual(0, InvokeBuildRecoveredSubscriberDetails(subscribers, rows, events, CreateSubscriptionRecoveryRows()).Count);
+    }
+
+    [TestMethod]
     public void SubscriberAnalyticsAccessToggleScopesSummaryCardsAndDetailGrid()
     {
         var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
@@ -1343,6 +1559,15 @@ public class AdminAnalyticsSourceTests
         return ((IEnumerable<AdminSubscriberMembershipDetailRecord>)result).ToArray();
     }
 
+    private static IReadOnlyList<AdminRecoveredSubscriberDetailRecord> InvokeBuildRecoveredSubscriberDetails(
+        object subscribers, object rows, object revenueEvents, object recoveries)
+    {
+        var method = typeof(SupabaseAdminManagementService).GetMethod(
+            "BuildRecoveredSubscriberDetails", BindingFlags.NonPublic | BindingFlags.Static)!;
+        return ((IEnumerable<AdminRecoveredSubscriberDetailRecord>)method.Invoke(null,
+            [subscribers, rows, CreateEmptyTierDetails(), revenueEvents, recoveries])!).ToArray();
+    }
+
     private static object BuildPaystackSubscriptionCreateIdentifiers(object revenueEvents)
     {
         var method = typeof(SupabaseAdminManagementService).GetMethod(
@@ -1403,7 +1628,8 @@ public class AdminAnalyticsSourceTests
         string? provider = null,
         string? providerTransactionId = null,
         int? billingPeriodMonths = null,
-        Guid? subscriptionId = null)
+        Guid? subscriptionId = null,
+        string? providerToken = null)
     {
         var rowType = GetSubscriptionRowType();
         var row = Activator.CreateInstance(rowType)!;
@@ -1419,6 +1645,7 @@ public class AdminAnalyticsSourceTests
         SetProperty(row, "TierCode", tierCode);
         SetProperty(row, "ProviderPaymentId", providerPaymentId);
         SetProperty(row, "ProviderTransactionId", providerTransactionId);
+        SetProperty(row, "ProviderToken", providerToken);
         return row;
     }
 
@@ -1426,7 +1653,8 @@ public class AdminAnalyticsSourceTests
         Guid subscriptionId,
         string? provider = null,
         DateTimeOffset? resolvedAt = null,
-        string? resolution = null)
+        string? resolution = null,
+        DateTimeOffset? firstFailedAt = null)
     {
         var rowType = GetSubscriptionRecoveryRowType();
         var row = Activator.CreateInstance(rowType)!;
@@ -1434,7 +1662,7 @@ public class AdminAnalyticsSourceTests
         SetProperty(row, "SubscriptionId", subscriptionId);
         SetProperty(row, "Provider", provider);
         SetProperty(row, "ProviderPaymentId", null);
-        SetProperty(row, "FirstFailedAt", DateTimeOffset.Now.AddDays(-1));
+        SetProperty(row, "FirstFailedAt", firstFailedAt ?? DateTimeOffset.Now.AddDays(-1));
         SetProperty(row, "GraceEndsAt", DateTimeOffset.Now.AddDays(3));
         SetProperty(row, "CreatedAt", DateTimeOffset.Now.AddDays(-1));
         SetProperty(row, "ResolvedAt", resolvedAt);
@@ -1511,7 +1739,9 @@ public class AdminAnalyticsSourceTests
         string? providerTransactionId = null,
         string eventStatus = "success",
         string? customerId = null,
-        string? customerEmail = null)
+        string? customerEmail = null,
+        string? authorizationCode = null,
+        string? subscriptionCode = null)
     {
         var rowType = GetRevenueEventRowType();
         var row = Activator.CreateInstance(rowType)!;
@@ -1530,6 +1760,8 @@ public class AdminAnalyticsSourceTests
                 "amount": {{amountInCents}},
                 "paid_at": "{{receivedAt:O}}",
                 "reference": "{{providerTransactionId ?? providerPaymentId ?? Guid.NewGuid().ToString("N")}}",
+                "authorization": { "authorization_code": {{JsonSerializer.Serialize(authorizationCode)}} },
+                "subscription": { "subscription_code": {{JsonSerializer.Serialize(subscriptionCode)}} },
                 "customer": {
                   "id": "{{customerId ?? Guid.NewGuid().ToString("N")}}",
                   "email": "{{customerEmail ?? "customer@shink.dev"}}"
