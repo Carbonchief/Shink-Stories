@@ -2,82 +2,13 @@
     min-height: 720px;
     min-height: max(720px, calc(100svh - 5.5rem));
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: 1fr;
     place-items: center;
-    gap: 1.25rem;
     padding: 1rem 1rem 2.25rem;
     background:
         linear-gradient(180deg, rgba(34, 177, 191, 0.28), rgba(53, 160, 164, 0.62)),
         url('/branding/Schink_Background.avif') center / cover no-repeat;
     color: #374352;
-}
-
-.access-layout-input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-}
-
-.access-layout-switch {
-    justify-self: start;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    min-height: 44px;
-    padding: 0.5rem 0.8rem;
-    border-radius: 999px;
-    background: #faf8f4;
-    color: #374352;
-    box-shadow: 0 2px 6px rgba(29, 66, 70, 0.15);
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.access-layout-track {
-    width: 36px;
-    height: 22px;
-    padding: 3px;
-    border-radius: 999px;
-    background: #a6adb0;
-    transition: background-color 150ms ease;
-}
-
-.access-layout-track::after {
-    content: '';
-    display: block;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 3px rgba(29, 66, 70, 0.2);
-    transition: transform 150ms ease;
-}
-
-.access-layout-input:checked ~ .access-layout-switch .access-layout-track {
-    background: #4b909d;
-}
-
-.access-layout-input:checked ~ .access-layout-switch .access-layout-track::after {
-    transform: translateX(14px);
-}
-
-.access-layout-input:focus-visible ~ .access-layout-switch {
-    outline: 3px solid #374352;
-    outline-offset: 3px;
-}
-
-.access-plans-toggle,
-.access-layout-input:checked ~ .access-card .access-plans-buttons {
-    display: none;
-}
-
-.access-layout-input:checked ~ .access-card .access-plans-toggle {
-    display: block;
 }
 
 .access-card {
@@ -149,8 +80,7 @@
     border: 0;
 }
 
-.access-plans legend,
-.access-plans h2 {
+.access-plans legend {
     width: 100%;
     margin: 0 0 0.65rem;
     padding: 0;
@@ -226,27 +156,33 @@
     outline-offset: 2px;
 }
 
+.access-plan-details {
+    display: grid;
+}
+
 .access-plan-detail {
-    display: none;
+    grid-area: 1 / 1;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
     text-align: center;
+    transition: opacity 300ms ease-in-out, visibility 0s linear 300ms;
 }
 
 .access-billing-monthly:checked ~ .access-plan-details .access-plan-monthly-detail,
 .access-billing-yearly:checked ~ .access-plan-details .access-plan-yearly-detail {
-    display: block;
-    animation: access-plan-reveal 220ms ease-out;
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
 }
 
-@keyframes access-plan-reveal {
-    from {
-        opacity: 0;
-        transform: translateY(3px);
-    }
+.access-checkout .access-plan {
+    display: none;
+}
 
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+.access-billing-monthly:checked ~ .access-checkout .access-checkout-monthly,
+.access-billing-yearly:checked ~ .access-checkout .access-checkout-yearly {
+    display: flex;
 }
 
 .access-price {
@@ -319,42 +255,9 @@
     text-align: center;
 }
 
-.access-plan-monthly {
-    min-height: 66px;
-    font-size: 1.85rem;
-    line-height: 1.2;
-}
-
-.access-plan-monthly strong {
-    font-family: 'Schink Rank Rounded', 'Poppins', sans-serif;
-    font-size: 2.15rem;
-    font-weight: 900;
-}
-
-.access-plan-yearly {
-    min-height: 44px;
-    background: #4b909d;
-    font-size: 0.92rem;
-    font-weight: 400;
-    line-height: 1.3;
-}
-
-.access-plan-yearly:hover {
-    background: #3c7884;
-}
-
-.access-button-saving {
-    white-space: nowrap;
-}
-
-.access-plans-buttons .access-cancellation {
-    margin: 0.18rem 0;
-}
-
 @media (max-width: 680px) {
     .access-page {
         min-height: calc(100svh - 60px);
-        gap: 0.5rem;
         padding: 0.5rem 0.75rem;
     }
 
@@ -400,12 +303,6 @@
         clip-path: inset(50%);
     }
 
-    .access-plans h2 {
-        margin-bottom: 0.4rem;
-        font-size: 0.95rem;
-        line-height: 1.25;
-    }
-
     .access-billing-toggle {
         margin-bottom: 0.5rem;
     }
@@ -429,19 +326,10 @@
         font-size: 1.05rem;
     }
 
-    .access-plan-monthly {
-        min-height: 54px;
-        font-size: 1.6rem;
-    }
-
-    .access-plan-yearly {
-        font-size: clamp(0.75rem, 3.4vw, 0.92rem);
-    }
 }
 
 @media (max-width: 680px) and (max-height: 740px) {
     .access-page {
-        gap: 0.25rem;
         padding-block: 0.375rem;
     }
 
@@ -485,30 +373,6 @@
 }
 
 @media (max-width: 680px) and (max-height: 620px) {
-    .access-page {
-        position: relative;
-        grid-template-rows: 1fr;
-    }
-
-    .access-layout-switch {
-        position: absolute;
-        top: 1rem;
-        left: 1rem;
-        z-index: 2;
-        width: 44px;
-        padding: 4px;
-        background: transparent;
-        box-shadow: none;
-    }
-
-    .access-layout-switch > span:last-child {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-    }
-
     .access-logo {
         width: 125px;
     }
@@ -522,12 +386,7 @@
 @media (prefers-reduced-motion: reduce) {
     .access-billing-toggle::before,
     .access-billing-toggle label,
-    .access-layout-track,
-    .access-layout-track::after {
-        transition: none;
-    }
-
     .access-plan-detail {
-        animation: none !important;
+        transition: none;
     }
 }

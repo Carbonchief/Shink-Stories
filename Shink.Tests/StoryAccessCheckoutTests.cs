@@ -127,7 +127,7 @@ public sealed class StoryAccessCheckoutTests
         var document = await new HtmlParser().ParseDocumentAsync(html);
         Assert.HasCount(7, document.QuerySelectorAll(".access-benefits li"));
         var layouts = document.QuerySelectorAll(".access-plans");
-        Assert.HasCount(2, layouts);
+        Assert.HasCount(1, layouts);
         foreach (var layout in layouts)
         {
             var plans = layout.QuerySelectorAll("a.access-plan");

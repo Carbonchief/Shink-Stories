@@ -9,11 +9,6 @@
 </HeadContent>
 
 <section class="access-page">
-    <input class="access-layout-input" type="checkbox" id="access-layout-toggle" role="switch" checked />
-    <label class="access-layout-switch" for="access-layout-toggle">
-        <span class="access-layout-track" aria-hidden="true"></span>
-        <span>Planwisselaar</span>
-    </label>
     <article class="access-card">
         <div class="access-card-content">
             <div class="access-brand">
@@ -35,7 +30,7 @@
                 <li><strong>Nuwe stories</strong> elke maand</li>
             </ul>
 
-            <fieldset class="access-plans access-plans-toggle">
+            <fieldset class="access-plans">
                 <legend>Kies ’n plan</legend>
                 <input class="access-billing-input access-billing-monthly" type="radio" name="access-billing-period"
                        id="access-billing-monthly" checked />
@@ -49,30 +44,20 @@
                     <div class="access-plan-detail access-plan-monthly-detail">
                         <p class="access-price"><strong>R @FormatAmount(MonthlyPlan.Amount)</strong><span>/maand</span></p>
                         <p class="access-plan-note">Onbeperkte stories, elke maand.</p>
-                        <a class="access-plan" href="@MonthlyCheckoutHref" data-enhance-nav="false"
-                           aria-label="@($"Kry volle toegang teen R{FormatAmount(MonthlyPlan.Amount)} per maand")">Kry toegang</a>
                     </div>
                     <div class="access-plan-detail access-plan-yearly-detail">
                         <p class="access-price"><strong>R @FormatAmount(YearlyPlan.Amount)</strong><span>/jaar</span></p>
                         <p class="access-plan-note access-saving">@FreeMonths maande <strong>gratis</strong></p>
-                        <a class="access-plan" href="@YearlyCheckoutHref" data-enhance-nav="false"
-                           aria-label="@($"Kry volle toegang teen R{FormatAmount(YearlyPlan.Amount)} per jaar")">Kry toegang</a>
                     </div>
+                </div>
+                <div class="access-checkout">
+                    <a class="access-plan access-checkout-monthly" href="@MonthlyCheckoutHref" data-enhance-nav="false"
+                       aria-label="@($"Sluit aan teen R{FormatAmount(MonthlyPlan.Amount)} per maand")">SLUIT AAN</a>
+                    <a class="access-plan access-checkout-yearly" href="@YearlyCheckoutHref" data-enhance-nav="false"
+                       aria-label="@($"Sluit aan teen R{FormatAmount(YearlyPlan.Amount)} per jaar")">SLUIT AAN</a>
                 </div>
                 <p class="access-cancellation">Geen kontrak. Kanselleer enige tyd.</p>
             </fieldset>
-            <div class="access-plans access-plans-buttons">
-                <h2>Kies ’n plan</h2>
-                <a class="access-plan access-plan-monthly" href="@MonthlyCheckoutHref" data-enhance-nav="false"
-                   aria-label="@($"Kies volle toegang teen R{FormatAmount(MonthlyPlan.Amount)} per maand")">
-                    <strong>R @FormatAmount(MonthlyPlan.Amount)</strong><span>/maand</span>
-                </a>
-                <p class="access-cancellation">Geen kontrak. Kanselleer enige tyd.</p>
-                <a class="access-plan access-plan-yearly" href="@YearlyCheckoutHref" data-enhance-nav="false"
-                   aria-label="@($"Kies volle toegang teen R{FormatAmount(YearlyPlan.Amount)} per jaar")">
-                    <span><strong>R @FormatAmount(YearlyPlan.Amount)</strong> per jaar <span class="access-button-saving">( @FreeMonths maande <strong>gratis</strong> )</span></span>
-                </a>
-            </div>
         </div>
     </article>
 </section>
