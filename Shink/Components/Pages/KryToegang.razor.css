@@ -173,6 +173,8 @@
 }
 
 .access-billing-toggle {
+    position: relative;
+    isolation: isolate;
     display: grid;
     grid-template-columns: 1fr 1fr;
     max-width: 290px;
@@ -183,7 +185,24 @@
     box-shadow: inset 0 1px 3px rgba(55, 67, 82, 0.06);
 }
 
+.access-billing-toggle::before {
+    content: '';
+    position: absolute;
+    inset: 4px auto 4px 4px;
+    width: calc(50% - 4px);
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(55, 67, 82, 0.12);
+    transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.access-billing-yearly:checked ~ .access-billing-toggle::before {
+    transform: translateX(100%);
+}
+
 .access-billing-toggle label {
+    position: relative;
+    z-index: 1;
     display: grid;
     place-items: center;
     min-height: 44px;
@@ -193,14 +212,12 @@
     cursor: pointer;
     font-size: 0.85rem;
     font-weight: 600;
-    transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+    transition: color 250ms ease;
 }
 
 .access-billing-monthly:checked ~ .access-billing-toggle .access-billing-monthly-label,
 .access-billing-yearly:checked ~ .access-billing-toggle .access-billing-yearly-label {
-    background: #fff;
     color: #377b85;
-    box-shadow: 0 2px 6px rgba(55, 67, 82, 0.12);
 }
 
 .access-billing-monthly:focus-visible ~ .access-billing-toggle .access-billing-monthly-label,
@@ -217,6 +234,19 @@
 .access-billing-monthly:checked ~ .access-plan-details .access-plan-monthly-detail,
 .access-billing-yearly:checked ~ .access-plan-details .access-plan-yearly-detail {
     display: block;
+    animation: access-plan-reveal 220ms ease-out;
+}
+
+@keyframes access-plan-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .access-price {
@@ -227,6 +257,7 @@
     margin: 0;
     color: #374352;
     line-height: 1.2;
+    white-space: nowrap;
 }
 
 .access-price strong {
@@ -320,30 +351,183 @@
     margin: 0.18rem 0;
 }
 
-@media (max-width: 440px) {
+@media (max-width: 680px) {
     .access-page {
-        min-height: calc(100svh - 4.5rem);
-        padding: 1rem 0.8rem 1.4rem;
+        min-height: calc(100svh - 60px);
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
     }
 
     .access-card {
-        border-width: 8px;
-        border-radius: 25px;
+        width: min(100%, 360px);
+        border-width: 6px;
+        border-radius: 23px;
     }
 
     .access-card-content {
-        padding: 1rem 0.6rem 0.6rem;
+        padding: 0.6rem;
+        border-radius: 16px;
+    }
+
+    .access-mascot {
+        width: 58px;
+        margin: -0.6rem 0 0;
+    }
+
+    .access-logo {
+        width: 160px;
+        margin-top: -0.4rem;
     }
 
     .access-card h1 {
-        font-size: clamp(1.15rem, 5.5vw, 1.4rem);
+        margin: 0.35rem auto 0.6rem;
+        font-size: clamp(1rem, 4.5vw, 1.12rem);
+        line-height: 1.25;
     }
 
     .access-benefits {
-        font-size: clamp(0.76rem, 3.55vw, 0.92rem);
+        margin-bottom: 0.75rem;
+        font-size: clamp(0.74rem, 3.35vw, 0.875rem);
+        line-height: 1.45;
+    }
+
+    .access-plans legend {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+
+    .access-plans h2 {
+        margin-bottom: 0.4rem;
+        font-size: 0.95rem;
+        line-height: 1.25;
+    }
+
+    .access-billing-toggle {
+        margin-bottom: 0.5rem;
+    }
+
+    .access-price strong {
+        font-size: 2.2rem;
+    }
+
+    .access-price span {
+        font-size: 1rem;
+    }
+
+    .access-plan-note {
+        margin: 0.2rem 0 0.5rem;
+        font-size: 0.72rem;
+    }
+
+    .access-plan {
+        min-height: 44px;
+        padding-block: 0.45rem;
+        font-size: 1.05rem;
+    }
+
+    .access-plan-monthly {
+        min-height: 54px;
+        font-size: 1.6rem;
     }
 
     .access-plan-yearly {
         font-size: clamp(0.75rem, 3.4vw, 0.92rem);
+    }
+}
+
+@media (max-width: 680px) and (max-height: 740px) {
+    .access-page {
+        gap: 0.25rem;
+        padding-block: 0.375rem;
+    }
+
+    .access-card-content {
+        padding: 0.5rem 0.6rem;
+    }
+
+    .access-logo {
+        width: 145px;
+        margin-top: -0.3rem;
+    }
+
+    .access-mascot {
+        width: 46px;
+    }
+
+    .access-card h1 {
+        margin: 0.2rem auto 0.4rem;
+        font-size: clamp(0.96rem, 4.3vw, 1.05rem);
+        line-height: 1.2;
+    }
+
+    .access-benefits {
+        margin-bottom: 0.5rem;
+        font-size: clamp(0.72rem, 3.1vw, 0.8rem);
+        line-height: 1.38;
+    }
+
+    .access-price strong {
+        font-size: 2rem;
+    }
+
+    .access-price span {
+        font-size: 0.85rem;
+    }
+
+    .access-plan-note {
+        margin: 0.15rem 0 0.35rem;
+        font-size: 0.7rem;
+    }
+}
+
+@media (max-width: 680px) and (max-height: 620px) {
+    .access-page {
+        position: relative;
+        grid-template-rows: 1fr;
+    }
+
+    .access-layout-switch {
+        position: absolute;
+        top: 1rem;
+        left: 1rem;
+        z-index: 2;
+        width: 44px;
+        padding: 4px;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .access-layout-switch > span:last-child {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+
+    .access-logo {
+        width: 125px;
+    }
+
+    .access-mascot {
+        width: 40px;
+        margin-top: -0.5rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .access-billing-toggle::before,
+    .access-billing-toggle label,
+    .access-layout-track,
+    .access-layout-track::after {
+        transition: none;
+    }
+
+    .access-plan-detail {
+        animation: none !important;
     }
 }
