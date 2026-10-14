@@ -2480,27 +2480,49 @@ public sealed partial class SupabaseAdminManagementService(
     {
         if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
         {
-            return AdminAnalyticsSnapshot.Empty;
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("Could not resolve the admin context for analytics.");
         }
 
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
-            return AdminAnalyticsSnapshot.Empty;
+            throw new InvalidOperationException("Supabase URL is not configured for analytics.");
         }
 
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return AdminAnalyticsSnapshot.Empty;
+            throw new InvalidOperationException("Supabase API key is not configured for analytics.");
         }
 
-        return await InvokeRpcAsync<AdminAnalyticsSnapshot>(
-                   baseUri,
-                   apiKey,
-                   "get_admin_analytics_snapshot",
-                   new { },
-                   cancellationToken)
-               ?? AdminAnalyticsSnapshot.Empty;
+        // The RPC helper returns null on request failures. Never turn that into a
+        // successful empty snapshot: the admin page would cache it until refresh.
+        // This read is safe to retry once when the first request fails.
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var snapshot = await InvokeRpcAsync<AdminAnalyticsSnapshot>(
+                baseUri,
+                apiKey,
+                "get_admin_analytics_snapshot",
+                new { },
+                cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Even an installation with no activity has a generated_at timestamp.
+            if (snapshot?.GeneratedAt is not null && snapshot.StorySummary is not null &&
+                snapshot.CharacterSummary is not null)
+            {
+                return snapshot;
+            }
+
+            if (attempt == 0)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            }
+        }
+
+        throw new InvalidOperationException("Could not load the admin analytics snapshot.");
     }
 
     public async Task<AdminSubscriberReportsSnapshot> GetSubscriberReportsAsync(

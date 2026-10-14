@@ -22,12 +22,12 @@ public class SignupSourceTests
     }
 
     [TestMethod]
-    public void SignupDiscountCodeHelpUsesPaystackCopyAndHasSpacing()
+    public void SignupDiscountCodeHelpDescribesPreviewAndHasSpacing()
     {
         var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
         var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor.css"));
 
-        StringAssert.Contains(signup, "As jou kode geldig is, wys ons die afslag voor jy met Paystack betaal.");
+        StringAssert.Contains(signup, "Pas die kode toe om te sien of dit 'n prysafslag of gratis toegang gee.");
         StringAssert.Contains(signup, "placeholder=\"Voer promosiekode in\"");
         Assert.IsFalse(signup.Contains("placeholder=\"Voer jou kode in\"", StringComparison.Ordinal));
         Assert.IsFalse(signup.Contains("slaan ons PayFast vir nou oor", StringComparison.Ordinal));

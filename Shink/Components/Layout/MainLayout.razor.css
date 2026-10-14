@@ -1944,6 +1944,10 @@
     padding: 1.4rem 0 2rem;
 }
 
+.site-main:has(.signup-shell-free) {
+    padding: 0;
+}
+
 .site-shell.luister-route .site-main {
     padding-bottom: 0;
 }

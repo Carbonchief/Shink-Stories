@@ -35,17 +35,83 @@
     <meta name="twitter:image:alt" content="Schink Stories logo" />
 </HeadContent>
 
-<section class="signup-shell">
+<section class="@(IsFreeSignup ? "signup-shell signup-shell-free" : "signup-shell")">
+    @if (!IsFreeSignup)
+    {
     <header class="signup-page-header text-center">
         <img class="signup-logo" src="/branding/schink_stories_logo_turqoise.png" alt="Schink Stories" />
         <h1>Skep jou rekening</h1>
         <p class="d-inline" >Voltooi jou besonderhede en begin met veilige Afrikaanse storietyd.</p>
     </header>
+    }
 
     <EditForm FormName="signup-form" class="signup-checkout-form" EditContext="FormEditContext" OnSubmit="HandleSignUpSubmitAsync" aria-busy="@IsSubmitting">
         <DataAnnotationsValidator />
 
-    <div class="signup-checkout-grid">
+    <div class="@(IsFreeSignup ? "signup-free-card" : "signup-checkout-grid")">
+        @if (IsFreeSignup)
+        {
+            <header class="signup-free-header">
+                <img class="signup-free-mascot" src="/branding/Oortjies_School_Email_Hero.png" alt="" width="797" height="827" />
+                <img class="signup-free-logo" src="/branding/Schink_Stories_Logo_turqoise.png" alt="Schink Stories" width="983" height="428" />
+                <h1>Skep jou gratis rekening<br />en begin luister</h1>
+            </header>
+
+            <div class="signup-free-fields">
+                <div class="signup-free-field">
+                    <label class="sr-only" for="signup-first-name">Naam</label>
+                    <InputText id="signup-first-name" class="form-control" autocomplete="given-name" placeholder="Naam" @bind-Value="SignUpForm.FirstName" />
+                    <ValidationMessage For="@(() => SignUpForm.FirstName)" />
+                </div>
+                <div class="signup-free-field">
+                    <label class="sr-only" for="signup-email">E-pos</label>
+                    <InputText id="signup-email" class="form-control" type="email" autocomplete="email" placeholder="E-pos" @bind-Value="SignUpForm.Email" />
+                    <ValidationMessage For="@(() => SignUpForm.Email)" />
+                </div>
+                <div class="signup-free-field">
+                    <label class="sr-only" for="signup-password">Wagwoord</label>
+                    <InputText id="signup-password" class="form-control" type="password" autocomplete="new-password" placeholder="Wagwoord" @bind-Value="SignUpForm.Password" />
+                    <ValidationMessage For="@(() => SignUpForm.Password)" />
+                </div>
+                <div class="signup-free-field">
+                    <label class="sr-only" for="signup-password-confirm">Bevestig wagwoord</label>
+                    <InputText id="signup-password-confirm" class="form-control" type="password" autocomplete="new-password" placeholder="Bevestig wagwoord" @bind-Value="SignUpForm.ConfirmPassword" />
+                    <ValidationMessage For="@(() => SignUpForm.ConfirmPassword)" />
+                </div>
+            </div>
+
+            <label class="signup-free-consent" for="signup-email-consent">
+                <InputCheckbox id="signup-email-consent" @bind-Value="SignUpForm.MarketingConsent" />
+                <span>Ontvang Schink-e-posse</span>
+            </label>
+
+            <button type="submit" class="signup-free-submit" disabled="@IsSubmitting">
+                @(IsSubmitting ? "Besig..." : "Volgende")
+            </button>
+
+            @if (!string.IsNullOrWhiteSpace(StatusMessage))
+            {
+                <p class="@($"signup-status {(SignUpSucceeded ? "signup-status-success" : "signup-status-error")}")"
+                   role="@(SignUpSucceeded ? "status" : "alert")" aria-live="polite">@StatusMessage</p>
+            }
+
+            <div class="signup-free-divider"><span>of</span></div>
+
+            <div class="signup-free-social">
+                <a class="signup-free-provider signup-free-google" href="@GoogleSignInHref" @ref="_googleSignInLink" data-enhance-nav="false">
+                    <img class="signup-free-google-icon" src="/branding/google-g.png" alt="" width="20" height="20" />
+                    <span>Gaan voort met Google</span>
+                </a>
+                <a class="signup-free-provider signup-free-apple" href="@AppleSignInHref" data-enhance-nav="false">
+                    <i class="fa-brands fa-apple" aria-hidden="true"></i>
+                    <span>Gaan voort met Apple</span>
+                </a>
+            </div>
+
+            <a class="signup-free-signin" href="@SignInHref">Ek het reeds 'n rekening</a>
+        }
+        else
+        {
         <article class="signup-card signup-card-form">
             <header class="signup-card-header">
                 <img class="signup-mobile-card-logo" src="/branding/schink_stories_logo_turqoise.png" alt="Schink Stories" />
@@ -246,6 +312,7 @@
             </div>
 
         </aside>
+        }
     </div>
     </EditForm>
 </section>
@@ -296,6 +363,8 @@
     private SignUpFormModel SignUpForm { get; set; } = new();
     private EditContext FormEditContext { get; set; } = default!;
     private IJSObjectReference? _authModule;
+    private ElementReference _googleSignInLink;
+    private string? _configuredGoogleSignInHref;
 
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrl { get; set; }
@@ -329,7 +398,19 @@
         DiscountPreview?.IsValid == true &&
         DiscountPreview.BypassesPayment &&
         string.Equals(DiscountPreview.DiscountKind, SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal);
-    private string SignInHref => BuildSignInHref(GetSafeReturnUrl(ReturnUrl), GetSelectedPlanCheckoutPath());
+    private string SignInHref => BuildSignInHref(
+        IsFreeSignup ? GetSafeNonCheckoutReturnUrl() ?? "/luister" : GetSafeReturnUrl(ReturnUrl),
+        GetSelectedPlanCheckoutPath());
+    private bool IsFreeSignup =>
+        SelectedPlan is null &&
+        !IsSchoolOptionsSignupFlow &&
+        string.IsNullOrWhiteSpace(SignUpForm.DiscountCode) &&
+        string.IsNullOrWhiteSpace(DiscountCode);
+    private string GoogleSignInHref => BuildSocialSignInHref("google");
+    private string AppleSignInHref => BuildSocialSignInHref("apple");
+
+    private string BuildSocialSignInHref(string provider) =>
+        QueryHelpers.AddQueryString($"/api/auth/{provider}/start", "returnUrl", GetSafeNonCheckoutReturnUrl() ?? "/luister");
     private IReadOnlyList<PaymentPlan> AvailablePlans =>
         IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.PublicSchoolPlans : HouseholdPlans;
     private static IReadOnlyList<PaymentPlan> HouseholdPlans { get; } =
@@ -360,6 +441,32 @@
         if (authState.User.Identity?.IsAuthenticated == true)
         {
             await RedirectToTargetAsync(await GetRedirectTargetForAuthenticatedUserAsync(authState));
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsFreeSignup)
+        {
+            _configuredGoogleSignInHref = null;
+            return;
+        }
+
+        var desiredGoogleSignInHref = GoogleSignInHref;
+        if (string.Equals(_configuredGoogleSignInHref, desiredGoogleSignInHref, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            await authModule.InvokeVoidAsync("configureGoogleSignInLink", _googleSignInLink, desiredGoogleSignInHref);
+            _configuredGoogleSignInHref = desiredGoogleSignInHref;
+        }
+        catch (JSException)
+        {
+            // Keep the server-rendered PKCE link if JS bootstrapping fails.
         }
     }
 
@@ -436,7 +543,7 @@
             var authModule = await EnsureAuthModuleAsync();
             var values = await authModule.InvokeAsync<Dictionary<string, string>>(
                 "readInputValues",
-                new[]
+                (object)new[]
                 {
                     "signup-first-name",
                     "signup-last-name",

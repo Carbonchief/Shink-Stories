@@ -122,6 +122,82 @@ public class AdminLoadingTests
         Assert.AreEqual(1, service.Count("GetStoriesAsync"));
     }
 
+    [TestMethod]
+    public async Task FailedUsageAnalyticsCanRetryOnNextVisitWithoutReloadingThePage()
+    {
+        var (page, service) = CreatePage();
+        service.Analytics = () => Task.FromException<AdminAnalyticsSnapshot>(new HttpRequestException("Test failure"));
+
+        await SelectTabAsync(page, 10);
+
+        Assert.IsFalse(Get<bool>(page, "HasLoadedAnalytics"));
+        Assert.IsTrue(Get<bool>(page, "AnalyticsLoadFailed"));
+        Assert.IsFalse(Get<bool>(page, "IsLoadingAnalyticsTab"));
+        Assert.IsFalse(Get<bool>(page, "IsRefreshingAnalytics"));
+        Assert.IsTrue(Get<bool>(page, "HasLoadedSubscriberReports"));
+
+        var snapshot = AdminAnalyticsSnapshot.Empty with
+        {
+            GeneratedAt = DateTimeOffset.UtcNow,
+            StorySummary = AdminAnalyticsSnapshot.Empty.StorySummary with { TotalViews = 5 }
+        };
+        service.Analytics = () => Task.FromResult(snapshot);
+        await SelectTabAsync(page, 0);
+        await SelectTabAsync(page, 10);
+
+        Assert.AreSame(snapshot, Get<AdminAnalyticsSnapshot>(page, "Analytics"));
+        Assert.IsTrue(Get<bool>(page, "HasLoadedAnalytics"));
+        Assert.IsTrue(Get<bool>(page, "HasAnalyticsData"));
+        Assert.IsFalse(Get<bool>(page, "AnalyticsLoadFailed"));
+        Assert.AreEqual(2, service.Count("GetAnalyticsAsync"));
+        Assert.AreEqual(1, service.Count("GetStoriesAsync"));
+    }
+
+    [TestMethod]
+    public async Task FailedUsageAnalyticsRefreshPreservesPreviouslyLoadedData()
+    {
+        var (page, service) = CreatePage();
+        var snapshot = AdminAnalyticsSnapshot.Empty with
+        {
+            GeneratedAt = DateTimeOffset.UtcNow,
+            StorySummary = AdminAnalyticsSnapshot.Empty.StorySummary with { TotalViews = 5 }
+        };
+        service.Analytics = () => Task.FromResult(snapshot);
+        await SelectTabAsync(page, 10);
+        service.Analytics = () => Task.FromException<AdminAnalyticsSnapshot>(new TaskCanceledException("Test timeout"));
+
+        await InvokeAsync(page, "RefreshAnalyticsAsync");
+
+        Assert.AreSame(snapshot, Get<AdminAnalyticsSnapshot>(page, "Analytics"));
+        Assert.IsTrue(Get<bool>(page, "HasAnalyticsData"));
+        Assert.IsTrue(Get<bool>(page, "AnalyticsLoadFailed"));
+        Assert.IsFalse(Get<bool>(page, "HasLoadedAnalytics"));
+        Assert.IsFalse(Get<bool>(page, "IsRefreshingAnalytics"));
+        Assert.IsFalse(Get<bool>(page, "IsRefreshingSubscriberReports"));
+    }
+
+    [TestMethod]
+    public async Task UsageAnalyticsRemainsLoadingUntilItsRequestCompletes()
+    {
+        var (page, service) = CreatePage();
+        var analytics = new TaskCompletionSource<AdminAnalyticsSnapshot>();
+        service.Analytics = () => analytics.Task;
+
+        var load = SelectTabAsync(page, 10);
+
+        Assert.IsTrue(Get<bool>(page, "IsLoadingAnalyticsTab"));
+        Assert.IsFalse(Get<bool>(page, "HasLoadedAnalytics"));
+        analytics.SetResult(AdminAnalyticsSnapshot.Empty with { GeneratedAt = DateTimeOffset.UtcNow });
+        await load;
+
+        Assert.IsFalse(Get<bool>(page, "IsLoadingAnalyticsTab"));
+        Assert.IsTrue(Get<bool>(page, "HasLoadedAnalytics"));
+        Assert.IsFalse(Get<bool>(page, "AnalyticsLoadFailed"));
+        Assert.IsFalse(Get<bool>(page, "HasAnalyticsData"));
+        await SelectTabAsync(page, 10);
+        Assert.AreEqual(1, service.Count("GetAnalyticsAsync"));
+    }
+
     private static (Admin Page, AdminServiceProxy Service) CreatePage()
     {
         var service = DispatchProxy.Create<IAdminManagementService, AdminServiceProxy>();
@@ -157,6 +233,7 @@ public class AdminLoadingTests
         public bool IsAdmin { get; set; } = true;
         public Func<Task<IReadOnlyList<AdminStoryRecord>>> Stories { get; set; } = () => Task.FromResult<IReadOnlyList<AdminStoryRecord>>([]);
         public Func<Task<AdminSubscriberReportsSnapshot>> Reports { get; set; } = () => Task.FromResult(AdminSubscriberReportsSnapshot.Empty);
+        public Func<Task<AdminAnalyticsSnapshot>> Analytics { get; set; } = () => Task.FromResult(AdminAnalyticsSnapshot.Empty);
         public int Count(string method) => Calls.Count(call => call == method);
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
@@ -167,7 +244,7 @@ public class AdminLoadingTests
                 "IsAdminAsync" => Task.FromResult(IsAdmin),
                 "GetStoriesAsync" => Stories(),
                 "GetPlaylistsAsync" => Task.FromResult<IReadOnlyList<AdminPlaylistRecord>>([]),
-                "GetAnalyticsAsync" => Task.FromResult(AdminAnalyticsSnapshot.Empty),
+                "GetAnalyticsAsync" => Analytics(),
                 "GetSubscriberReportsAsync" => Reports(),
                 _ => throw new InvalidOperationException($"Unexpected service call: {targetMethod.Name}")
             };

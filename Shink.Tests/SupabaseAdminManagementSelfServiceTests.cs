@@ -909,6 +909,127 @@ public class SupabaseAdminManagementSelfServiceTests
         Assert.AreEqual("Ons gebruik dit minder as voorheen.", latestResponse.Note);
     }
 
+    [TestMethod]
+    [DataRow("server_error")]
+    [DataRow("timeout")]
+    [DataRow("network_error")]
+    [DataRow("invalid_json")]
+    [DataRow("null")]
+    [DataRow("empty_array")]
+    [DataRow("incomplete_snapshot")]
+    public async Task GetAnalyticsAsync_RetriesFailedReadAndReturnsUsageData(string failure)
+    {
+        var expected = AdminAnalyticsSnapshot.Empty with
+        {
+            GeneratedAt = DateTimeOffset.UtcNow,
+            StorySummary = AdminAnalyticsSnapshot.Empty.StorySummary with { TotalViews = 7 }
+        };
+        var rpcCalls = 0;
+        var service = CreateAnalyticsService(_ => ++rpcCalls == 1
+            ? AnalyticsFailureResponse(failure)
+            : JsonResponse(JsonSerializer.Serialize(expected)));
+
+        var snapshot = await service.GetAnalyticsAsync("admin@example.com");
+
+        Assert.AreEqual(2, rpcCalls);
+        Assert.AreEqual(expected.GeneratedAt, snapshot.GeneratedAt);
+        Assert.AreEqual(7, snapshot.StorySummary.TotalViews);
+    }
+
+    [TestMethod]
+    [DataRow("server_error")]
+    [DataRow("timeout")]
+    [DataRow("invalid_json")]
+    [DataRow("null")]
+    [DataRow("incomplete_snapshot")]
+    public async Task GetAnalyticsAsync_RepeatedFailureThrowsInsteadOfReturningEmptyAnalytics(string failure)
+    {
+        var rpcCalls = 0;
+        var service = CreateAnalyticsService(_ =>
+        {
+            rpcCalls++;
+            return AnalyticsFailureResponse(failure);
+        });
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => service.GetAnalyticsAsync("admin@example.com"));
+
+        Assert.AreEqual(2, rpcCalls);
+    }
+
+    [TestMethod]
+    public async Task GetAnalyticsAsync_ValidSnapshotWithNoActivitySucceedsWithoutRetry()
+    {
+        var expected = AdminAnalyticsSnapshot.Empty with { GeneratedAt = DateTimeOffset.UtcNow };
+        var rpcCalls = 0;
+        var service = CreateAnalyticsService(_ =>
+        {
+            rpcCalls++;
+            return JsonResponse(JsonSerializer.Serialize(expected));
+        });
+
+        var snapshot = await service.GetAnalyticsAsync("admin@example.com");
+
+        Assert.AreEqual(1, rpcCalls);
+        Assert.AreEqual(expected.GeneratedAt, snapshot.GeneratedAt);
+        Assert.AreEqual(0, snapshot.StorySummary.TotalViews);
+        Assert.IsEmpty(snapshot.TopStories);
+    }
+
+    [TestMethod]
+    public async Task GetAnalyticsAsync_CallerCancellationDoesNotRetryOrReturnEmptyAnalytics()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var rpcCalls = 0;
+        var service = CreateAnalyticsService(_ =>
+        {
+            rpcCalls++;
+            cancellation.Cancel();
+            throw new TaskCanceledException("Test cancellation");
+        });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.GetAnalyticsAsync("admin@example.com", cancellation.Token));
+
+        Assert.AreEqual(1, rpcCalls);
+    }
+
+    [TestMethod]
+    public async Task GetAnalyticsAsync_UnresolvedAdminDoesNotRequestOrReturnEmptyAnalytics()
+    {
+        var service = CreateService(new RecordingHandler(request =>
+        {
+            Assert.IsTrue(IsSupabaseGet(request, "/rest/v1/admin_users"));
+            return JsonResponse("[]");
+        }));
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => service.GetAnalyticsAsync("admin@example.com"));
+    }
+
+    private static SupabaseAdminManagementService CreateAnalyticsService(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) =>
+        CreateService(new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/admin_users"))
+            {
+                return JsonResponse("""[{ "email": "admin@example.com" }]""");
+            }
+
+            Assert.AreEqual(HttpMethod.Post, request.Method);
+            Assert.AreEqual("/rest/v1/rpc/get_admin_analytics_snapshot", request.RequestUri?.AbsolutePath);
+            return responseFactory(request);
+        }));
+
+    private static HttpResponseMessage AnalyticsFailureResponse(string failure) => failure switch
+    {
+        "server_error" => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable),
+        "timeout" => throw new TaskCanceledException("Test timeout"),
+        "network_error" => throw new HttpRequestException("Test network failure"),
+        "invalid_json" => JsonResponse("invalid JSON"),
+        "null" => JsonResponse("null"),
+        "empty_array" => JsonResponse("[]"),
+        "incomplete_snapshot" => JsonResponse("{}"),
+        _ => throw new InvalidOperationException($"Unexpected test failure: {failure}")
+    };
+
     private static SupabaseAdminManagementService CreateService(
         RecordingHandler handler,
         IUserNotificationService? userNotificationService = null,

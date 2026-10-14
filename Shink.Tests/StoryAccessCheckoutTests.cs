@@ -125,18 +125,22 @@ public sealed class StoryAccessCheckoutTests
         var html = await renderer.Dispatcher.InvokeAsync(async () =>
             (await renderer.RenderComponentAsync<KryToegang>()).ToHtmlString());
         var document = await new HtmlParser().ParseDocumentAsync(html);
-        var plans = document.QuerySelectorAll("a.access-plan");
-
-        Assert.HasCount(2, plans);
-        StringAssert.Contains(plans[0].TextContent, "79");
-        StringAssert.Contains(plans[1].TextContent, "790");
-        StringAssert.Contains(plans[1].TextContent, "2 maande");
         Assert.HasCount(7, document.QuerySelectorAll(".access-benefits li"));
-        foreach (var (link, slug) in plans.Zip(new[] { "schink-stories-maandeliks", "schink-stories-jaarliks" }))
+        var layouts = document.QuerySelectorAll(".access-plans");
+        Assert.HasCount(2, layouts);
+        foreach (var layout in layouts)
         {
-            Assert.AreEqual("false", link.GetAttribute("data-enhance-nav"));
-            Assert.AreEqual(StoryAccessCheckoutLinks.BuildCheckoutHref(PaymentPlanCatalog.FindBySlug(slug)!, isAuthenticated, null),
-                link.GetAttribute("href"));
+            var plans = layout.QuerySelectorAll("a.access-plan");
+            Assert.HasCount(2, plans);
+            StringAssert.Contains(plans[0].GetAttribute("aria-label")!, "R79 per maand");
+            StringAssert.Contains(plans[1].GetAttribute("aria-label")!, "R790 per jaar");
+            StringAssert.Contains(layout.TextContent, "2 maande");
+            foreach (var (link, slug) in plans.Zip(new[] { "schink-stories-maandeliks", "schink-stories-jaarliks" }))
+            {
+                Assert.AreEqual("false", link.GetAttribute("data-enhance-nav"));
+                Assert.AreEqual(StoryAccessCheckoutLinks.BuildCheckoutHref(PaymentPlanCatalog.FindBySlug(slug)!, isAuthenticated, null),
+                    link.GetAttribute("href"));
+            }
         }
     }
 

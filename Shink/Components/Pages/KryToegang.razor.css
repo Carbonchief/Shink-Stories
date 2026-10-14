@@ -2,12 +2,82 @@
     min-height: 720px;
     min-height: max(720px, calc(100svh - 5.5rem));
     display: grid;
+    grid-template-rows: auto 1fr;
     place-items: center;
-    padding: 2.25rem 1rem;
+    gap: 1.25rem;
+    padding: 1rem 1rem 2.25rem;
     background:
         linear-gradient(180deg, rgba(34, 177, 191, 0.28), rgba(53, 160, 164, 0.62)),
         url('/branding/Schink_Background.avif') center / cover no-repeat;
     color: #374352;
+}
+
+.access-layout-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.access-layout-switch {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-height: 44px;
+    padding: 0.5rem 0.8rem;
+    border-radius: 999px;
+    background: #faf8f4;
+    color: #374352;
+    box-shadow: 0 2px 6px rgba(29, 66, 70, 0.15);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.access-layout-track {
+    width: 36px;
+    height: 22px;
+    padding: 3px;
+    border-radius: 999px;
+    background: #a6adb0;
+    transition: background-color 150ms ease;
+}
+
+.access-layout-track::after {
+    content: '';
+    display: block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(29, 66, 70, 0.2);
+    transition: transform 150ms ease;
+}
+
+.access-layout-input:checked ~ .access-layout-switch .access-layout-track {
+    background: #4b909d;
+}
+
+.access-layout-input:checked ~ .access-layout-switch .access-layout-track::after {
+    transform: translateX(14px);
+}
+
+.access-layout-input:focus-visible ~ .access-layout-switch {
+    outline: 3px solid #374352;
+    outline-offset: 3px;
+}
+
+.access-plans-toggle,
+.access-layout-input:checked ~ .access-card .access-plans-buttons {
+    display: none;
+}
+
+.access-layout-input:checked ~ .access-card .access-plans-toggle {
+    display: block;
 }
 
 .access-card {
@@ -32,9 +102,10 @@
 }
 
 .access-mascot {
-    width: 82px;
+    width: 110px;
     height: auto;
     display: block;
+    margin-top: -1rem;
 }
 
 .access-logo {
@@ -71,22 +142,126 @@
     font-weight: 700;
 }
 
+.access-plans {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.access-plans legend,
 .access-plans h2 {
-    margin: 0 0 0.4rem;
+    width: 100%;
+    margin: 0 0 0.65rem;
+    padding: 0;
     font-size: 1.05rem;
     font-weight: 700;
     text-align: center;
     color: #374352;
 }
 
+.access-billing-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+.access-billing-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    max-width: 290px;
+    margin: 0 auto 0.9rem;
+    padding: 4px;
+    border-radius: 999px;
+    background: #eeedeb;
+    box-shadow: inset 0 1px 3px rgba(55, 67, 82, 0.06);
+}
+
+.access-billing-toggle label {
+    display: grid;
+    place-items: center;
+    min-height: 44px;
+    padding: 0.45rem 0.7rem;
+    border-radius: 999px;
+    color: #71777b;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.access-billing-monthly:checked ~ .access-billing-toggle .access-billing-monthly-label,
+.access-billing-yearly:checked ~ .access-billing-toggle .access-billing-yearly-label {
+    background: #fff;
+    color: #377b85;
+    box-shadow: 0 2px 6px rgba(55, 67, 82, 0.12);
+}
+
+.access-billing-monthly:focus-visible ~ .access-billing-toggle .access-billing-monthly-label,
+.access-billing-yearly:focus-visible ~ .access-billing-toggle .access-billing-yearly-label {
+    outline: 3px solid #377b85;
+    outline-offset: 2px;
+}
+
+.access-plan-detail {
+    display: none;
+    text-align: center;
+}
+
+.access-billing-monthly:checked ~ .access-plan-details .access-plan-monthly-detail,
+.access-billing-yearly:checked ~ .access-plan-details .access-plan-yearly-detail {
+    display: block;
+}
+
+.access-price {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.15rem;
+    margin: 0;
+    color: #374352;
+    line-height: 1.2;
+}
+
+.access-price strong {
+    font-family: 'Schink Rank Rounded', 'Poppins', sans-serif;
+    font-size: 2.4rem;
+    font-weight: 900;
+}
+
+.access-price span {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.access-plan-note {
+    margin: 0.35rem 0 0.85rem;
+    color: #5e6971;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.access-saving {
+    color: #377b85;
+}
+
 .access-plan {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 44px;
+    min-height: 54px;
     border-radius: 14px;
     padding: 0.5rem 0.6rem;
     color: #fff;
+    background: #61ad08;
+    font-size: 1.15rem;
+    font-weight: 700;
     text-align: center;
     text-decoration: none;
     box-shadow: 0 4px 7px rgba(60, 70, 61, 0.13);
@@ -95,6 +270,7 @@
 
 .access-plan:hover {
     color: #fff;
+    background: #549507;
     box-shadow: 0 5px 10px rgba(60, 70, 61, 0.23);
 }
 
@@ -103,11 +279,18 @@
     outline-offset: 3px;
 }
 
+.access-cancellation {
+    margin: 0.4rem 0 0;
+    color: #707477;
+    font-size: 0.62rem;
+    font-style: italic;
+    line-height: 1.5;
+    text-align: center;
+}
+
 .access-plan-monthly {
     min-height: 66px;
-    background: #61ad08;
     font-size: 1.85rem;
-    font-weight: 700;
     line-height: 1.2;
 }
 
@@ -117,22 +300,11 @@
     font-weight: 900;
 }
 
-.access-plan-monthly:hover {
-    background: #549507;
-}
-
-.access-cancellation {
-    margin: 0.18rem 0;
-    color: #707477;
-    font-size: 0.62rem;
-    font-style: italic;
-    line-height: 1.5;
-    text-align: center;
-}
-
 .access-plan-yearly {
+    min-height: 44px;
     background: #4b909d;
     font-size: 0.92rem;
+    font-weight: 400;
     line-height: 1.3;
 }
 
@@ -140,18 +312,18 @@
     background: #3c7884;
 }
 
-.access-plan-yearly strong {
-    font-weight: 700;
+.access-button-saving {
+    white-space: nowrap;
 }
 
-.access-saving {
-    white-space: nowrap;
+.access-plans-buttons .access-cancellation {
+    margin: 0.18rem 0;
 }
 
 @media (max-width: 440px) {
     .access-page {
         min-height: calc(100svh - 4.5rem);
-        padding: 1.4rem 0.8rem;
+        padding: 1rem 0.8rem 1.4rem;
     }
 
     .access-card {

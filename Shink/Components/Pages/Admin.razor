@@ -2631,7 +2631,14 @@
                         </MudTabPanel>
 
                         <MudTabPanel Text='@T("Gebruik", "Usage")'>
-                            @if (!HasAnalyticsData)
+                            @if (AnalyticsLoadFailed && !HasAnalyticsData)
+                            {
+                                <section class="admin-state" role="alert">
+                                    <h2>@T("Kon nie analitika laai nie", "Could not load analytics")</h2>
+                                    <p>@T("Kies Verfris om weer te probeer.", "Select Refresh to try again.")</p>
+                                </section>
+                            }
+                            else if (!HasAnalyticsData)
                             {
                                 <section class="admin-state">
                                     <h2>@T("Nog geen analitika beskikbaar nie", "No analytics available yet")</h2>
@@ -2983,7 +2990,14 @@
                         </MudTabPanel>
 
                         <MudTabPanel Text='@T("Stories", "Stories")'>
-                            @if (!HasAnalyticsData)
+                            @if (AnalyticsLoadFailed && !HasAnalyticsData)
+                            {
+                                <section class="admin-state" role="alert">
+                                    <h2>@T("Kon nie analitika laai nie", "Could not load analytics")</h2>
+                                    <p>@T("Kies Verfris om weer te probeer.", "Select Refresh to try again.")</p>
+                                </section>
+                            }
+                            else if (!HasAnalyticsData)
                             {
                                 <section class="admin-state">
                                     <h2>@T("Nog geen analitika beskikbaar nie", "No analytics available yet")</h2>
@@ -5819,6 +5833,7 @@
     private bool HasLoadedStories;
     private bool HasLoadedPlaylists;
     private bool HasLoadedAnalytics;
+    private bool AnalyticsLoadFailed;
     private bool IsLoadingStoryCatalog => StoryCatalogLoadTask is { IsCompleted: false };
     private bool IsLoadingAnalyticsTab => AnalyticsTabLoadTask is { IsCompleted: false };
 
@@ -6304,6 +6319,7 @@
     {
         IsRefreshingAnalytics = true;
         IsRefreshingSubscriberReports = true;
+        AnalyticsLoadFailed = false;
 
         var analyticsTask = AdminManagementService.GetAnalyticsAsync(CurrentAdminEmail);
         var subscriberReportsTask = GetAnalyticsSubscriberReportsAsync();
@@ -6318,8 +6334,7 @@
         {
             Logger.LogError(exception, "Failed to refresh admin analytics.");
             HasLoadedAnalytics = false;
-            Analytics = AdminAnalyticsSnapshot.Empty;
-            SelectedAnalyticsStorySlug = string.Empty;
+            AnalyticsLoadFailed = true;
             SetError(T("Kon nie analitika nou laai nie.", "Could not load analytics right now."));
         }
 
