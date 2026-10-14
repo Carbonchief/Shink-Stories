@@ -132,6 +132,7 @@ public class AdminLoadingTests
 
         Assert.IsFalse(Get<bool>(page, "HasLoadedAnalytics"));
         Assert.IsTrue(Get<bool>(page, "AnalyticsLoadFailed"));
+        Assert.IsFalse(Get<bool>(page, "IsLoadingUsageAnalytics"));
         Assert.IsFalse(Get<bool>(page, "IsLoadingAnalyticsTab"));
         Assert.IsFalse(Get<bool>(page, "IsRefreshingAnalytics"));
         Assert.IsTrue(Get<bool>(page, "HasLoadedSubscriberReports"));
@@ -180,17 +181,21 @@ public class AdminLoadingTests
     public async Task UsageAnalyticsRemainsLoadingUntilItsRequestCompletes()
     {
         var (page, service) = CreatePage();
+        Assert.IsTrue(Get<bool>(page, "IsLoadingUsageAnalytics"),
+            "Usage must not show an empty result before its first request has completed.");
         var analytics = new TaskCompletionSource<AdminAnalyticsSnapshot>();
         service.Analytics = () => analytics.Task;
 
         var load = SelectTabAsync(page, 10);
 
         Assert.IsTrue(Get<bool>(page, "IsLoadingAnalyticsTab"));
+        Assert.IsTrue(Get<bool>(page, "IsLoadingUsageAnalytics"));
         Assert.IsFalse(Get<bool>(page, "HasLoadedAnalytics"));
         analytics.SetResult(AdminAnalyticsSnapshot.Empty with { GeneratedAt = DateTimeOffset.UtcNow });
         await load;
 
         Assert.IsFalse(Get<bool>(page, "IsLoadingAnalyticsTab"));
+        Assert.IsFalse(Get<bool>(page, "IsLoadingUsageAnalytics"));
         Assert.IsTrue(Get<bool>(page, "HasLoadedAnalytics"));
         Assert.IsFalse(Get<bool>(page, "AnalyticsLoadFailed"));
         Assert.IsFalse(Get<bool>(page, "HasAnalyticsData"));

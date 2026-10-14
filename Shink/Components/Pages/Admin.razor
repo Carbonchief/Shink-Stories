@@ -2631,7 +2631,13 @@
                         </MudTabPanel>
 
                         <MudTabPanel Text='@T("Gebruik", "Usage")'>
-                            @if (AnalyticsLoadFailed && !HasAnalyticsData)
+                            @if (IsLoadingUsageAnalytics)
+                            {
+                                <section class="admin-state" role="status" aria-live="polite">
+                                    <h2>@T("Laai gebruiksanalitika...", "Loading usage analytics...")</h2>
+                                </section>
+                            }
+                            else if (AnalyticsLoadFailed && !HasAnalyticsData)
                             {
                                 <section class="admin-state" role="alert">
                                     <h2>@T("Kon nie analitika laai nie", "Could not load analytics")</h2>
@@ -2990,7 +2996,13 @@
                         </MudTabPanel>
 
                         <MudTabPanel Text='@T("Stories", "Stories")'>
-                            @if (AnalyticsLoadFailed && !HasAnalyticsData)
+                            @if (IsLoadingUsageAnalytics)
+                            {
+                                <section class="admin-state" role="status" aria-live="polite">
+                                    <h2>@T("Laai gebruiksanalitika...", "Loading usage analytics...")</h2>
+                                </section>
+                            }
+                            else if (AnalyticsLoadFailed && !HasAnalyticsData)
                             {
                                 <section class="admin-state" role="alert">
                                     <h2>@T("Kon nie analitika laai nie", "Could not load analytics")</h2>
@@ -5834,6 +5846,8 @@
     private bool HasLoadedPlaylists;
     private bool HasLoadedAnalytics;
     private bool AnalyticsLoadFailed;
+    private bool IsLoadingUsageAnalytics =>
+        IsRefreshingAnalytics || (!HasLoadedAnalytics && !AnalyticsLoadFailed);
     private bool IsLoadingStoryCatalog => StoryCatalogLoadTask is { IsCompleted: false };
     private bool IsLoadingAnalyticsTab => AnalyticsTabLoadTask is { IsCompleted: false };
 
