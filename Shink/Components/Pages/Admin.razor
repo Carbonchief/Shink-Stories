@@ -270,7 +270,7 @@
                                   ServerData="LoadSubscribersPageAsync"
                                   SortLabel='@T("Sorteer volgens", "Sort by")'
                                   Loading="IsRefreshingSubscribers"
-                                  RowsPerPage="100"
+                                  RowsPerPage="25"
                                   Dense="true"
                                   Hover="true"
                                   Bordered="true"
@@ -1505,14 +1505,6 @@
             </MudTabPanel>
 
             <MudTabPanel Text='@T("Analitika", "Analytics")'>
-                @if (IsLoadingAnalyticsTab)
-                {
-                    <section class="admin-state" role="status" aria-live="polite">
-                        <h2>@T("Laai analitika...", "Loading analytics...")</h2>
-                    </section>
-                }
-                else
-                {
                 <section class="admin-section admin-analytics-section">
                     <div class="admin-section-head">
                         <div class="admin-analytics-copy">
@@ -1527,12 +1519,12 @@
                                    Variant="Variant.Outlined"
                                    Color="Color.Primary"
                                    OnClick="RefreshAnalyticsAsync"
-                                   Disabled="@(IsRefreshingAnalytics || IsRefreshingSubscriberReports)"
+                                   Disabled="IsRefreshingActiveAnalyticsPanel"
                                    aria-label='@T("Verfris analitika", "Refresh analytics")'
                                    title='@T("Verfris analitika", "Refresh analytics")'>
                             <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
                             <span class="admin-btn-text">
-                                @((IsRefreshingAnalytics || IsRefreshingSubscriberReports) ? T("Verfris...", "Refreshing...") : T("Verfris", "Refresh"))
+                                @(IsRefreshingActiveAnalyticsPanel ? T("Verfris...", "Refreshing...") : T("Verfris", "Refresh"))
                             </span>
                         </MudButton>
                     </div>
@@ -1559,8 +1551,16 @@
                         var cancellationSurveyOverview = CancellationSurveyOverview;
                     }
 
-                    <MudTabs Class="admin-detail-tabs admin-analytics-tabs" Rounded="true">
+                    <MudTabs Class="admin-detail-tabs admin-analytics-tabs" Rounded="true"
+                             @bind-ActivePanelIndex="_activeAnalyticsTabIndex"
+                             @bind-ActivePanelIndex:after="EnsureActiveAnalyticsPanelDataAsync">
                         <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
+                            @if (!HasLoadedSubscriberReports)
+                            {
+                                @AnalyticsLoadState(SubscriberReportsLoadFailed, true)
+                            }
+                            else
+                            {
                             <section class="admin-subscriber-analytics-section admin-analytics-panel admin-analytics-panel-wide">
                                 <div class="admin-analytics-panel-head">
                                     <div>
@@ -1908,9 +1908,16 @@
                                     }
                                 </section>
                             </section>
+                            }
                         </MudTabPanel>
 
                         <MudTabPanel Text='@T("Kansellasies", "Cancellations")'>
+                            @if (!HasLoadedSubscriberReports)
+                            {
+                                @AnalyticsLoadState(SubscriberReportsLoadFailed, true)
+                            }
+                            else
+                            {
                             <section class="admin-cancellation-analytics-section admin-analytics-panel admin-analytics-panel-wide">
                                 <div class="admin-analytics-panel-head">
                                     <div>
@@ -2140,9 +2147,16 @@
                                     </div>
                                 </details>
                             </section>
+                            }
                         </MudTabPanel>
 
                         <MudTabPanel Text='@T("Inkomste", "Revenue")'>
+                            @if (!HasLoadedSubscriberReports)
+                            {
+                                @AnalyticsLoadState(SubscriberReportsLoadFailed, true)
+                            }
+                            else
+                            {
                             <section class="admin-revenue-analytics-section admin-analytics-panel admin-analytics-panel-wide">
                                 <div class="admin-analytics-panel-head">
                                     <div>
@@ -2591,9 +2605,16 @@
 	                                    </div>
 	                                </details>
 	                            </section>
-	                        </MudTabPanel>
+	                            }
+                        </MudTabPanel>
 
                         <MudTabPanel Text='@T("Toekennings", "Awards")'>
+                            @if (!HasLoadedAnalytics)
+                            {
+                                @AnalyticsLoadState(AnalyticsLoadFailed, false)
+                            }
+                            else
+                            {
                             <section class="admin-awards-analytics-section admin-analytics-panel admin-analytics-panel-wide">
                                 <div class="admin-analytics-panel-head">
                                     <div>
@@ -2628,6 +2649,7 @@
                                     </article>
                                 </div>
                             </section>
+                            }
                         </MudTabPanel>
 
                         <MudTabPanel Text='@T("Gebruik", "Usage")'>
@@ -3217,6 +3239,12 @@
                         </MudTabPanel>
 
                         <MudTabPanel Text='@T("Hulpbron aflaaie", "Resource downloads")'>
+                            @if (!HasLoadedAnalytics)
+                            {
+                                @AnalyticsLoadState(AnalyticsLoadFailed, false)
+                            }
+                            else
+                            {
                             <section class="admin-analytics-panel admin-analytics-panel-wide">
                                 <div class="admin-analytics-panel-head">
                                     <div>
@@ -3301,9 +3329,16 @@
                                     }
                                 </section>
                             </section>
+                            }
                         </MudTabPanel>
 
                         <MudTabPanel Text='@T("Blog", "Blog")'>
+                            @if (!HasLoadedAnalytics)
+                            {
+                                @AnalyticsLoadState(AnalyticsLoadFailed, false)
+                            }
+                            else
+                            {
                             <section class="admin-analytics-panel admin-analytics-panel-wide">
                                 <div class="admin-analytics-panel-head">
                                     <div>
@@ -3392,10 +3427,10 @@
                                     }
                                 </section>
                             </section>
+                            }
                         </MudTabPanel>
                     </MudTabs>
                 </section>
-                }
             </MudTabPanel>
 
             <MudTabPanel Text='@T("Instellings", "Settings")'>
@@ -4958,6 +4993,7 @@
 
 @code {
     private int _activeAdminTabIndex;
+    private int _activeAnalyticsTabIndex;
     private AdminLandingPagesPanel? _landingPagesPanel;
 
     private bool IsLoading { get; set; } = true;
@@ -5842,6 +5878,13 @@
 
     private Task? StoryCatalogLoadTask;
     private Task? AnalyticsTabLoadTask;
+    private Task? SubscriberAnalyticsLoadTask;
+    private Task? UsageAnalyticsLoadTask;
+    private bool SubscriberReportsLoadFailed;
+    private bool HasLoadedSubscriberEngagementReports;
+    private bool IsRefreshingActiveAnalyticsPanel =>
+        _activeAnalyticsTabIndex <= 2 ? IsRefreshingSubscriberReports :
+        IsRefreshingAnalytics || (_activeAnalyticsTabIndex == 5 && IsLoadingStoryCatalog);
     private bool HasLoadedStories;
     private bool HasLoadedPlaylists;
     private bool HasLoadedAnalytics;
@@ -5877,23 +5920,60 @@
             HasLoadedPlaylists ? Task.CompletedTask : RefreshPlaylistsAsync());
     }
 
-    private Task EnsureAnalyticsTabAsync()
+    private Task EnsureAnalyticsTabAsync() => EnsureActiveAnalyticsPanelDataAsync();
+
+    private Task EnsureActiveAnalyticsPanelDataAsync() =>
+        AnalyticsTabLoadTask = LoadActiveAnalyticsPanelAsync(forceRefresh: false);
+
+    private Task LoadActiveAnalyticsPanelAsync(bool forceRefresh) => _activeAnalyticsTabIndex switch
     {
-        if (AnalyticsTabLoadTask is { IsCompleted: false })
+        0 or 1 or 2 => EnsureSubscriberAnalyticsAsync(forceRefresh),
+        5 => Task.WhenAll(EnsureUsageAnalyticsAsync(forceRefresh), EnsureStoryCatalogAsync()),
+        _ => EnsureUsageAnalyticsAsync(forceRefresh)
+    };
+
+    private Task EnsureSubscriberAnalyticsAsync(bool forceRefresh)
+    {
+        if (SubscriberAnalyticsLoadTask is { IsCompleted: false })
         {
-            return AnalyticsTabLoadTask;
+            return SubscriberAnalyticsLoadTask;
         }
 
-        if (HasLoadedAnalytics && HasLoadedSubscriberReports)
+        if (!forceRefresh && HasLoadedSubscriberReports && !SubscriberReportsLoadFailed)
         {
-            return EnsureStoryCatalogAsync();
+            return Task.CompletedTask;
         }
 
-        // Story statistics also include catalog entries with no recorded activity.
-        return AnalyticsTabLoadTask = Task.WhenAll(
-            EnsureStoryCatalogAsync(),
-            RefreshAnalyticsAsync());
+        return SubscriberAnalyticsLoadTask = LoadSubscriberReportsAsync(forceRefresh, includeEngagement: false);
     }
+
+    private Task EnsureUsageAnalyticsAsync(bool forceRefresh)
+    {
+        if (UsageAnalyticsLoadTask is { IsCompleted: false })
+        {
+            return UsageAnalyticsLoadTask;
+        }
+
+        if (!forceRefresh && HasLoadedAnalytics && !AnalyticsLoadFailed)
+        {
+            return Task.CompletedTask;
+        }
+
+        return UsageAnalyticsLoadTask = LoadUsageAnalyticsAsync(forceRefresh);
+    }
+
+    private RenderFragment AnalyticsLoadState(bool failed, bool subscriberReports) =>
+        @<section class="admin-state" role="@(failed ? "alert" : "status")" aria-live="polite">
+            <h2>@(failed
+                ? T("Kon nie analitika laai nie", "Could not load analytics")
+                : subscriberReports
+                    ? T("Laai intekenaar analitika...", "Loading subscriber analytics...")
+                    : T("Laai gebruiksanalitika...", "Loading usage analytics..."))</h2>
+            @if (failed)
+            {
+                <p>@T("Kies Verfris om weer te probeer.", "Select Refresh to try again.")</p>
+            }
+        </section>;
 
     private async Task SearchSubscribersAsync()
     {
@@ -6025,7 +6105,7 @@
         var resolvedSortDirection = sortDirection ?? tableState?.SortDirection ?? SortDirection.None;
         return new AdminSubscriberPageRequest(
             PageIndex: pageIndex ?? tableState?.Page ?? 0,
-            PageSize: pageSize ?? tableState?.PageSize ?? 500,
+            PageSize: pageSize ?? tableState?.PageSize ?? 25,
             Search: SubscriberSearch,
             SortLabel: sortLabel ?? tableState?.SortLabel,
             SortDescending: resolvedSortDirection == SortDirection.Descending,
@@ -6329,18 +6409,17 @@
         }
     }
 
-    private async Task RefreshAnalyticsAsync()
+    private Task RefreshAnalyticsAsync() =>
+        AnalyticsTabLoadTask = LoadActiveAnalyticsPanelAsync(forceRefresh: true);
+
+    private async Task LoadUsageAnalyticsAsync(bool forceRefresh)
     {
         IsRefreshingAnalytics = true;
-        IsRefreshingSubscriberReports = true;
         AnalyticsLoadFailed = false;
-
-        var analyticsTask = AdminManagementService.GetAnalyticsAsync(CurrentAdminEmail);
-        var subscriberReportsTask = GetAnalyticsSubscriberReportsAsync();
 
         try
         {
-            Analytics = await analyticsTask;
+            Analytics = await AdminManagementService.GetAnalyticsAsync(CurrentAdminEmail, forceRefresh: forceRefresh);
             HasLoadedAnalytics = true;
             EnsureSelectedAnalyticsStory();
         }
@@ -6351,22 +6430,10 @@
             AnalyticsLoadFailed = true;
             SetError(T("Kon nie analitika nou laai nie.", "Could not load analytics right now."));
         }
-
-        try
+        finally
         {
-            SubscriberReports = await subscriberReportsTask;
-            HasLoadedSubscriberReports = true;
+            IsRefreshingAnalytics = false;
         }
-        catch (Exception exception)
-        {
-            Logger.LogError(exception, "Failed to refresh subscriber analytics.");
-            SubscriberReports = AdminSubscriberReportsSnapshot.Empty;
-            HasLoadedSubscriberReports = false;
-            SetError(T("Kon nie intekenaar analitika nou laai nie.", "Could not load subscriber analytics right now."));
-        }
-
-        IsRefreshingAnalytics = false;
-        IsRefreshingSubscriberReports = false;
     }
 
     private void OnSelectedAnalyticsStoryChanged(ChangeEventArgs args)
@@ -9847,26 +9914,32 @@
         ActiveSubscriberView = subscriberView;
 
         if (subscriberView != SubscriberAdminView.AllSubscribers &&
-            !HasLoadedSubscriberReports)
+            (!HasLoadedSubscriberReports || SubscriberReportsLoadFailed ||
+             (subscriberView == SubscriberAdminView.VisitsViewsAndLogins && !HasLoadedSubscriberEngagementReports)))
         {
             await RefreshSubscriberReportsAsync();
         }
     }
 
-    private async Task RefreshSubscriberReportsAsync()
+    private Task RefreshSubscriberReportsAsync() =>
+        LoadSubscriberReportsAsync(forceRefresh: true,
+            includeEngagement: ActiveSubscriberView == SubscriberAdminView.VisitsViewsAndLogins);
+
+    private async Task LoadSubscriberReportsAsync(bool forceRefresh, bool includeEngagement)
     {
         IsRefreshingSubscriberReports = true;
+        SubscriberReportsLoadFailed = false;
 
         try
         {
-            SubscriberReports = await GetAnalyticsSubscriberReportsAsync();
+            SubscriberReports = await GetAnalyticsSubscriberReportsAsync(forceRefresh, includeEngagement);
             HasLoadedSubscriberReports = true;
+            HasLoadedSubscriberEngagementReports = includeEngagement;
         }
         catch (Exception exception)
         {
             Logger.LogError(exception, "Failed to refresh subscriber reports.");
-            SubscriberReports = AdminSubscriberReportsSnapshot.Empty;
-            HasLoadedSubscriberReports = false;
+            SubscriberReportsLoadFailed = true;
             SetError(T("Kon nie intekenaar verslae nou laai nie.", "Could not load subscriber reports right now."));
         }
         finally
@@ -9875,8 +9948,9 @@
         }
     }
 
-    private Task<AdminSubscriberReportsSnapshot> GetAnalyticsSubscriberReportsAsync() =>
-        AdminManagementService.GetSubscriberReportsAsync(CurrentAdminEmail);
+    private Task<AdminSubscriberReportsSnapshot> GetAnalyticsSubscriberReportsAsync(bool forceRefresh, bool includeEngagement) =>
+        AdminManagementService.GetSubscriberReportsAsync(CurrentAdminEmail,
+            includeEngagement: includeEngagement, forceRefresh: forceRefresh);
 
     private AdminMembershipStatsMetric GetSubscriberMetric(string periodKey) =>
         SubscriberReports.MembershipStats.FirstOrDefault(metric =>

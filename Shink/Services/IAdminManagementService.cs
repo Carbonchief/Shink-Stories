@@ -178,7 +178,8 @@ public interface IAdminManagementService
 
     Task<AdminAnalyticsSnapshot> GetAnalyticsAsync(
         string? adminEmail,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool forceRefresh = false);
 
     Task<AdminSubscriptionSettingsSnapshot> GetSubscriptionSettingsAsync(
         string? adminEmail,
@@ -205,7 +206,9 @@ public interface IAdminManagementService
 
     Task<AdminSubscriberReportsSnapshot> GetSubscriberReportsAsync(
         string? adminEmail,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool includeEngagement = true,
+        bool forceRefresh = false);
 
     Task<IReadOnlyList<AdminResourceTypeRecord>> GetResourceTypesAsync(
         string? adminEmail,

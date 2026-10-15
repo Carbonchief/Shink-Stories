@@ -433,7 +433,7 @@ else
 <StoryAccessPopup IsOpen="@ShowStoryAccessPopup"
                   PrimaryActionHref="@StoryAccessPopupPrimaryHref"
                   PrimaryActionText="@StoryAccessPopupPrimaryText"
-                  PlanActionHref="@StoryAccessPopupPlanHref"
+                  SignInHref="@StoryAccessPopupSignInHref"
                   Title="@StoryAccessPopupTitle"
                   Subtitle="@StoryAccessPopupSubtitle"
                   Message="@StoryAccessPopupMessage"
@@ -654,7 +654,9 @@ else
             ? $"/teken-in?returnUrl={Uri.EscapeDataString(PendingLockedStoryPath)}"
             : BuildOpsiesHref(PendingLockedStoryPath);
     private string StoryAccessPopupPrimaryText => IsFreeStorySignInOnlyGate ? "👉 Teken in" : "👉 Kry toegang";
-    private string StoryAccessPopupPlanHref => IsFreeStorySignInOnlyGate ? string.Empty : BuildOpsiesHref(PendingLockedStoryPath);
+    private string StoryAccessPopupSignInHref => IsFreeStorySignInOnlyGate
+        ? string.Empty
+        : StoryAccessCheckoutLinks.BuildSignInHref(PendingLockedStoryPath);
     private string StoryAccessPopupTitle => IsFreeStorySignInOnlyGate ? "Teken in" : "Oeps!";
     private string? StoryAccessPopupSubtitle => IsFreeStorySignInOnlyGate ? "Gratis stories speel net vir lede" : "Hierdie stories is nog gesluit";
     private string StoryAccessPopupMessage =>

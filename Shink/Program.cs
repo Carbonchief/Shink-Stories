@@ -183,7 +183,12 @@ builder.Services.AddHttpClient<IEngagementTrackingService, SupabaseEngagementTra
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
 builder.Services.AddHttpClient<ISubscriberPlaylistService, SupabaseSubscriberPlaylistService>();
 builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>();
-builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
+builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>()
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+    });
 builder.Services.AddHttpClient<IReferralService, SupabaseReferralService>();
 builder.Services.AddHttpClient<ISchoolManagementService, SupabaseSchoolManagementService>();
 builder.Services.AddHttpClient<IWordPressMigrationService, WordPressMigrationService>();

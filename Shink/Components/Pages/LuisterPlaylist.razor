@@ -367,7 +367,7 @@ else
 
 <StoryAccessPopup IsOpen="@ShowStoryAccessPopup"
                   PrimaryActionHref="@StoryAccessPopupPrimaryHref"
-                  PlanActionHref="@StoryAccessPopupPlanHref"
+                  SignInHref="@StoryAccessPopupSignInHref"
                   OnClose="CloseStoryAccessPopupAsync" />
 
 @code {
@@ -410,7 +410,7 @@ else
         CurrentPlaylist is null ? "Speellys nie gevind nie" : $"{CurrentPlaylist.Title} | Schink Stories";
     private bool IsSignedIn => !string.IsNullOrWhiteSpace(SignedInEmail);
     private string StoryAccessPopupPrimaryHref => BuildOpsiesHref(PendingLockedStoryPath);
-    private string StoryAccessPopupPlanHref => BuildOpsiesHref(PendingLockedStoryPath);
+    private string StoryAccessPopupSignInHref => StoryAccessCheckoutLinks.BuildSignInHref(PendingLockedStoryPath);
 
     private string StoryCoverWrapClass =>
         IsMusicStory(CurrentStory)

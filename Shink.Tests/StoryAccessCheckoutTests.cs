@@ -67,6 +67,7 @@ public sealed class StoryAccessCheckoutTests
             PaymentPlanCatalog.FindBySlug("schink-stories-maandeliks")!, true, returnUrl);
         Assert.AreEqual("/betaal/schink-stories-maandeliks?provider=paystack", href);
         Assert.AreEqual("/kry-toegang", StoryAccessCheckoutLinks.BuildPageHref(returnUrl));
+        Assert.AreEqual("/teken-in?returnUrl=%2Fluister", StoryAccessCheckoutLinks.BuildSignInHref(returnUrl));
     }
 
     [TestMethod]
@@ -76,6 +77,9 @@ public sealed class StoryAccessCheckoutTests
         var uri = new Uri(new Uri("https://www.schink.example"), StoryAccessCheckoutLinks.BuildPageHref(story));
         Assert.AreEqual("/kry-toegang", uri.AbsolutePath);
         Assert.AreEqual(story, QueryHelpers.ParseQuery(uri.Query)["returnUrl"].ToString());
+        var signInUri = new Uri(new Uri("https://www.schink.example"), StoryAccessCheckoutLinks.BuildSignInHref(story));
+        Assert.AreEqual("/teken-in", signInUri.AbsolutePath);
+        Assert.AreEqual(story, QueryHelpers.ParseQuery(signInUri.Query)["returnUrl"].ToString());
     }
 
     [TestMethod]
@@ -84,7 +88,7 @@ public sealed class StoryAccessCheckoutTests
     [DataRow(typeof(LuisterStory))]
     [DataRow(typeof(LuisterPlaylist))]
     [DataRow(typeof(LuisterPlaylistShowcase))]
-    public void BothLockedStoryPopupActionsOpenTheNewPage(Type pageType)
+    public void LockedStoryPopupOffersAccessOptionsAndSignIn(Type pageType)
     {
         var page = Activator.CreateInstance(pageType)!;
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -93,7 +97,8 @@ public sealed class StoryAccessCheckoutTests
 
         var expected = StoryAccessCheckoutLinks.BuildPageHref(storyPath);
         Assert.AreEqual(expected, pageType.GetProperty("StoryAccessPopupPrimaryHref", flags)!.GetValue(page));
-        Assert.AreEqual(expected, pageType.GetProperty("StoryAccessPopupPlanHref", flags)!.GetValue(page));
+        Assert.AreEqual(StoryAccessCheckoutLinks.BuildSignInHref(storyPath),
+            pageType.GetProperty("StoryAccessPopupSignInHref", flags)!.GetValue(page));
     }
 
     [TestMethod]
@@ -103,13 +108,57 @@ public sealed class StoryAccessCheckoutTests
         var home = new Home();
         typeof(Home).GetProperty("PendingLockedStoryPath", flags)!.SetValue(home, "/gratis/gratis-storie");
         StringAssert.StartsWith((string)typeof(Home).GetProperty("StoryAccessPopupPrimaryHref", flags)!.GetValue(home)!, "/teken-in?");
+        Assert.AreEqual(string.Empty, typeof(Home).GetProperty("StoryAccessPopupSignInHref", flags)!.GetValue(home));
 
         var storyPage = new LuisterStory();
         typeof(LuisterStory).GetProperty("PendingLockedStoryPath", flags)!.SetValue(storyPage, "/luister/gratis-storie");
         typeof(LuisterStory).GetProperty("CurrentStory", flags)!.SetValue(storyPage,
             new StoryItem("gratis-storie", "Gratis storie", "", "cover.png", "story.mp3", AccessLevel: "free"));
         StringAssert.StartsWith((string)typeof(LuisterStory).GetProperty("StoryAccessPopupPrimaryHref", flags)!.GetValue(storyPage)!, "/teken-in?");
-        Assert.AreEqual(string.Empty, typeof(LuisterStory).GetProperty("StoryAccessPopupPlanHref", flags)!.GetValue(storyPage));
+        Assert.AreEqual(string.Empty, typeof(LuisterStory).GetProperty("StoryAccessPopupSignInHref", flags)!.GetValue(storyPage));
+    }
+
+    [TestMethod]
+    public async Task LockedStoryPopup_RendersAccessButtonAndSignInLink()
+    {
+        const string storyPath = "/luister/die-ware-wenner?playlist=nuwe-stories";
+        var html = await RenderPopupAsync(new()
+        {
+            [nameof(StoryAccessPopup.IsOpen)] = true,
+            [nameof(StoryAccessPopup.PrimaryActionHref)] = StoryAccessCheckoutLinks.BuildPageHref(storyPath),
+            [nameof(StoryAccessPopup.SignInHref)] = StoryAccessCheckoutLinks.BuildSignInHref(storyPath)
+        });
+        var document = await new HtmlParser().ParseDocumentAsync(html);
+        var accessButton = Assert.ContainsSingle(document.QuerySelectorAll("a.story-access-popup-button"));
+        Assert.AreEqual(StoryAccessCheckoutLinks.BuildPageHref(storyPath), accessButton.GetAttribute("href"));
+        Assert.Contains("Kry toegang", accessButton.TextContent);
+        var signInLink = Assert.ContainsSingle(document.QuerySelectorAll("a.story-access-popup-sign-in"));
+        Assert.AreEqual(StoryAccessCheckoutLinks.BuildSignInHref(storyPath), signInLink.GetAttribute("href"));
+        Assert.Contains("Teken in", signInLink.TextContent);
+        Assert.IsEmpty(document.QuerySelectorAll(".story-access-popup-button-secondary"));
+    }
+
+    [TestMethod]
+    public async Task AccountRepairPopup_PreservesBothPostActions()
+    {
+        var html = await RenderPopupAsync(new()
+        {
+            [nameof(StoryAccessPopup.IsOpen)] = true,
+            [nameof(StoryAccessPopup.PrimaryActionHref)] = "/rekening/herstel-intekening",
+            [nameof(StoryAccessPopup.PrimaryActionText)] = "Maak rekening reg",
+            [nameof(StoryAccessPopup.PrimaryActionUsesPost)] = true,
+            [nameof(StoryAccessPopup.PlanActionHref)] = "/rekening/skuif-na-gratis",
+            [nameof(StoryAccessPopup.PlanActionText)] = "Skuif na gratis",
+            [nameof(StoryAccessPopup.PlanActionUsesPost)] = true
+        });
+        var document = await new HtmlParser().ParseDocumentAsync(html);
+        var forms = document.QuerySelectorAll("form[method='post']");
+        Assert.HasCount(2, forms);
+        Assert.AreEqual("/rekening/herstel-intekening", forms[0].GetAttribute("action"));
+        Assert.AreEqual("/rekening/skuif-na-gratis", forms[1].GetAttribute("action"));
+        Assert.Contains("Maak rekening reg", forms[0].TextContent);
+        Assert.Contains("Skuif na gratis", forms[1].TextContent);
+        Assert.IsEmpty(document.QuerySelectorAll(".story-access-popup-sign-in"));
     }
 
     [TestMethod]
@@ -142,6 +191,14 @@ public sealed class StoryAccessCheckoutTests
                     link.GetAttribute("href"));
             }
         }
+    }
+
+    private static async Task<string> RenderPopupAsync(Dictionary<string, object?> parameters)
+    {
+        using var services = new ServiceCollection().AddLogging().BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
+        return await renderer.Dispatcher.InvokeAsync(async () =>
+            (await renderer.RenderComponentAsync<StoryAccessPopup>(ParameterView.FromDictionary(parameters))).ToHtmlString());
     }
 
     private sealed class FixedAuthenticationStateProvider(bool isAuthenticated) : AuthenticationStateProvider

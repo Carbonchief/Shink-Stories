@@ -678,13 +678,16 @@
 
         var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
                     ?? authState.User.Identity?.Name;
-        try
+        if (!IsAdminRoute)
         {
-            SubscriptionAttention = await SubscriptionLedgerService.GetPaidSubscriptionAttentionAsync(email);
-        }
-        catch
-        {
-            SubscriptionAttention = new PaidSubscriptionAttention(false);
+            try
+            {
+                SubscriptionAttention = await SubscriptionLedgerService.GetPaidSubscriptionAttentionAsync(email);
+            }
+            catch
+            {
+                SubscriptionAttention = new PaidSubscriptionAttention(false);
+            }
         }
 
         try

@@ -73,6 +73,10 @@
                         </a>
                     }
                 }
+                @if (!string.IsNullOrWhiteSpace(SignInHref))
+                {
+                    <a class="story-access-popup-sign-in" href="@SignInHref">Reeds ’n lid? Teken in</a>
+                }
             </div>
         </section>
     </div>
@@ -92,13 +96,16 @@
     public bool PrimaryActionUsesPost { get; set; }
 
     [Parameter]
-    public string PlanActionHref { get; set; } = "/kry-toegang";
+    public string PlanActionHref { get; set; } = string.Empty;
 
     [Parameter]
     public string PlanActionText { get; set; } = "👉 Kies 'n plan";
 
     [Parameter]
     public bool PlanActionUsesPost { get; set; }
+
+    [Parameter]
+    public string SignInHref { get; set; } = string.Empty;
 
     [Parameter]
     public string ImageSrc { get; set; } = "/media/imported/misc/2024/09/404_Rammetjie.png";

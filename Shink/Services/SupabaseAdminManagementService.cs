@@ -2476,7 +2476,8 @@ public sealed partial class SupabaseAdminManagementService(
 
     public async Task<AdminAnalyticsSnapshot> GetAnalyticsAsync(
         string? adminEmail,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool forceRefresh = false)
     {
         if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
         {
@@ -2495,6 +2496,14 @@ public sealed partial class SupabaseAdminManagementService(
             throw new InvalidOperationException("Supabase API key is not configured for analytics.");
         }
 
+        return await GetAdminSnapshotAsync(
+            $"admin:usage:{baseUri.AbsoluteUri}", UsageSnapshotLoadGate, forceRefresh,
+            () => LoadUsageSnapshotAsync(baseUri, apiKey, cancellationToken), cancellationToken);
+    }
+
+    private async Task<AdminAnalyticsSnapshot> LoadUsageSnapshotAsync(
+        Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
         // The RPC helper returns null on request failures. Never turn that into a
         // successful empty snapshot: the admin page would cache it until refresh.
         // This read is safe to retry once when the first request fails.
@@ -2527,36 +2536,55 @@ public sealed partial class SupabaseAdminManagementService(
 
     public async Task<AdminSubscriberReportsSnapshot> GetSubscriberReportsAsync(
         string? adminEmail,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool includeEngagement = true,
+        bool forceRefresh = false)
     {
         if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
         {
-            return AdminSubscriberReportsSnapshot.Empty;
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("Could not resolve the admin report context.");
         }
 
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
-            return AdminSubscriberReportsSnapshot.Empty;
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("Could not resolve the admin report context.");
         }
 
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return AdminSubscriberReportsSnapshot.Empty;
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("Could not resolve the admin report context.");
         }
 
-        var wordPressSubscriberReportsTask = FetchWordPressSubscriberReportsAsync(baseUri, apiKey, cancellationToken);
-        var subscribersTask = FetchSubscribersAsync(baseUri, apiKey, cancellationToken);
-        var subscriptionsTask = FetchSubscriptionsAsync(baseUri, apiKey, cancellationToken);
-        var providerRevenueEventsTask = FetchProviderRevenueEventsAsync(baseUri, apiKey, cancellationToken);
-        var storeOrderRevenueTask = FetchStoreOrderRevenueAsync(baseUri, apiKey, cancellationToken);
-        var subscriptionTiersTask = FetchSubscriptionTiersAsync(baseUri, apiKey, cancellationToken);
-        var recoveriesTask = FetchSubscriptionRecoveriesAsync(baseUri, apiKey, cancellationToken);
-        var abandonedCartRecoveriesTask = FetchAbandonedCartRecoveriesAsync(baseUri, apiKey, cancellationToken);
-        var authSessionsTask = FetchAuthSessionsAsync(baseUri, apiKey, cancellationToken);
-        var storyViewsTask = FetchStoryViewsAsync(baseUri, apiKey, cancellationToken);
-        var storyListenSessionsTask = FetchStoryListenSessionsAsync(baseUri, apiKey, cancellationToken);
-        var cancellationSurveyTask = FetchSubscriptionCancellationFeedbackAsync(baseUri, apiKey, cancellationToken);
+        return await GetAdminSnapshotAsync(
+            $"admin:subscriber-reports:{baseUri.AbsoluteUri}:{includeEngagement}", SubscriberReportsLoadGate, forceRefresh,
+            () => LoadSubscriberReportsSnapshotAsync(baseUri, apiKey, includeEngagement, cancellationToken), cancellationToken);
+    }
+
+    private async Task<AdminSubscriberReportsSnapshot> LoadSubscriberReportsSnapshotAsync(
+        Uri baseUri, string apiKey, bool includeEngagement, CancellationToken cancellationToken)
+    {
+        var wordPressSubscriberReportsTask = FetchWordPressSubscriberReportsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
+        var subscribersTask = FetchSubscribersAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
+        var subscriptionsTask = FetchSubscriptionsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
+        var providerRevenueEventsTask = FetchProviderRevenueEventsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
+        var storeOrderRevenueTask = FetchStoreOrderRevenueAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
+        var subscriptionTiersTask = FetchSubscriptionTiersAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
+        var recoveriesTask = FetchSubscriptionRecoveriesAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
+        var abandonedCartRecoveriesTask = FetchAbandonedCartRecoveriesAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
+        var authSessionsTask = includeEngagement
+            ? FetchAuthSessionsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true)
+            : Task.FromResult<IReadOnlyList<AuthSessionMetricRow>>([]);
+        var storyViewsTask = includeEngagement
+            ? FetchStoryViewsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true)
+            : Task.FromResult<IReadOnlyList<StoryViewMetricRow>>([]);
+        var storyListenSessionsTask = includeEngagement
+            ? FetchStoryListenSessionsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true)
+            : Task.FromResult<IReadOnlyList<StoryListenSessionMetricRow>>([]);
+        var cancellationSurveyTask = FetchSubscriptionCancellationFeedbackAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
 
         await Task.WhenAll(
             wordPressSubscriberReportsTask,
@@ -2581,7 +2609,12 @@ public sealed partial class SupabaseAdminManagementService(
                 cancellationToken) ?? wordPressSubscriberReports;
         }
 
-        return BuildSubscriberReportsSnapshot(
+        if (wordPressSubscriberReports is null)
+        {
+            throw new InvalidOperationException("Could not load the historical subscriber report snapshot.");
+        }
+
+        var snapshot = BuildSubscriberReportsSnapshot(
             wordPressSubscriberReports,
             subscribersTask.Result,
             subscriptionsTask.Result,
@@ -2595,6 +2628,7 @@ public sealed partial class SupabaseAdminManagementService(
             storyViewsTask.Result,
             storyListenSessionsTask.Result,
             cancellationSurveyTask.Result);
+        return includeEngagement ? snapshot : snapshot with { VisitsViewsAndLogins = [] };
     }
 
     private async Task<AdminOperationContext?> TryCreateAdminOperationContextAsync(
@@ -3614,7 +3648,7 @@ public sealed partial class SupabaseAdminManagementService(
         return new AdminOperationResult(false, "Kon nie resource document tier nou opdateer nie.");
     }
 
-    private async Task<IReadOnlyList<SubscriberRow>> FetchSubscribersAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<SubscriberRow>> FetchSubscribersAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3622,10 +3656,10 @@ public sealed partial class SupabaseAdminManagementService(
             "?select=subscriber_id,email,first_name,last_name,display_name,mobile_number,profile_image_url,created_at,updated_at,disabled_at,disabled_by_admin_email,disabled_reason" +
             "&order=updated_at.desc" +
             "&limit=5000");
-        return await FetchRowsAsync<SubscriberRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<SubscriberRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
-    private async Task<IReadOnlyList<SubscriptionRow>> FetchSubscriptionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<SubscriptionRow>> FetchSubscriptionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3633,10 +3667,10 @@ public sealed partial class SupabaseAdminManagementService(
             "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at,billing_amount_zar,billing_period_months,provider_payment_id,provider_transaction_id" +
             "&order=subscribed_at.desc,subscription_id.asc");
 
-        return await FetchRowsPagedAsync<SubscriptionRow>(uri, apiKey, maxRows: 50000, cancellationToken);
+        return await FetchRowsPagedAsync<SubscriptionRow>(uri, apiKey, maxRows: 50000, cancellationToken, throwOnFailure);
     }
 
-    private async Task<IReadOnlyList<RevenueEventRow>> FetchProviderRevenueEventsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<RevenueEventRow>> FetchProviderRevenueEventsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3647,10 +3681,10 @@ public sealed partial class SupabaseAdminManagementService(
             "&order=received_at.desc" +
             "&limit=50000");
 
-        return await FetchRowsAsync<RevenueEventRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<RevenueEventRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
-    private async Task<IReadOnlyList<StoreOrderRevenueRow>> FetchStoreOrderRevenueAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<StoreOrderRevenueRow>> FetchStoreOrderRevenueAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3660,21 +3694,21 @@ public sealed partial class SupabaseAdminManagementService(
             "&order=paid_at.desc.nullslast,created_at.desc" +
             "&limit=10000");
 
-        return await FetchRowsAsync<StoreOrderRevenueRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<StoreOrderRevenueRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
     private async Task<WordPressSubscriberReportsRpcSnapshot?> FetchWordPressSubscriberReportsAsync(
         Uri baseUri,
         string apiKey,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken, bool throwOnFailure = false) =>
         await InvokeRpcAsync<WordPressSubscriberReportsRpcSnapshot>(
             baseUri,
             apiKey,
             "get_wordpress_subscriber_report_snapshot",
             new { },
-            cancellationToken);
+            cancellationToken, throwOnFailure);
 
-    private async Task<IReadOnlyList<SubscriptionTierRow>> FetchSubscriptionTiersAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<SubscriptionTierRow>> FetchSubscriptionTiersAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3683,10 +3717,10 @@ public sealed partial class SupabaseAdminManagementService(
             "&order=display_name.asc" +
             "&limit=100");
 
-        return await FetchRowsAsync<SubscriptionTierRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<SubscriptionTierRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
-    private async Task<IReadOnlyList<SubscriptionRecoveryRow>> FetchSubscriptionRecoveriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<SubscriptionRecoveryRow>> FetchSubscriptionRecoveriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3695,10 +3729,10 @@ public sealed partial class SupabaseAdminManagementService(
             "&order=created_at.desc" +
             "&limit=50000");
 
-        return await FetchRowsAsync<SubscriptionRecoveryRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<SubscriptionRecoveryRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
-    private async Task<IReadOnlyList<AbandonedCartRecoveryRow>> FetchAbandonedCartRecoveriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<AbandonedCartRecoveryRow>> FetchAbandonedCartRecoveriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3707,10 +3741,10 @@ public sealed partial class SupabaseAdminManagementService(
             "&order=created_at.desc" +
             "&limit=50000");
 
-        return await FetchRowsAsync<AbandonedCartRecoveryRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<AbandonedCartRecoveryRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
-    private async Task<IReadOnlyList<AuthSessionMetricRow>> FetchAuthSessionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<AuthSessionMetricRow>> FetchAuthSessionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3719,10 +3753,10 @@ public sealed partial class SupabaseAdminManagementService(
             "&order=created_at.desc" +
             "&limit=50000");
 
-        return await FetchRowsAsync<AuthSessionMetricRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<AuthSessionMetricRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
-    private async Task<IReadOnlyList<StoryViewMetricRow>> FetchStoryViewsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<StoryViewMetricRow>> FetchStoryViewsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3731,10 +3765,10 @@ public sealed partial class SupabaseAdminManagementService(
             "&order=viewed_at.desc" +
             "&limit=100000");
 
-        return await FetchRowsAsync<StoryViewMetricRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<StoryViewMetricRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
-    private async Task<IReadOnlyList<StoryListenSessionMetricRow>> FetchStoryListenSessionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<StoryListenSessionMetricRow>> FetchStoryListenSessionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3743,13 +3777,13 @@ public sealed partial class SupabaseAdminManagementService(
             "&order=occurred_at.desc" +
             "&limit=100000");
 
-        return await FetchRowsAsync<StoryListenSessionMetricRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<StoryListenSessionMetricRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
     private async Task<IReadOnlyList<SubscriptionCancellationFeedbackRow>> FetchSubscriptionCancellationFeedbackAsync(
         Uri baseUri,
         string apiKey,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -3758,7 +3792,7 @@ public sealed partial class SupabaseAdminManagementService(
             "&order=created_at.desc" +
             "&limit=50000");
 
-        return await FetchRowsAsync<SubscriptionCancellationFeedbackRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<SubscriptionCancellationFeedbackRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
     private async Task<IReadOnlyList<StoryRow>> FetchStoriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
@@ -4154,7 +4188,7 @@ public sealed partial class SupabaseAdminManagementService(
     private static IReadOnlyList<PlaylistRow> ToSingleRowList(PlaylistRow? row) =>
         row is null ? Array.Empty<PlaylistRow>() : [row];
 
-    private async Task<IReadOnlyList<T>> FetchRowsAsync<T>(Uri uri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<T>> FetchRowsAsync<T>(Uri uri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         try
         {
@@ -4168,15 +4202,19 @@ public sealed partial class SupabaseAdminManagementService(
                     uri,
                     (int)response.StatusCode,
                     responseBody);
+                if (throwOnFailure)
+                {
+                    response.EnsureSuccessStatusCode();
+                }
                 return Array.Empty<T>();
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             var rows = await JsonSerializer.DeserializeAsync<List<T>>(stream, JsonOptions, cancellationToken)
-                ?? [];
+                ?? (throwOnFailure ? throw new JsonException("Expected a report row collection.") : []);
             return rows;
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception exception) when (!throwOnFailure && (exception is HttpRequestException or TaskCanceledException or JsonException))
         {
             _logger.LogWarning(exception, "Supabase fetch failed unexpectedly. uri={Uri}", uri);
             return Array.Empty<T>();
@@ -4187,7 +4225,8 @@ public sealed partial class SupabaseAdminManagementService(
         Uri uri,
         string apiKey,
         int maxRows,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool throwOnFailure = false)
     {
         const int PageSize = 1000;
         var rows = new List<T>();
@@ -4208,12 +4247,16 @@ public sealed partial class SupabaseAdminManagementService(
                         pageUri,
                         (int)response.StatusCode,
                         responseBody);
+                    if (throwOnFailure)
+                    {
+                        response.EnsureSuccessStatusCode();
+                    }
                     break;
                 }
 
                 await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 var pageRows = await JsonSerializer.DeserializeAsync<List<T>>(stream, JsonOptions, cancellationToken)
-                    ?? [];
+                    ?? (throwOnFailure ? throw new JsonException("Expected a report page collection.") : []);
                 rows.AddRange(pageRows);
 
                 if (pageRows.Count < PageSize)
@@ -4224,7 +4267,7 @@ public sealed partial class SupabaseAdminManagementService(
 
             return rows;
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception exception) when (!throwOnFailure && (exception is HttpRequestException or TaskCanceledException or JsonException))
         {
             _logger.LogWarning(exception, "Supabase paged fetch failed unexpectedly. uri={Uri}", uri);
             return rows;
@@ -4373,7 +4416,8 @@ public sealed partial class SupabaseAdminManagementService(
         string apiKey,
         string functionName,
         object payload,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool throwOnFailure = false)
     {
         var uri = new Uri(baseUri, $"rest/v1/rpc/{functionName}");
 
@@ -4389,13 +4433,17 @@ public sealed partial class SupabaseAdminManagementService(
                     functionName,
                     (int)response.StatusCode,
                     responseBody);
+                if (throwOnFailure)
+                {
+                    response.EnsureSuccessStatusCode();
+                }
                 return default;
             }
 
             var responseBodyText = await response.Content.ReadAsStringAsync(cancellationToken);
             return DeserializeRpcResponse<T>(responseBodyText, functionName);
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception exception) when (!throwOnFailure && (exception is HttpRequestException or TaskCanceledException or JsonException))
         {
             _logger.LogWarning(exception, "Supabase RPC failed unexpectedly. function={FunctionName}", functionName);
             return default;

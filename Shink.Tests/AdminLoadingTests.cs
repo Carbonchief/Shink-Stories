@@ -14,6 +14,17 @@ namespace Shink.Tests;
 public class AdminLoadingTests
 {
     [TestMethod]
+    [DataRow(null, 25)]
+    [DataRow(100, 100)]
+    public void SubscriberPagingStartsWith25RowsAndPreservesRequestedLargerPages(int? pageSize, int expectedSize)
+    {
+        var (page, _) = CreatePage();
+        var method = typeof(Admin).GetMethod("BuildCurrentSubscriberPageRequest", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var request = (AdminSubscriberPageRequest)method.Invoke(page, [null, pageSize, null, null])!;
+        Assert.AreEqual(expectedSize, request.PageSize);
+    }
+
+    [TestMethod]
     public async Task AuthorizedInitializationShowsSubscribersWithoutFetchingOtherTabs()
     {
         var (page, service) = CreatePage();
@@ -65,7 +76,7 @@ public class AdminLoadingTests
     }
 
     [TestMethod]
-    public async Task AnalyticsLoadsOnSelectionSharesPendingRequestsAndKeepsManualRefresh()
+    public async Task AnalyticsLoadsOnlySelectedSectionAndDoesNotBlockUsageOnPendingReports()
     {
         var (page, service) = CreatePage();
         var reports = new TaskCompletionSource<AdminSubscriberReportsSnapshot>();
@@ -74,18 +85,75 @@ public class AdminLoadingTests
         var first = SelectTabAsync(page, 10);
         var second = SelectTabAsync(page, 10);
         Assert.IsTrue(Get<bool>(page, "IsLoadingAnalyticsTab"));
-        Assert.AreEqual(1, service.Count("GetAnalyticsAsync"));
+        Assert.AreEqual(0, service.Count("GetAnalyticsAsync"));
+        Assert.AreEqual(0, service.Count("GetStoriesAsync"));
+        Assert.AreEqual(0, service.Count("GetPlaylistsAsync"));
         Assert.AreEqual(1, service.Count("GetSubscriberReportsAsync"));
-        Assert.IsTrue(SelectTabAsync(page, 0).IsCompletedSuccessfully);
+        Assert.AreEqual((false, false), service.ReportOptions[0]);
+
+        // A slow subscriber report must not hold up another analytics section.
+        await SelectAnalyticsPanelAsync(page, 4);
+        Assert.IsTrue(Get<bool>(page, "HasLoadedAnalytics"));
+        Assert.IsFalse(Get<bool>(page, "IsRefreshingActiveAnalyticsPanel"));
+        Assert.IsFalse(Get<bool>(page, "HasLoadedSubscriberReports"));
+        Assert.AreEqual(1, service.Count("GetAnalyticsAsync"));
+        Assert.AreEqual(0, service.Count("GetStoriesAsync"));
+
         reports.SetResult(AdminSubscriberReportsSnapshot.Empty);
         await Task.WhenAll(first, second);
-        Assert.IsFalse(Get<bool>(page, "IsLoadingAnalyticsTab"));
-
-        await SelectTabAsync(page, 10);
+        await SelectAnalyticsPanelAsync(page, 4);
         Assert.AreEqual(1, service.Count("GetAnalyticsAsync"));
         await InvokeAsync(page, "RefreshAnalyticsAsync");
         Assert.AreEqual(2, service.Count("GetAnalyticsAsync"));
+        Assert.IsTrue(service.UsageRefreshes[^1]);
+        Assert.AreEqual(1, service.Count("GetSubscriberReportsAsync"));
+
+        await SelectAnalyticsPanelAsync(page, 2);
+        Assert.AreEqual(1, service.Count("GetSubscriberReportsAsync"));
+        await InvokeAsync(page, "RefreshAnalyticsAsync");
         Assert.AreEqual(2, service.Count("GetSubscriberReportsAsync"));
+        Assert.AreEqual((false, true), service.ReportOptions[^1]);
+        Assert.AreEqual(2, service.Count("GetAnalyticsAsync"));
+    }
+
+    [TestMethod]
+    public async Task StoryAnalyticsLoadsCatalogOnlyWhenStorySectionIsSelected()
+    {
+        var (page, service) = CreatePage();
+        await SelectTabAsync(page, 10);
+        await SelectAnalyticsPanelAsync(page, 4);
+        Assert.AreEqual(0, service.Count("GetStoriesAsync"));
+        await SelectAnalyticsPanelAsync(page, 5);
+        Assert.AreEqual(1, service.Count("GetStoriesAsync"));
+        Assert.AreEqual(1, service.Count("GetPlaylistsAsync"));
+        Assert.AreEqual(1, service.Count("GetAnalyticsAsync"));
+        await SelectAnalyticsPanelAsync(page, 5);
+        Assert.AreEqual(1, service.Count("GetStoriesAsync"));
+    }
+
+    [TestMethod]
+    public async Task FailedSubscriberAnalyticsRefreshKeepsPreviousDataAndAllowsManualRetry()
+    {
+        var (page, service) = CreatePage();
+        var snapshot = AdminSubscriberReportsSnapshot.Empty with
+        {
+            MembershipStats = [new AdminMembershipStatsMetric("today", 5, 0)]
+        };
+        service.Reports = () => Task.FromResult(snapshot);
+        await SelectTabAsync(page, 10);
+        service.Reports = () => Task.FromException<AdminSubscriberReportsSnapshot>(new HttpRequestException("Test failure"));
+
+        await InvokeAsync(page, "RefreshAnalyticsAsync");
+
+        Assert.AreSame(snapshot, Get<AdminSubscriberReportsSnapshot>(page, "SubscriberReports"));
+        Assert.IsTrue(Get<bool>(page, "HasLoadedSubscriberReports"));
+        Assert.IsTrue(Get<bool>(page, "SubscriberReportsLoadFailed"));
+        Assert.IsFalse(Get<bool>(page, "IsRefreshingActiveAnalyticsPanel"));
+
+        service.Reports = () => Task.FromResult(snapshot);
+        await InvokeAsync(page, "RefreshAnalyticsAsync");
+        Assert.IsFalse(Get<bool>(page, "SubscriberReportsLoadFailed"));
+        Assert.IsTrue(service.ReportOptions[^1].ForceRefresh);
     }
 
     [TestMethod]
@@ -119,7 +187,7 @@ public class AdminLoadingTests
 
         Assert.IsTrue(Get<bool>(page, "HasLoadedSubscriberReports"));
         Assert.AreEqual(2, service.Count("GetSubscriberReportsAsync"));
-        Assert.AreEqual(1, service.Count("GetStoriesAsync"));
+        Assert.AreEqual(0, service.Count("GetStoriesAsync"));
     }
 
     [TestMethod]
@@ -129,6 +197,7 @@ public class AdminLoadingTests
         service.Analytics = () => Task.FromException<AdminAnalyticsSnapshot>(new HttpRequestException("Test failure"));
 
         await SelectTabAsync(page, 10);
+        await SelectAnalyticsPanelAsync(page, 4);
 
         Assert.IsFalse(Get<bool>(page, "HasLoadedAnalytics"));
         Assert.IsTrue(Get<bool>(page, "AnalyticsLoadFailed"));
@@ -151,7 +220,7 @@ public class AdminLoadingTests
         Assert.IsTrue(Get<bool>(page, "HasAnalyticsData"));
         Assert.IsFalse(Get<bool>(page, "AnalyticsLoadFailed"));
         Assert.AreEqual(2, service.Count("GetAnalyticsAsync"));
-        Assert.AreEqual(1, service.Count("GetStoriesAsync"));
+        Assert.AreEqual(0, service.Count("GetStoriesAsync"));
     }
 
     [TestMethod]
@@ -165,6 +234,7 @@ public class AdminLoadingTests
         };
         service.Analytics = () => Task.FromResult(snapshot);
         await SelectTabAsync(page, 10);
+        await SelectAnalyticsPanelAsync(page, 4);
         service.Analytics = () => Task.FromException<AdminAnalyticsSnapshot>(new TaskCanceledException("Test timeout"));
 
         await InvokeAsync(page, "RefreshAnalyticsAsync");
@@ -186,7 +256,7 @@ public class AdminLoadingTests
         var analytics = new TaskCompletionSource<AdminAnalyticsSnapshot>();
         service.Analytics = () => analytics.Task;
 
-        var load = SelectTabAsync(page, 10);
+        var load = SelectAnalyticsPanelAsync(page, 4);
 
         Assert.IsTrue(Get<bool>(page, "IsLoadingAnalyticsTab"));
         Assert.IsTrue(Get<bool>(page, "IsLoadingUsageAnalytics"));
@@ -216,6 +286,12 @@ public class AdminLoadingTests
         return (page, (AdminServiceProxy)service);
     }
 
+    private static Task SelectAnalyticsPanelAsync(Admin page, int index)
+    {
+        typeof(Admin).GetField("_activeAnalyticsTabIndex", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(page, index);
+        return InvokeAsync(page, "EnsureActiveAnalyticsPanelDataAsync");
+    }
+
     private static Task SelectTabAsync(Admin page, int index)
     {
         typeof(Admin).GetField("_activeAdminTabIndex", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(page, index);
@@ -239,11 +315,15 @@ public class AdminLoadingTests
         public Func<Task<IReadOnlyList<AdminStoryRecord>>> Stories { get; set; } = () => Task.FromResult<IReadOnlyList<AdminStoryRecord>>([]);
         public Func<Task<AdminSubscriberReportsSnapshot>> Reports { get; set; } = () => Task.FromResult(AdminSubscriberReportsSnapshot.Empty);
         public Func<Task<AdminAnalyticsSnapshot>> Analytics { get; set; } = () => Task.FromResult(AdminAnalyticsSnapshot.Empty);
+        public List<bool> UsageRefreshes { get; } = [];
+        public List<(bool IncludeEngagement, bool ForceRefresh)> ReportOptions { get; } = [];
         public int Count(string method) => Calls.Count(call => call == method);
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
             Calls.Add(targetMethod!.Name);
+            if (targetMethod.Name == "GetAnalyticsAsync") UsageRefreshes.Add((bool)args![2]!);
+            if (targetMethod.Name == "GetSubscriberReportsAsync") ReportOptions.Add(((bool)args![2]!, (bool)args[3]!));
             return targetMethod.Name switch
             {
                 "IsAdminAsync" => Task.FromResult(IsAdmin),

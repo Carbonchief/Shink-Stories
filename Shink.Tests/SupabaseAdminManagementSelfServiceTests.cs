@@ -10,7 +10,7 @@ using Shink.Services;
 namespace Shink.Tests;
 
 [TestClass]
-public class SupabaseAdminManagementSelfServiceTests
+public partial class SupabaseAdminManagementSelfServiceTests
 {
     [TestMethod]
     public async Task CancelSubscriberPaidSubscriptionAsync_DisablesPaystackAndKeepsAccessUntilNextRenewal()
@@ -696,6 +696,11 @@ public class SupabaseAdminManagementSelfServiceTests
                     """);
             }
 
+            if (IsSupabaseGet(request, "/rest/v1/subscription_cancellation_feedback"))
+            {
+                return JsonResponse("[]");
+            }
+
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
@@ -1031,9 +1036,10 @@ public class SupabaseAdminManagementSelfServiceTests
     };
 
     private static SupabaseAdminManagementService CreateService(
-        RecordingHandler handler,
+        HttpMessageHandler handler,
         IUserNotificationService? userNotificationService = null,
-        ISubscriptionPaymentRecoveryEmailService? subscriptionPaymentRecoveryEmailService = null)
+        ISubscriptionPaymentRecoveryEmailService? subscriptionPaymentRecoveryEmailService = null,
+        IMemoryCache? memoryCache = null)
     {
         var httpClient = new HttpClient(handler)
         {
@@ -1072,7 +1078,7 @@ public class SupabaseAdminManagementSelfServiceTests
             {
                 PublicBaseUrl = "https://www.schink.co.za"
             }),
-            new MemoryCache(Options.Create(new MemoryCacheOptions())),
+            memoryCache ?? new MemoryCache(Options.Create(new MemoryCacheOptions())),
             userNotificationService ?? new NoopUserNotificationService(),
             new NoopWordPressMigrationService(),
             new NoopSupabaseAuthService(),

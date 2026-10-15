@@ -277,7 +277,7 @@ else
 
 <StoryAccessPopup IsOpen="@ShowStoryAccessPopup"
                   PrimaryActionHref="@StoryAccessPopupPrimaryHref"
-                  PlanActionHref="@StoryAccessPopupPlanHref"
+                  SignInHref="@StoryAccessPopupSignInHref"
                   OnClose="CloseStoryAccessPopupAsync" />
 
 <section class="home-testimonials section-block home-scroll-reveal home-reveal-delay-standard p-3" aria-labelledby="home-ouers-se">
@@ -675,7 +675,10 @@ else
         !IsSignedIn && PendingLockedStoryPath.StartsWith("/gratis/", StringComparison.OrdinalIgnoreCase)
             ? $"/teken-in?returnUrl={Uri.EscapeDataString(PendingLockedStoryPath)}"
             : BuildOpsiesHref(PendingLockedStoryPath);
-    private string StoryAccessPopupPlanHref => BuildOpsiesHref(PendingLockedStoryPath);
+    private string StoryAccessPopupSignInHref =>
+        !IsSignedIn && PendingLockedStoryPath.StartsWith("/gratis/", StringComparison.OrdinalIgnoreCase)
+            ? string.Empty
+            : StoryAccessCheckoutLinks.BuildSignInHref(PendingLockedStoryPath);
 
     protected override async Task OnInitializedAsync()
     {

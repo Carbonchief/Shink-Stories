@@ -14,6 +14,9 @@ public static class StoryAccessCheckoutLinks
             : QueryHelpers.AddQueryString(PagePath, "returnUrl", safeReturnUrl);
     }
 
+    public static string BuildSignInHref(string? returnUrl) =>
+        QueryHelpers.AddQueryString("/teken-in", "returnUrl", GetSafeStoryReturnUrl(returnUrl) ?? "/luister");
+
     public static string BuildCheckoutHref(PaymentPlan plan, bool isAuthenticated, string? returnUrl)
     {
         var query = new Dictionary<string, string?> { ["provider"] = "paystack" };
