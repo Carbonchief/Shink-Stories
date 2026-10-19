@@ -200,10 +200,13 @@ public sealed class MobilePersistentPlaybackSourceTests
 
         StringAssert.Contains(audioPlayback, "Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default);");
         StringAssert.Contains(audioPlayback, "player.SeekAsync(CoreMedia.CMTime.FromSeconds(targetSeconds, 600))");
-        StringAssert.Contains(audioPlayback, "player.SeekComplete += seekCompletedHandler;");
+        StringAssert.Contains(audioPlayback, "player.SeekComplete += seek.Handler;");
         StringAssert.Contains(audioPlayback, "Android.Media.MediaPlayerSeekMode.Closest");
         StringAssert.Contains(playbackSession, "FlushPendingListen(\"seek\", force: true);");
         StringAssert.Contains(playbackSession, "await _audioPlaybackService.SeekAsync(target, cancellationToken);");
+        StringAssert.Contains(
+            playbackSession,
+            "await _audioPlaybackService.SeekAsync(target, cancellationToken);\n        if (!ReferenceEquals(_current, current)) return;");
         StringAssert.Contains(playbackSession, "_lastTrackedPosition = target;");
         StringAssert.Contains(storyDetail, "private Slider BuildProgressSlider(double value, Color maximumTrackColor)");
         StringAssert.Contains(storyDetail, "slider.DragCompleted += async (_, _) =>");
@@ -246,7 +249,8 @@ public sealed class MobilePersistentPlaybackSourceTests
     private static string ReadSource(params string[] segments)
     {
         var testsDirectory = Path.GetDirectoryName(GetSourceFilePath())!;
-        return File.ReadAllText(Path.GetFullPath(Path.Combine(new[] { testsDirectory, ".." }.Concat(segments).ToArray())));
+        return File.ReadAllText(Path.GetFullPath(Path.Combine(new[] { testsDirectory, ".." }.Concat(segments).ToArray())))
+            .ReplaceLineEndings("\n");
     }
 
     private static string GetSourceFilePath([CallerFilePath] string path = "") => path;

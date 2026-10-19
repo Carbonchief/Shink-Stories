@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shink.Mobile", "Shink.Mobil
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shink.Tests", "Shink.Tests\Shink.Tests.csproj", "{6BE8FA55-6082-4F0D-BA91-BE9F00D4A60A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shink.Mobile.Audio.Tests", "Shink.Mobile.Audio.Tests\Shink.Mobile.Audio.Tests.csproj", "{F084DE26-B251-4445-979B-330B226F73A6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{6BE8FA55-6082-4F0D-BA91-BE9F00D4A60A}.Release|x64.Build.0 = Release|Any CPU
 		{6BE8FA55-6082-4F0D-BA91-BE9F00D4A60A}.Release|x86.ActiveCfg = Release|Any CPU
 		{6BE8FA55-6082-4F0D-BA91-BE9F00D4A60A}.Release|x86.Build.0 = Release|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Debug|x64.Build.0 = Debug|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Debug|x86.Build.0 = Debug|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Release|x64.ActiveCfg = Release|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Release|x64.Build.0 = Release|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Release|x86.ActiveCfg = Release|Any CPU
+		{F084DE26-B251-4445-979B-330B226F73A6}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
