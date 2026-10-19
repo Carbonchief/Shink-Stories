@@ -604,6 +604,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 {
     private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan CompletionKeepAliveDelay = TimeSpan.FromSeconds(45);
+    private readonly object _playerLifecycleLock = new();
+    private readonly HashSet<PendingSeek> _pendingSeeks = [];
     private Android.Media.MediaPlayer? _player;
     private Android.Media.MediaPlayer? _preparedPlayer;
     private readonly MobileAnalyticsService _analytics;
@@ -783,7 +785,10 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         _metadata = metadata;
         StartBackgroundPlaybackService();
         var player = preparedPlayer ?? new Android.Media.MediaPlayer();
-        _player = player;
+        lock (_playerLifecycleLock)
+        {
+            _player = player;
+        }
         try
         {
             if (preparedPlayer is null)
@@ -845,51 +850,121 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     public async Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var player = _player;
-        if (player is null)
-        {
-            return;
-        }
-
-        var durationMilliseconds = Math.Max(0, player.Duration);
-        var targetMilliseconds = (int)Math.Clamp(
-            position.TotalMilliseconds,
-            0,
-            Math.Min(durationMilliseconds, int.MaxValue));
-        var seekCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        EventHandler seekCompletedHandler = (_, _) => seekCompleted.TrySetResult();
-        player.SeekComplete += seekCompletedHandler;
+        PendingSeek? seek = null;
+        int durationMilliseconds;
+        int targetMilliseconds;
         try
         {
-            if (OperatingSystem.IsAndroidVersionAtLeast(26))
+            // Event accessors also call into the native player. Serialize them and
+            // SeekTo with ReleasePlayer, rather than checking a handle before use.
+            lock (_playerLifecycleLock)
             {
-                player.SeekTo(targetMilliseconds, Android.Media.MediaPlayerSeekMode.Closest);
-            }
-            else
-            {
-                player.SeekTo(targetMilliseconds);
+                cancellationToken.ThrowIfCancellationRequested();
+                var player = _player;
+                if (player is null)
+                {
+                    return;
+                }
+
+                durationMilliseconds = Math.Max(0, player.Duration);
+                targetMilliseconds = (int)Math.Clamp(
+                    position.TotalMilliseconds,
+                    0,
+                    Math.Min(durationMilliseconds, int.MaxValue));
+                seek = new PendingSeek(player);
+                _pendingSeeks.Add(seek);
+                player.SeekComplete += seek.Handler;
+
+                if (OperatingSystem.IsAndroidVersionAtLeast(26))
+                {
+                    player.SeekTo(targetMilliseconds, Android.Media.MediaPlayerSeekMode.Closest);
+                }
+                else
+                {
+                    player.SeekTo(targetMilliseconds);
+                }
             }
 
             using var seekTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             seekTimeout.CancelAfter(TimeSpan.FromSeconds(3));
             try
             {
-                await seekCompleted.Task.WaitAsync(seekTimeout.Token);
+                var completed = await seek.Completion.Task.WaitAsync(seekTimeout.Token);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!completed)
+                {
+                    // Stop/replacement owns cleanup and invalidates this seek.
+                    return;
+                }
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+            catch (OperationCanceledException)
             {
                 // Some Android media sources do not report seek completion reliably.
                 // The native seek request has still been accepted, so keep playback responsive.
             }
         }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+        catch (Java.Lang.IllegalStateException)
+        {
+            // The native player may already have entered an error/end state.
+            return;
+        }
         finally
         {
-            player.SeekComplete -= seekCompletedHandler;
+            lock (_playerLifecycleLock)
+            {
+                if (seek is not null)
+                {
+                    DetachSeek(seek);
+                }
+            }
         }
 
-        if (ReferenceEquals(_player, player))
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_playerLifecycleLock)
+        {
+            if (!ReferenceEquals(_player, seek.Player)) return;
             _analytics.TrackEvent("mobile_audio_seeked", BuildPlaybackProperties(_metadata,
                 targetMilliseconds / 1000d, durationMilliseconds / 1000d));
+        }
+    }
+
+    // Called only while holding _playerLifecycleLock, including before release.
+    private void DetachSeek(PendingSeek seek)
+    {
+        if (!_pendingSeeks.Remove(seek)) return;
+        try
+        {
+            seek.Player.SeekComplete -= seek.Handler;
+        }
+        catch (ObjectDisposedException)
+        {
+            // A disposed Java peer cannot accept event accessor calls.
+        }
+        catch (Java.Lang.IllegalStateException)
+        {
+            // Cleanup must not replace cancellation or a native seek failure.
+        }
+    }
+
+    private sealed class PendingSeek
+    {
+        public PendingSeek(Android.Media.MediaPlayer player)
+        {
+            Player = player;
+            Handler = (_, _) => Completion.TrySetResult(true);
+        }
+
+        public Android.Media.MediaPlayer Player { get; }
+        public TaskCompletionSource<bool> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public EventHandler Handler { get; }
     }
 
     public void Pause()
@@ -916,25 +991,32 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
     public void Stop()
     {
-        var metadata = _metadata;
-        var position = CurrentPosition.TotalSeconds;
-        var duration = Duration?.TotalSeconds ?? 0;
-        var player = _player;
-        var preparedPlayer = _preparedPlayer;
-        _player = null;
-        _currentAudioUrl = null;
-        _preparedPlayer = null;
-        _preparedAudioUrl = null;
-        _metadata = null;
-        IsPlaying = false;
-        if (player is not null)
+        AudioPlaybackMetadata? metadata;
+        Android.Media.MediaPlayer? player;
+        double position;
+        double duration;
+        lock (_playerLifecycleLock)
         {
-            ReleasePlayer(player, stopFirst: true);
-        }
+            metadata = _metadata;
+            position = CurrentPosition.TotalSeconds;
+            duration = Duration?.TotalSeconds ?? 0;
+            player = _player;
+            var preparedPlayer = _preparedPlayer;
+            _player = null;
+            _currentAudioUrl = null;
+            _preparedPlayer = null;
+            _preparedAudioUrl = null;
+            _metadata = null;
+            IsPlaying = false;
+            if (player is not null)
+            {
+                ReleasePlayer(player, stopFirst: true);
+            }
 
-        if (preparedPlayer is not null)
-        {
-            ReleasePlayer(preparedPlayer, stopFirst: false);
+            if (preparedPlayer is not null)
+            {
+                ReleasePlayer(preparedPlayer, stopFirst: false);
+            }
         }
 
         StopBackgroundPlaybackService();
@@ -1072,27 +1154,36 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         _completionKeepAliveCts = null;
     }
 
-    private static void ReleasePlayer(Android.Media.MediaPlayer player, bool stopFirst)
+    private void ReleasePlayer(Android.Media.MediaPlayer player, bool stopFirst)
     {
-        if (stopFirst)
+        lock (_playerLifecycleLock)
         {
+            foreach (var seek in _pendingSeeks.Where(seek => ReferenceEquals(seek.Player, player)).ToArray())
+            {
+                DetachSeek(seek);
+                seek.Completion.TrySetResult(false);
+            }
+
+            if (stopFirst)
+            {
+                try
+                {
+                    player.Stop();
+                }
+                catch (Java.Lang.IllegalStateException)
+                {
+                    // MediaPlayer can be stopped while it is still preparing or after an error.
+                }
+            }
+
             try
             {
-                player.Stop();
+                player.Release();
             }
-            catch (Java.Lang.IllegalStateException)
+            finally
             {
-                // MediaPlayer can be stopped while it is still preparing or after an error.
+                player.Dispose();
             }
-        }
-
-        try
-        {
-            player.Release();
-        }
-        finally
-        {
-            player.Dispose();
         }
     }
 

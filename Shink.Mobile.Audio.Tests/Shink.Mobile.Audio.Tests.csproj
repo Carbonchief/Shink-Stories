@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsTestProject>true</IsTestProject>
+    <!-- Compile the actual Android service against controlled native API doubles. -->
+    <DefineConstants>$(DefineConstants);ANDROID</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="4.0.2" />
+    <PackageReference Include="MSTest.TestFramework" Version="4.0.2" />
+    <Compile Include="../Shink.Mobile/Services/AudioPlaybackService.cs" Link="AudioPlaybackService.cs" />
+    <Compile Include="../Shink.Mobile/Services/AudioPlaybackMetadata.cs" Link="AudioPlaybackMetadata.cs" />
+    <Compile Include="../Shink.Mobile/Services/MobileFailureRecovery.cs" Link="MobileFailureRecovery.cs" />
+  </ItemGroup>
+</Project>

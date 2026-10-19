@@ -309,11 +309,11 @@ public sealed class MobilePerformanceReliabilitySourceTests
     [TestMethod]
     public void AndroidScrollingSurfacesAvoidPerItemShadows()
     {
-        var search = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "SearchPage.cs"));
-        var characters = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "KaraktersPage.cs"));
-        var playlists = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "PlaylistStoriesPage.cs"));
-        var helpers = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "PageHelpers.cs"));
-        var storyDetail = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+        var search = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "SearchPage.cs")).ReplaceLineEndings("\n");
+        var characters = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "KaraktersPage.cs")).ReplaceLineEndings("\n");
+        var playlists = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "PlaylistStoriesPage.cs")).ReplaceLineEndings("\n");
+        var helpers = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "PageHelpers.cs")).ReplaceLineEndings("\n");
+        var storyDetail = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "StoryDetailPage.cs")).ReplaceLineEndings("\n");
 
         StringAssert.Contains(search, "Shadow = IsAndroid\n                ? null");
         StringAssert.Contains(characters, "Shadow = IsAndroid\n                ? null");

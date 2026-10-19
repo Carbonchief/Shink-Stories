@@ -231,6 +231,7 @@ public sealed class StoryPlaybackSession
 
         FlushPendingListen("seek", force: true);
         await _audioPlaybackService.SeekAsync(target, cancellationToken);
+        if (!ReferenceEquals(_current, current)) return;
         _lastTrackedPosition = target;
         _continueListeningState.UpdateProgress(
             current.Story.Slug,
