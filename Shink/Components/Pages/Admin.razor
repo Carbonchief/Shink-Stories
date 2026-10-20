@@ -3741,7 +3741,8 @@
             </MudDialog>
         }
 
-        @if (NewStoryEditor is not null)
+        @* Capture the rendered model so delayed input events cannot target a cleared or replacement editor. *@
+        @if (NewStoryEditor is { } newStoryEditor)
         {
             <MudDialog Visible="IsNewStoryDialogOpen"
                        VisibleChanged="OnNewStoryDialogVisibleChanged"
@@ -3762,12 +3763,12 @@
                         <div class="admin-form-grid">
                             <MudTextField T="string"
                                           Label='@T("Titel", "Title")'
-                                          @bind-Value="NewStoryEditor.Title"
+                                          @bind-Value="newStoryEditor.Title"
                                           Variant="Variant.Outlined"
                                           Margin="Margin.Dense" />
                             <MudSelect T="string"
                                        Label='@T("Toegang", "Access")'
-                                       @bind-Value="NewStoryEditor.AccessLevel"
+                                       @bind-Value="newStoryEditor.AccessLevel"
                                        Variant="Variant.Outlined"
                                        Margin="Margin.Dense">
                                 <MudSelectItem Value="@("subscriber")">subscriber</MudSelectItem>
@@ -3775,7 +3776,7 @@
                             </MudSelect>
                             <MudSelect T="string"
                                        Label='@T("Storie tipe", "Story type")'
-                                       @bind-Value="NewStoryEditor.StoryType"
+                                       @bind-Value="newStoryEditor.StoryType"
                                        Variant="Variant.Outlined"
                                        Margin="Margin.Dense">
                                 <MudSelectItem Value="@("story")">@T("Storie", "Story")</MudSelectItem>
@@ -3785,12 +3786,12 @@
                             <MudCheckBox T="bool"
                                          Class="admin-span-2"
                                          Label='@T("Publiseer onmiddellik", "Publish immediately")'
-                                         @bind-Value="NewStoryEditor.PublishNow" />
+                                         @bind-Value="newStoryEditor.PublishNow" />
                             <MudCheckBox T="bool"
                                          Class="admin-span-2"
                                          Label='@T("Stuur publiseer-kennisgewing", "Send publish notification")'
-                                         Disabled="@(!NewStoryEditor.PublishNow)"
-                                         @bind-Value="NewStoryEditor.SendPublishedNotification" />
+                                         Disabled="@(!newStoryEditor.PublishNow)"
+                                         @bind-Value="newStoryEditor.SendPublishedNotification" />
                             <section class="admin-story-playlist-selector admin-span-2">
                                 <div class="admin-story-test-head">
                                     <div>
@@ -3820,14 +3821,14 @@
                             <MudTextField T="string"
                                           Class="admin-span-2"
                                           Label='@T("Opsomming", "Summary")'
-                                          @bind-Value="NewStoryEditor.Summary"
+                                          @bind-Value="newStoryEditor.Summary"
                                           Variant="Variant.Outlined"
                                           Margin="Margin.Dense"
                                           Lines="2" />
                             <MudTextField T="string"
                                           Class="admin-span-2"
                                           Label='@T("Beskrywing", "Description")'
-                                          @bind-Value="NewStoryEditor.Description"
+                                          @bind-Value="newStoryEditor.Description"
                                           Variant="Variant.Outlined"
                                           Margin="Margin.Dense"
                                           Lines="4" />
@@ -3839,7 +3840,7 @@
                                           Class="admin-span-2"
                                           Label='@T("YouTube skakel", "YouTube link")'
                                           Placeholder="https://www.youtube.com/watch?v=..."
-                                          @bind-Value="NewStoryEditor.YouTubeUrl"
+                                          @bind-Value="newStoryEditor.YouTubeUrl"
                                           Variant="Variant.Outlined"
                                           Margin="Margin.Dense" />
                             <section class="admin-story-card-editor admin-span-2">
@@ -3857,7 +3858,7 @@
                                         </div>
                                         <MudTextField T="string"
                                                       Placeholder='@T("Kort sinopsis", "Short synopsis")'
-                                                      @bind-Value="NewStoryEditor.Synopsis"
+                                                      @bind-Value="newStoryEditor.Synopsis"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense"
                                                       Lines="5" />
@@ -3869,7 +3870,7 @@
                                         </div>
                                         <MudTextField T="string"
                                                       Placeholder='@T("Een waarde per lyn", "One value per line")'
-                                                      @bind-Value="NewStoryEditor.ValuesText"
+                                                      @bind-Value="newStoryEditor.ValuesText"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense"
                                                       Lines="4" />
@@ -3881,7 +3882,7 @@
                                         </div>
                                         <MudTextField T="string"
                                                       Placeholder='@T("Een les per lyn", "One lesson per line")'
-                                                      @bind-Value="NewStoryEditor.LessonsText"
+                                                      @bind-Value="newStoryEditor.LessonsText"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense"
                                                       Lines="4" />
@@ -3893,7 +3894,7 @@
                                         </div>
                                         <MudTextField T="string"
                                                       Placeholder='@T("Een vraag per lyn", "One question per line")'
-                                                      @bind-Value="NewStoryEditor.ConversationQuestionsText"
+                                                      @bind-Value="newStoryEditor.ConversationQuestionsText"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense"
                                                       Lines="5" />
@@ -3905,7 +3906,7 @@
                                         </div>
                                         <MudTextField T="string"
                                                       Placeholder='@T("Een karakter per lyn", "One character per line")'
-                                                      @bind-Value="NewStoryEditor.CharactersText"
+                                                      @bind-Value="newStoryEditor.CharactersText"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense"
                                                       Lines="5" />
@@ -3928,13 +3929,13 @@
                                         <span class="admin-btn-text">@T("Voeg vraag by", "Add question")</span>
                                     </MudButton>
                                 </div>
-                                @if (NewStoryEditor.TestQuestions.Count == 0)
+                                @if (newStoryEditor.TestQuestions.Count == 0)
                                 {
                                     <p class="admin-form-note">@T("Geen toetsvrae is bygevoeg nie.", "No test questions have been added.")</p>
                                 }
                                 else
                                 {
-                                    @foreach (var question in NewStoryEditor.TestQuestions)
+                                    @foreach (var question in newStoryEditor.TestQuestions)
                                     {
                                         <div class="admin-story-test-row">
                                             <div class="admin-story-test-question-field">
@@ -4000,7 +4001,7 @@
                                                OnChange="OnNewStoryCoverSelected"
                                                accept=".jpg,.jpeg,.png,.webp,image/*" />
                                 </label>
-                                <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.CoverFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(newStoryEditor.CoverFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
                             </div>
 
                             <div class="admin-upload-card">
@@ -4015,10 +4016,10 @@
                                                OnChange="OnNewStoryThumbnailSelected"
                                                accept=".jpg,.jpeg,.png,.webp,image/*" />
                                 </label>
-                                <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.ThumbnailFileName, T("As jy dit leeg laat, skep ons outomaties 'n kleiner thumbnail vanaf die cover.", "If left empty, we automatically create a smaller thumbnail from the cover."))</p>
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(newStoryEditor.ThumbnailFileName, T("As jy dit leeg laat, skep ons outomaties 'n kleiner thumbnail vanaf die cover.", "If left empty, we automatically create a smaller thumbnail from the cover."))</p>
                             </div>
 
-                            @if (IsVideoStoryType(NewStoryEditor.StoryType))
+                            @if (IsVideoStoryType(newStoryEditor.StoryType))
                             {
                                 <div class="admin-upload-card admin-span-2">
                                     <div class="admin-upload-head">
@@ -4032,7 +4033,7 @@
                                                    OnChange="OnNewStoryVideoSelected"
                                                    accept=".mp4,.webm,video/mp4,video/webm" />
                                     </label>
-                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.VideoFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
+                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(newStoryEditor.VideoFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
                                 </div>
                             }
                             else
@@ -4049,7 +4050,7 @@
                                                    OnChange="OnNewStoryAudioSelected"
                                                    accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
                                     </label>
-                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.AudioFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
+                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(newStoryEditor.AudioFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
                                 </div>
                             }
                         </div>
@@ -4081,14 +4082,14 @@
             </MudDialog>
         }
 
-        @if (StoryEditor is not null)
+        @if (StoryEditor is { } storyEditor)
         {
-            var coverPreviewUrl = !string.IsNullOrWhiteSpace(StoryEditor.CoverPreviewDataUrl)
-                ? StoryEditor.CoverPreviewDataUrl
-                : ResolvePreviewImageUrl(StoryEditor.CoverImagePath);
-            var thumbnailPreviewUrl = !string.IsNullOrWhiteSpace(StoryEditor.ThumbnailPreviewDataUrl)
-                ? StoryEditor.ThumbnailPreviewDataUrl
-                : ResolvePreviewImageUrl(StoryEditor.ThumbnailImagePath);
+            var coverPreviewUrl = !string.IsNullOrWhiteSpace(storyEditor.CoverPreviewDataUrl)
+                ? storyEditor.CoverPreviewDataUrl
+                : ResolvePreviewImageUrl(storyEditor.CoverImagePath);
+            var thumbnailPreviewUrl = !string.IsNullOrWhiteSpace(storyEditor.ThumbnailPreviewDataUrl)
+                ? storyEditor.ThumbnailPreviewDataUrl
+                : ResolvePreviewImageUrl(storyEditor.ThumbnailImagePath);
             var storyCoverPreviewUrl = coverPreviewUrl;
             var storyThumbnailPreviewUrl = thumbnailPreviewUrl;
             var carouselPreviewUrl = !string.IsNullOrWhiteSpace(thumbnailPreviewUrl) ? thumbnailPreviewUrl : coverPreviewUrl;
@@ -4107,12 +4108,12 @@
                     <div class="admin-form-grid">
                         <MudTextField T="string"
                                       Label='@T("Titel", "Title")'
-                                      @bind-Value="StoryEditor.Title"
+                                      @bind-Value="storyEditor.Title"
                                       Variant="Variant.Outlined"
                                       Margin="Margin.Dense" />
                         <MudSelect T="string"
                                    Label='@T("Toegang", "Access")'
-                                   @bind-Value="StoryEditor.AccessLevel"
+                                   @bind-Value="storyEditor.AccessLevel"
                                    Variant="Variant.Outlined"
                                    Margin="Margin.Dense">
                             <MudSelectItem Value="@("subscriber")">subscriber</MudSelectItem>
@@ -4120,7 +4121,7 @@
                         </MudSelect>
                         <MudSelect T="string"
                                    Label='@T("Storie tipe", "Story type")'
-                                   @bind-Value="StoryEditor.StoryType"
+                                   @bind-Value="storyEditor.StoryType"
                                    Variant="Variant.Outlined"
                                    Margin="Margin.Dense">
                             <MudSelectItem Value="@("story")">@T("Storie", "Story")</MudSelectItem>
@@ -4129,7 +4130,7 @@
                         </MudSelect>
                         <MudSelect T="string"
                                    Label='@T("Status", "Status")'
-                                   @bind-Value="StoryEditor.Status"
+                                   @bind-Value="storyEditor.Status"
                                    Variant="Variant.Outlined"
                                    Margin="Margin.Dense">
                             <MudSelectItem Value="@("draft")">draft</MudSelectItem>
@@ -4138,12 +4139,12 @@
                         </MudSelect>
                         <MudNumericField T="int"
                                          Label='@T("Sort order", "Sort order")'
-                                         @bind-Value="StoryEditor.SortOrder"
+                                         @bind-Value="storyEditor.SortOrder"
                                          Variant="Variant.Outlined"
                                          Margin="Margin.Dense" />
                         <MudNumericField T="int?"
                                          Label='@T("Duur sekondes", "Duration seconds")'
-                                         @bind-Value="StoryEditor.DurationSeconds"
+                                         @bind-Value="storyEditor.DurationSeconds"
                                          Variant="Variant.Outlined"
                                          Margin="Margin.Dense" />
                         <section class="admin-story-playlist-selector admin-span-2">
@@ -4185,7 +4186,7 @@
                                                OnChange="OnStoryCoverSelected"
                                                accept=".jpg,.jpeg,.png,.webp,image/*" />
                                 </label>
-                                <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.CoverFileName, T("Hou huidige cover as jy niks kies nie.", "Keeps the current cover if you do not choose a file."))</p>
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(storyEditor.CoverFileName, T("Hou huidige cover as jy niks kies nie.", "Keeps the current cover if you do not choose a file."))</p>
                             </div>
                             <div class="admin-upload-card">
                                 <div class="admin-upload-head">
@@ -4199,9 +4200,9 @@
                                                OnChange="OnStoryThumbnailSelected"
                                                accept=".jpg,.jpeg,.png,.webp,image/*" />
                                 </label>
-                                <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.ThumbnailFileName, T("As jy niks kies nie, skep ons 'n nuwe thumbnail van die cover wanneer die cover verander; anders hou ons die huidige thumbnail.", "If you do not choose a file, we create a new thumbnail from the cover when the cover changes; otherwise we keep the current thumbnail."))</p>
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(storyEditor.ThumbnailFileName, T("As jy niks kies nie, skep ons 'n nuwe thumbnail van die cover wanneer die cover verander; anders hou ons die huidige thumbnail.", "If you do not choose a file, we create a new thumbnail from the cover when the cover changes; otherwise we keep the current thumbnail."))</p>
                             </div>
-                            @if (IsVideoStoryType(StoryEditor.StoryType))
+                            @if (IsVideoStoryType(storyEditor.StoryType))
                             {
                                 <div class="admin-upload-card">
                                     <div class="admin-upload-head">
@@ -4215,7 +4216,7 @@
                                                    OnChange="OnStoryVideoSelected"
                                                    accept=".mp4,.webm,video/mp4,video/webm" />
                                     </label>
-                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.VideoFileName, T("Hou huidige video as jy niks kies nie.", "Keeps the current video if you do not choose a file."))</p>
+                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(storyEditor.VideoFileName, T("Hou huidige video as jy niks kies nie.", "Keeps the current video if you do not choose a file."))</p>
                                 </div>
                             }
                             else
@@ -4232,7 +4233,7 @@
                                                    OnChange="OnStoryAudioSelected"
                                                    accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
                                     </label>
-                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.AudioFileName, T("Hou huidige audio as jy niks kies nie.", "Keeps the current audio if you do not choose a file."))</p>
+                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(storyEditor.AudioFileName, T("Hou huidige audio as jy niks kies nie.", "Keeps the current audio if you do not choose a file."))</p>
                                 </div>
                             }
                         </div>
@@ -4308,7 +4309,7 @@
                                                         <i class="admin-luister-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                                     </span>
                                                 </span>
-                                                <h5>@StoryEditor.Title</h5>
+                                                <h5>@storyEditor.Title</h5>
                                             </div>
                                         </article>
                                     </div>
@@ -4322,18 +4323,18 @@
                                 <MudTextField T="string"
                                               Label='@T("Published at (local)", "Published at (local)")'
                                               Placeholder="YYYY-MM-DDTHH:mm"
-                                              @bind-Value="StoryEditor.PublishedAtLocal"
+                                              @bind-Value="storyEditor.PublishedAtLocal"
                                               Variant="Variant.Outlined"
                                               Margin="Margin.Dense" />
                                 <MudTextField T="string"
                                               Label='@T("Opsomming", "Summary")'
-                                              @bind-Value="StoryEditor.Summary"
+                                              @bind-Value="storyEditor.Summary"
                                               Variant="Variant.Outlined"
                                               Margin="Margin.Dense"
                                               Lines="2" />
                                 <MudTextField T="string"
                                               Label='@T("Beskrywing", "Description")'
-                                              @bind-Value="StoryEditor.Description"
+                                              @bind-Value="storyEditor.Description"
                                               Variant="Variant.Outlined"
                                               Margin="Margin.Dense"
                                               Lines="4" />
@@ -4344,7 +4345,7 @@
                                 <MudTextField T="string"
                                               Label='@T("YouTube skakel", "YouTube link")'
                                               Placeholder="https://www.youtube.com/watch?v=..."
-                                              @bind-Value="StoryEditor.YouTubeUrl"
+                                              @bind-Value="storyEditor.YouTubeUrl"
                                               Variant="Variant.Outlined"
                                               Margin="Margin.Dense" />
                             </div>
@@ -4367,7 +4368,7 @@
                                         </div>
                                         <MudTextField T="string"
                                                       Placeholder='@T("Kort sinopsis", "Short synopsis")'
-                                                      @bind-Value="StoryEditor.Synopsis"
+                                                      @bind-Value="storyEditor.Synopsis"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense"
                                                       Lines="5" />
@@ -4379,7 +4380,7 @@
                                         </div>
                                         <MudTextField T="string"
                                                       Placeholder='@T("Een waarde per lyn", "One value per line")'
-                                                      @bind-Value="StoryEditor.ValuesText"
+                                                      @bind-Value="storyEditor.ValuesText"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense"
                                                       Lines="4" />
@@ -4391,7 +4392,7 @@
                                         </div>
                                         <MudTextField T="string"
                                                       Placeholder='@T("Een les per lyn", "One lesson per line")'
-                                                      @bind-Value="StoryEditor.LessonsText"
+                                                      @bind-Value="storyEditor.LessonsText"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense"
                                                       Lines="4" />
@@ -4403,7 +4404,7 @@
                                         </div>
                                         <MudTextField T="string"
                                                       Placeholder='@T("Een vraag per lyn", "One question per line")'
-                                                      @bind-Value="StoryEditor.ConversationQuestionsText"
+                                                      @bind-Value="storyEditor.ConversationQuestionsText"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense"
                                                       Lines="5" />
@@ -4415,7 +4416,7 @@
                                         </div>
                                         <MudTextField T="string"
                                                       Placeholder='@T("Een karakter per lyn", "One character per line")'
-                                                      @bind-Value="StoryEditor.CharactersText"
+                                                      @bind-Value="storyEditor.CharactersText"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense"
                                                       Lines="5" />
@@ -4440,13 +4441,13 @@
                                         <span class="admin-btn-text">@T("Voeg vraag by", "Add question")</span>
                                     </MudButton>
                                 </div>
-                                @if (StoryEditor.TestQuestions.Count == 0)
+                                @if (storyEditor.TestQuestions.Count == 0)
                                 {
                                     <p class="admin-form-note">@T("Geen toetsvrae is bygevoeg nie.", "No test questions have been added.")</p>
                                 }
                                 else
                                 {
-                                    @foreach (var question in StoryEditor.TestQuestions)
+                                    @foreach (var question in storyEditor.TestQuestions)
                                     {
                                         <div class="admin-story-test-row">
                                             <div class="admin-story-test-question-field">

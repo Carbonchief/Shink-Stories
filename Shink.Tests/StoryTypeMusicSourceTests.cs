@@ -33,8 +33,8 @@ public class StoryTypeMusicSourceTests
         var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
 
         StringAssert.Contains(markup, "Label='@T(\"Storie tipe\", \"Story type\")'");
-        StringAssert.Contains(markup, "@bind-Value=\"NewStoryEditor.StoryType\"");
-        StringAssert.Contains(markup, "@bind-Value=\"StoryEditor.StoryType\"");
+        StringAssert.Contains(markup, "@bind-Value=\"newStoryEditor.StoryType\"");
+        StringAssert.Contains(markup, "@bind-Value=\"storyEditor.StoryType\"");
         StringAssert.Contains(markup, "<MudSelectItem Value=\"@(\"story\")\">@T(\"Storie\", \"Story\")</MudSelectItem>");
         StringAssert.Contains(markup, "<MudSelectItem Value=\"@(\"music\")\">@T(\"Musiek\", \"Music\")</MudSelectItem>");
         StringAssert.Contains(markup, "StoryType: NormalizeStoryType(NewStoryEditor.StoryType)");

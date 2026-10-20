@@ -180,11 +180,11 @@ public class StoryTestQuestionSourceTests
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
 
         StringAssert.Contains(markup, "MudTabPanel Text='@T(\"Storiekaart\", \"Story card\")'");
-        StringAssert.Contains(markup, "@bind-Value=\"StoryEditor.Synopsis\"");
-        StringAssert.Contains(markup, "@bind-Value=\"StoryEditor.ValuesText\"");
-        StringAssert.Contains(markup, "@bind-Value=\"StoryEditor.LessonsText\"");
-        StringAssert.Contains(markup, "@bind-Value=\"StoryEditor.ConversationQuestionsText\"");
-        StringAssert.Contains(markup, "@bind-Value=\"StoryEditor.CharactersText\"");
+        StringAssert.Contains(markup, "@bind-Value=\"storyEditor.Synopsis\"");
+        StringAssert.Contains(markup, "@bind-Value=\"storyEditor.ValuesText\"");
+        StringAssert.Contains(markup, "@bind-Value=\"storyEditor.LessonsText\"");
+        StringAssert.Contains(markup, "@bind-Value=\"storyEditor.ConversationQuestionsText\"");
+        StringAssert.Contains(markup, "@bind-Value=\"storyEditor.CharactersText\"");
         StringAssert.Contains(markup, "BuildStorySummaryDetails(StoryEditor)");
         StringAssert.Contains(markup, "BuildStorySummaryDetails(NewStoryEditor)");
         StringAssert.Contains(serviceContract, "public sealed record AdminStorySummaryDetails");
@@ -242,7 +242,7 @@ public class StoryTestQuestionSourceTests
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
 
         StringAssert.Contains(markup, "Label='@T(\"Stuur publiseer-kennisgewing\", \"Send publish notification\")'");
-        StringAssert.Contains(markup, "@bind-Value=\"NewStoryEditor.SendPublishedNotification\"");
+        StringAssert.Contains(markup, "@bind-Value=\"newStoryEditor.SendPublishedNotification\"");
         StringAssert.Contains(markup, "SendPublishedNotification: NewStoryEditor.SendPublishedNotification");
         StringAssert.Contains(markup, "public bool SendPublishedNotification { get; set; } = true;");
         StringAssert.Contains(serviceContract, "bool SendPublishedNotification = true");
