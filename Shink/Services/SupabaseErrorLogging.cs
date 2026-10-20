@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Diagnostics;
 
 namespace Shink.Services;
 
@@ -96,6 +97,12 @@ public sealed class SupabaseErrorLoggingProvider(
 
             var httpContext = _httpContextAccessor.HttpContext;
             var request = httpContext?.Request;
+            // Error/status pages re-execute the pipeline with /error/{status} as the
+            // request path. Keep the failing asset/page path, without its query string
+            // (which can contain signed media tokens or authentication state).
+            var requestPath = httpContext?.Features.Get<IExceptionHandlerPathFeature>()?.Path
+                ?? httpContext?.Features.Get<IStatusCodeReExecuteFeature>()?.OriginalPath
+                ?? request?.Path.Value;
             var userEmail = httpContext?.User.FindFirst(ClaimTypes.Email)?.Value
                 ?? httpContext?.User.Identity?.Name;
 
@@ -108,7 +115,7 @@ public sealed class SupabaseErrorLoggingProvider(
                 Message: string.IsNullOrWhiteSpace(message) ? exception?.Message ?? "Application error" : message,
                 ExceptionText: Truncate(exception?.ToString(), MaxExceptionLength),
                 RequestMethod: request?.Method,
-                RequestPath: Truncate(request?.Path.Value, MaxPathLength),
+                RequestPath: Truncate(requestPath, MaxPathLength),
                 TraceIdentifier: httpContext?.TraceIdentifier,
                 UserEmail: Truncate(userEmail, MaxEmailLength),
                 EnvironmentName: _environment.EnvironmentName,

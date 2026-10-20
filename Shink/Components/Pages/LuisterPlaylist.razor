@@ -1,5 +1,5 @@
 @page "/luister/speellys/{PlaylistSlug}"
-@page "/my-stories/speellys/{PlaylistSlug:guid}"
+@page "/my-stories/speellys/{PersonalPlaylistId:guid}"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
 @using System.Text.Json
@@ -374,6 +374,9 @@ else
     [Parameter]
     public string? PlaylistSlug { get; set; }
 
+    [Parameter]
+    public Guid? PersonalPlaylistId { get; set; }
+
     [SupplyParameterFromQuery(Name = "storie")]
     public string? StorySlug { get; set; }
 
@@ -402,6 +405,7 @@ else
     private string? SignedInEmail { get; set; }
     private string? PersonalPlaylistError { get; set; }
     private bool IsPersonalPlaylist => new Uri(NavigationManager.Uri).AbsolutePath.StartsWith("/my-stories/speellys/", StringComparison.OrdinalIgnoreCase);
+    private string? RoutePlaylistSlug => IsPersonalPlaylist ? PersonalPlaylistId?.ToString() : PlaylistSlug;
     private bool ShowStoryAccessPopup { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
     private CancellationTokenSource? _emptyStateDelayCts;
@@ -433,10 +437,10 @@ else
             : GetPlaylistTrackNumber(CurrentStory.Slug);
 
     private string PlaylistCanonicalUrl =>
-        NavigationManager.ToAbsoluteUri(GetPlaylistPath(CurrentPlaylist?.Slug ?? PlaylistSlug)).ToString();
+        NavigationManager.ToAbsoluteUri(GetPlaylistPath(CurrentPlaylist?.Slug ?? RoutePlaylistSlug)).ToString();
 
     private string CurrentShareUrl =>
-        NavigationManager.ToAbsoluteUri(BuildPlaylistHref(CurrentPlaylist?.Slug ?? PlaylistSlug, CurrentStory?.Slug)).ToString();
+        NavigationManager.ToAbsoluteUri(BuildPlaylistHref(CurrentPlaylist?.Slug ?? RoutePlaylistSlug, CurrentStory?.Slug)).ToString();
 
     private string? StoryArtworkUrl =>
         CurrentStory is null ? null : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
@@ -507,7 +511,7 @@ else
                 artworkUrl = NavigationManager.ToAbsoluteUri(story.ImagePath).ToString(),
                 artworkMimeType = GetImageMimeType(story.ImageFileName),
                 shareUrl = NavigationManager.ToAbsoluteUri(
-                    BuildPlaylistHref(CurrentPlaylist?.Slug ?? PlaylistSlug, story.Slug)).ToString(),
+                    BuildPlaylistHref(CurrentPlaylist?.Slug ?? RoutePlaylistSlug, story.Slug)).ToString(),
                 durationSeconds = story.DurationSeconds
             })
             .ToArray()));
@@ -582,7 +586,7 @@ else
 
             if (IsPersonalPlaylist)
             {
-                if (Guid.TryParse(PlaylistSlug, out var playlistId))
+                if (PersonalPlaylistId is { } playlistId)
                 {
                     var result = await SubscriberPlaylistService.GetPlaylistsAsync(playlistId);
                     PersonalPlaylistError = result.ErrorMessage;

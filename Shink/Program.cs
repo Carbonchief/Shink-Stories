@@ -24,6 +24,21 @@ using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using System.Xml.Linq;
 
+if (args is ["--verify-static-assets", var publishDirectory])
+{
+    try
+    {
+        PublishedStaticAssetValidator.Validate(publishDirectory);
+        Console.WriteLine("Published static assets match their manifest.");
+    }
+    catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException or JsonException)
+    {
+        Console.Error.WriteLine($"Static asset verification failed: {exception.Message}");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
 const string AuthSessionIdClaimType = "shink:session_id";
 const string AdminRoleName = "admin";
 const string GooglePkceCookieName = "shink.auth.google.pkce";
@@ -527,7 +542,9 @@ app.Use(async (httpContext, next) =>
     await next();
 });
 
-// Fallback serving from physical wwwroot to avoid manifest drift issues during publish.
+// Serve runtime-uploaded files absent from the build manifest. Known static
+// endpoints use MapStaticAssets; publish validation and quiesced deployment keep
+// their precomputed lengths/hashes consistent with the files on disk.
 app.UseStaticFiles(new StaticFileOptions
 {
     OnPrepareResponse = static context =>

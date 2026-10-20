@@ -1,8 +1,10 @@
 name: Build and deploy ASP.Net Core app to Azure Web App - schink
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Every branch/ref deploys to the same app and must share the same lock.
+  group: schink-webapp-deployment
+  # Never cancel a publish while the web app is stopped or files are being copied.
+  cancel-in-progress: false
 
 on:
   push:
@@ -17,6 +19,7 @@ on:
 
 env:
   AZURE_WEBAPP_NAME: schink
+  AZURE_WEBAPP_RESOURCE_GROUP: Schink_Stories
   DOTNET_VERSION: '10.0.201'
   PROJECT_PATH: Shink/Shink.csproj
   PUBLISH_DIR: ./publish
@@ -71,6 +74,8 @@ jobs:
               'Directory.Build.targets',
               'global.json',
               'Shink/Shink.csproj',
+              '.github/workflows/master_schink.yml',
+              'scripts/deploy-webapp-quiesced.sh',
             ];
 
             const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
@@ -244,12 +249,16 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_B343151D44E14C93ABB87BAEB6C36BA8 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_527F5D2CBC94404AB0EB40F3F327EF21 }}
 
-      - name: Deploy to Azure Web App
+      - name: Verify deployment failure handling
         if: steps.publish_check.outputs.should_publish == 'true'
-        uses: azure/webapps-deploy@v3
-        env:
-          # azure/webapps-deploy currently emits Node deprecation noise from bundled dependencies.
-          NODE_OPTIONS: --no-deprecation
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          package: ${{ env.PUBLISH_DIR }}
+        run: python3 -m unittest discover -s scripts/tests -p 'test_deploy_webapp_quiesced.py' -v
+
+      - name: Package verified publish output
+        if: steps.publish_check.outputs.should_publish == 'true'
+        working-directory: ${{ env.PUBLISH_DIR }}
+        run: zip -q -r "$GITHUB_WORKSPACE/webapp.zip" .
+
+      - name: Deploy with the web app stopped
+        if: steps.publish_check.outputs.should_publish == 'true'
+        timeout-minutes: 12
+        run: bash scripts/deploy-webapp-quiesced.sh "$AZURE_WEBAPP_RESOURCE_GROUP" "$AZURE_WEBAPP_NAME" "$GITHUB_WORKSPACE/webapp.zip"

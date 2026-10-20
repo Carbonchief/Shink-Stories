@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <!-- IIS/Web Deploy must stop the old process before replacing its assets/assemblies. -->
+    <EnableMSDeployAppOffline>true</EnableMSDeployAppOffline>
     <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**;artifacts/**;.artifacts\**;.artifacts/**;bin_verify\**;bin_verify/**;obj_verify\**;obj_verify/**</DefaultItemExcludes>
   </PropertyGroup>
 
@@ -29,5 +31,9 @@
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="Supabase" Version="1.1.1" />
   </ItemGroup>
+
+  <Target Name="VerifyPublishedStaticAssets" AfterTargets="ComputeAndCopyFilesToPublishDirectory" BeforeTargets="MSDeployPublish">
+    <Exec Command="dotnet &quot;$(TargetPath)&quot; --verify-static-assets &quot;$(PublishDir)/.&quot;" />
+  </Target>
 
 </Project>

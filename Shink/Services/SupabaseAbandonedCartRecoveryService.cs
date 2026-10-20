@@ -637,7 +637,9 @@ public sealed class SupabaseAbandonedCartRecoveryService(
             }
 
             var error = TruncateCancelError($"{(int)response.StatusCode}: {body}");
-            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest &&
+            // Resend reports terminal scheduling states as either 400 or 422.
+            // Other validation errors must still be recorded and logged as failures.
+            if (response.StatusCode is System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.UnprocessableEntity &&
                 IsNotCancellableResendResponse(body))
             {
                 return new EmailCancellationResult(EmailCancelStatusNotCancellable, attemptedAtUtc, error);

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -477,8 +479,17 @@ public class SupabaseAbandonedCartRecoveryServiceTests
     }
 
     [TestMethod]
-    public async Task ResolveSubscriptionRecoveriesAsync_RecordsNotCancellableEmailsAndStillCancelsScheduledEmails()
+    [DataRow(HttpStatusCode.BadRequest, "Email is not scheduled")]
+    [DataRow(HttpStatusCode.UnprocessableEntity, "Email is not scheduled")]
+    [DataRow(HttpStatusCode.UnprocessableEntity, "Email has already been sent")]
+    [DataRow(HttpStatusCode.UnprocessableEntity, "Email already canceled")]
+    [DataRow(HttpStatusCode.UnprocessableEntity, "Email already cancelled")]
+    public async Task ResolveSubscriptionRecoveriesAsync_RecordsNotCancellableEmailsAndStillCancelsScheduledEmails(
+        HttpStatusCode statusCode,
+        string message)
     {
+        var logger = new RecordingLogger();
+        var cancelCalls = 0;
         var patchCalls = 0;
         var resolvePatchBody = string.Empty;
         var handler = new RecordingHandler(request =>
@@ -510,6 +521,7 @@ public class SupabaseAbandonedCartRecoveryServiceTests
                 request.RequestUri?.Host == "api.resend.com" &&
                 request.RequestUri.AbsolutePath.EndsWith("/cancel", StringComparison.Ordinal))
             {
+                cancelCalls++;
                 Assert.AreEqual("Bearer", request.Headers.Authorization?.Scheme);
                 Assert.AreEqual("resend-key", request.Headers.Authorization?.Parameter);
                 Assert.IsTrue(
@@ -519,9 +531,12 @@ public class SupabaseAbandonedCartRecoveryServiceTests
 
                 return request.RequestUri.AbsolutePath.Contains("email-2", StringComparison.Ordinal)
                     ? JsonResponse("""{"id":"cancelled-email-id"}""")
-                    : new HttpResponseMessage(HttpStatusCode.BadRequest)
+                    : new HttpResponseMessage(statusCode)
                     {
-                        Content = new StringContent("""{"message":"Email is not scheduled"}""", Encoding.UTF8, "application/json")
+                        Content = new StringContent(
+                            JsonSerializer.Serialize(new { statusCode = (int)statusCode, message, name = "validation_error" }),
+                            Encoding.UTF8,
+                            "application/json")
                     };
             }
 
@@ -536,19 +551,106 @@ public class SupabaseAbandonedCartRecoveryServiceTests
             return new HttpResponseMessage(HttpStatusCode.InternalServerError);
         });
 
-        var service = CreateService(new HttpClient(handler));
+        var service = CreateService(new HttpClient(handler), logger);
 
         await service.ResolveSubscriptionRecoveriesAsync(
             customerEmail: "Ouer@Example.com",
             tierCode: "all_stories_monthly",
             resolution: "paid");
 
+        Assert.AreEqual(3, cancelCalls);
         Assert.AreEqual(1, patchCalls);
-        StringAssert.Contains(resolvePatchBody, "\"first_email_cancel_status\":\"not_cancellable\"");
-        StringAssert.Contains(resolvePatchBody, "\"first_email_cancel_error\":\"400:");
-        StringAssert.Contains(resolvePatchBody, "\"second_email_cancel_status\":\"cancelled\"");
-        StringAssert.Contains(resolvePatchBody, "\"final_email_cancel_status\":\"not_cancellable\"");
-        StringAssert.Contains(resolvePatchBody, "\"resolution\":\"paid\"");
+        using var patch = JsonDocument.Parse(resolvePatchBody);
+        Assert.AreEqual("not_cancellable", patch.RootElement.GetProperty("first_email_cancel_status").GetString());
+        var cancellationError = patch.RootElement.GetProperty("first_email_cancel_error").GetString();
+        Assert.IsNotNull(cancellationError);
+        Assert.StartsWith($"{(int)statusCode}:", cancellationError);
+        Assert.Contains(message, cancellationError);
+        Assert.IsTrue(patch.RootElement.GetProperty("first_email_cancel_attempted_at").TryGetDateTimeOffset(out _));
+        Assert.AreEqual("cancelled", patch.RootElement.GetProperty("second_email_cancel_status").GetString());
+        Assert.AreEqual("not_cancellable", patch.RootElement.GetProperty("final_email_cancel_status").GetString());
+        Assert.AreEqual("paid", patch.RootElement.GetProperty("resolution").GetString());
+        Assert.DoesNotContain(LogLevel.Error, logger.Levels);
+    }
+
+    [TestMethod]
+    [DataRow(HttpStatusCode.BadRequest, "API key is invalid")]
+    [DataRow(HttpStatusCode.UnprocessableEntity, "The email_id must be a valid UUID")]
+    [DataRow(HttpStatusCode.UnprocessableEntity, "Unknown validation error")]
+    [DataRow(HttpStatusCode.Unauthorized, "Email is not scheduled")]
+    [DataRow(HttpStatusCode.Forbidden, "Email is not scheduled")]
+    [DataRow(HttpStatusCode.TooManyRequests, "Email is not scheduled")]
+    [DataRow(HttpStatusCode.InternalServerError, "Email is not scheduled")]
+    public async Task ResolveSubscriptionRecoveriesAsync_RecordsGenuineCancellationFailures(
+        HttpStatusCode statusCode,
+        string message)
+    {
+        var logger = new RecordingLogger();
+        var cancelCalls = 0;
+        var patchBodies = new List<string>();
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "11111111-1111-1111-1111-111111111111",
+                        "source_type": "subscription",
+                        "source_key": "all_stories_monthly",
+                        "customer_email": "ouer@example.com",
+                        "first_email_id": "email-1",
+                        "second_email_id": "email-2",
+                        "final_email_cancel_status": "cancelled"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post && request.RequestUri?.Host == "api.resend.com")
+            {
+                cancelCalls++;
+                Assert.EndsWith("/cancel", request.RequestUri.AbsolutePath);
+                return request.RequestUri.AbsolutePath == "/emails/email-2/cancel"
+                    ? JsonResponse("""{"id":"email-2"}""")
+                    : new HttpResponseMessage(statusCode)
+                    {
+                        Content = new StringContent(
+                            JsonSerializer.Serialize(new { statusCode = (int)statusCode, message, name = "validation_error" }),
+                            Encoding.UTF8,
+                            "application/json")
+                    };
+            }
+
+            if (request.Method == HttpMethod.Patch &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
+            {
+                patchBodies.Add(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            Assert.Fail($"Unexpected request: {request.Method} {request.RequestUri}");
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(new HttpClient(handler), logger);
+
+        await service.ResolveSubscriptionRecoveriesAsync("ouer@example.com", "all_stories_monthly", "paid");
+
+        Assert.AreEqual(2, cancelCalls);
+        using var patch = JsonDocument.Parse(Assert.ContainsSingle(patchBodies));
+        Assert.AreEqual("failed", patch.RootElement.GetProperty("first_email_cancel_status").GetString());
+        var cancellationError = patch.RootElement.GetProperty("first_email_cancel_error").GetString();
+        Assert.IsNotNull(cancellationError);
+        Assert.StartsWith($"{(int)statusCode}:", cancellationError);
+        Assert.Contains(message, cancellationError);
+        Assert.IsTrue(patch.RootElement.GetProperty("first_email_cancel_attempted_at").TryGetDateTimeOffset(out _));
+        Assert.AreEqual("cancelled", patch.RootElement.GetProperty("second_email_cancel_status").GetString());
+        Assert.IsFalse(patch.RootElement.TryGetProperty("final_email_cancel_status", out _));
+        Assert.AreEqual("paid", patch.RootElement.GetProperty("resolution").GetString());
+        Assert.AreEqual(LogLevel.Error, Assert.ContainsSingle(logger.Levels));
     }
 
     [TestMethod]
@@ -650,7 +752,9 @@ public class SupabaseAbandonedCartRecoveryServiceTests
         StringAssert.Contains(migration, "source_type <> 'store_order'");
     }
 
-    private static SupabaseAbandonedCartRecoveryService CreateService(HttpClient httpClient) =>
+    private static SupabaseAbandonedCartRecoveryService CreateService(
+        HttpClient httpClient,
+        ILogger<SupabaseAbandonedCartRecoveryService>? logger = null) =>
         new(
             httpClient,
             Options.Create(new SupabaseOptions
@@ -672,7 +776,7 @@ public class SupabaseAbandonedCartRecoveryServiceTests
                     }
                 }
             }),
-            NullLogger<SupabaseAbandonedCartRecoveryService>.Instance);
+            logger ?? NullLogger<SupabaseAbandonedCartRecoveryService>.Instance);
 
     private static HttpResponseMessage JsonResponse(string json) =>
         new(HttpStatusCode.OK)
@@ -707,5 +811,17 @@ public class SupabaseAbandonedCartRecoveryServiceTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(responseFactory(request));
+    }
+
+    private sealed class RecordingLogger : ILogger<SupabaseAbandonedCartRecoveryService>
+    {
+        public List<LogLevel> Levels { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Levels.Add(logLevel);
     }
 }

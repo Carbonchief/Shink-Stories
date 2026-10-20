@@ -54,10 +54,10 @@ public class StoryTypeVideoSourceTests
         StringAssert.Contains(adminMarkup, "UploadVideoWithFallbackAsync");
 
         var newStoryVideoBranchStart = adminMarkup.IndexOf(
-            "@if (IsVideoStoryType(NewStoryEditor.StoryType))",
+            "@if (IsVideoStoryType(newStoryEditor.StoryType))",
             StringComparison.Ordinal);
-        var newStoryVideoBranchEnd = adminMarkup.IndexOf("else", newStoryVideoBranchStart, StringComparison.Ordinal);
         Assert.IsGreaterThanOrEqualTo(0, newStoryVideoBranchStart);
+        var newStoryVideoBranchEnd = adminMarkup.IndexOf("else", newStoryVideoBranchStart, StringComparison.Ordinal);
         Assert.IsGreaterThan(newStoryVideoBranchStart, newStoryVideoBranchEnd);
         var newStoryVideoBranch = adminMarkup[newStoryVideoBranchStart..newStoryVideoBranchEnd];
         Assert.DoesNotContain("NewStoryAudioInputId", newStoryVideoBranch, StringComparison.Ordinal);
