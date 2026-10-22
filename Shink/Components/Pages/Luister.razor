@@ -384,7 +384,11 @@ else
 
             try
             {
-                LuisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
+                var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
+                LuisterPlaylists = playlists
+                    .Where(playlist => !AccessProfile.HasStoryCornerOrAll ||
+                        !string.Equals(GetPlaylistSlug(playlist), StoryAccessPolicy.GratisPlaylistSlug, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
             }
             catch
             {
