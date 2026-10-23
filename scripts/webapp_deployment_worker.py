@@ -3,6 +3,7 @@
 
 import argparse
 import base64
+import errno
 import fcntl
 import hashlib
 import json
@@ -100,13 +101,30 @@ def verify_files(root, files):
 
 def atomic_copy(source, target):
     target.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix=".schink-copy-", dir=target.parent)
-    os.close(descriptor)
-    try:
-        shutil.copy2(source, temporary)
-        os.replace(temporary, target)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
+    expected = digest(source)
+    deadline = time.monotonic() + 90
+    while True:
+        descriptor, temporary = tempfile.mkstemp(prefix=".schink-copy-", dir=target.parent)
+        os.close(descriptor)
+        try:
+            shutil.copy2(source, temporary)
+            try:
+                os.replace(temporary, target)
+                return
+            except OSError as error:
+                # ARM can report Stopped while the old container still holds
+                # files on Azure's shared filesystem. Retain atomic replacement
+                # and allow those transient locks to clear before rolling back.
+                if error.errno not in {errno.ENOENT, errno.EACCES, errno.EBUSY, errno.ETXTBSY}:
+                    raise
+                # A shared-filesystem rename can complete despite a lost reply.
+                if target.is_file() and digest(target) == expected:
+                    return
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(3)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
 
 
 def write_json(path, value):

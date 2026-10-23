@@ -24,6 +24,8 @@ class Kudu:
 
     def request(self, method, path, data=None):
         headers = {"Authorization": "Bearer " + self.token}
+        if method in {"PUT", "DELETE"}:
+            headers["If-Match"] = "*"
         if isinstance(data, dict):
             data = json.dumps(data).encode()
             headers["Content-Type"] = "application/json"

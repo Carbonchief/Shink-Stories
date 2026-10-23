@@ -1,4 +1,5 @@
 import base64
+import errno
 import fcntl
 import hashlib
 import json
@@ -112,6 +113,56 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual([('stop', 'old'), ('start', 'new'), ('health', 'new')], self.app.events)
         worker.verify_files(self.root, self.settings['files'])
         self.assertEqual('Running', self.app.state())
+
+    def test_atomic_copy_retries_azure_file_lock_without_copying_over_target(self):
+        source, target = self.base / 'new.pdb', self.root / 'Shink.pdb'
+        source.write_bytes(b'new symbols')
+        target.write_bytes(b'old symbols')
+        replace = worker.os.replace
+        attempts = []
+        def temporarily_locked(temporary, destination):
+            attempts.append(target.read_bytes())
+            if len(attempts) < 3:
+                raise FileNotFoundError(errno.ENOENT, 'Azure file still locked')
+            replace(temporary, destination)
+        with patch.object(worker.os, 'replace', side_effect=temporarily_locked), \
+                patch.object(worker.time, 'sleep'):
+            worker.atomic_copy(source, target)
+        self.assertEqual([b'old symbols'] * 3, attempts)
+        self.assertEqual(b'new symbols', target.read_bytes())
+        self.assertEqual([], list(self.root.glob('.schink-copy-*')))
+
+    def test_atomic_copy_accepts_lost_rename_reply_only_after_checksum_matches(self):
+        source, target = self.base / 'new.pdb', self.root / 'Shink.pdb'
+        source.write_bytes(b'new symbols')
+        replace = worker.os.replace
+        def lost_reply(temporary, destination):
+            replace(temporary, destination)
+            raise FileNotFoundError(errno.ENOENT, 'Rename reply lost')
+        with patch.object(worker.os, 'replace', side_effect=lost_reply), \
+                patch.object(worker.time, 'sleep') as sleep:
+            worker.atomic_copy(source, target)
+        self.assertEqual(b'new symbols', target.read_bytes())
+        sleep.assert_not_called()
+
+    def test_permanent_rename_failure_is_bounded_and_preserves_old_target(self):
+        source, target = self.base / 'new.pdb', self.root / 'Shink.pdb'
+        source.write_bytes(b'new symbols')
+        target.write_bytes(b'old symbols')
+        with patch.object(worker.os, 'replace', side_effect=PermissionError(errno.EACCES, 'Locked')), \
+                patch.object(worker.time, 'monotonic', side_effect=[0, 91]):
+            with self.assertRaises(PermissionError):
+                worker.atomic_copy(source, target)
+        self.assertEqual(b'old symbols', target.read_bytes())
+        self.assertEqual([], list(self.root.glob('.schink-copy-*')))
+
+    def test_kudu_recovery_overwrites_include_required_etag_header(self):
+        kudu = coordinator.Kudu('https://example.scm', 'fixture-token')
+        for method in ['PUT', 'DELETE']:
+            with self.subTest(method=method), patch.object(coordinator.urllib.request, 'urlopen') as urlopen:
+                urlopen.return_value.__enter__.return_value.read.return_value = b'{}'
+                kudu.request(method, '/api/vfs/data/job/state.json', b'{}' if method == 'PUT' else None)
+                self.assertEqual('*', urlopen.call_args.args[0].get_header('If-match'))
 
     def test_success_preserves_runtime_uploads_and_private_audio(self):
         worker.transaction(self.job, self.root, self.app)
