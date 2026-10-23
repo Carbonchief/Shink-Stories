@@ -158,8 +158,7 @@ public sealed class SupabaseStoryTrackingService(
                 return Array.Empty<UserStoryProgressItem>();
             }
 
-            var rows = await GetAllStoryListenEventRowsAsync(baseUri, apiKey, subscriberId, cancellationToken);
-            return BuildProgressItems(rows);
+            return await GetStoryProgressSnapshotAsync(baseUri, apiKey, subscriberId, cancellationToken);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
@@ -270,6 +269,57 @@ public sealed class SupabaseStoryTrackingService(
         return true;
     }
 
+    private async Task<IReadOnlyList<UserStoryProgressItem>> GetStoryProgressSnapshotAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        CancellationToken cancellationToken)
+    {
+        using var request = CreateJsonRequest(
+            HttpMethod.Post,
+            new Uri(baseUri, "rest/v1/rpc/get_story_progress_snapshot"),
+            apiKey,
+            new { p_subscriber_id = subscriberId },
+            "return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound &&
+                body.Contains("PGRST202", StringComparison.Ordinal))
+            {
+                // Keep existing installs working during a migration/application rollout.
+                // Other failures must not silently re-enable large history downloads.
+                _logger.LogWarning("Story progress snapshot RPC is missing. Apply the story_progress_snapshot migration to reduce Supabase egress.");
+                var legacyRows = await GetAllStoryListenEventRowsAsync(baseUri, apiKey, subscriberId, cancellationToken);
+                return BuildProgressItems(legacyRows);
+            }
+
+            _logger.LogWarning("Supabase story progress snapshot failed. Status={StatusCode} Body={Body}",
+                (int)response.StatusCode, body);
+            return Array.Empty<UserStoryProgressItem>();
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<StoryProgressSnapshotRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        return rows.Select(row =>
+        {
+            var source = ReadMetadataSource(row.Metadata) ?? InferSourceFromPath(row.StoryPath) ?? "unknown";
+            return new UserStoryProgressItem(
+                row.StorySlug,
+                NormalizeStoryPath(row.StoryPath, row.StorySlug, source),
+                source,
+                row.LastListenedAt,
+                row.TotalListenedSeconds,
+                row.ListenCount,
+                row.CompletedListenCount,
+                NormalizeOptionalMetric(row.PositionSeconds),
+                NormalizeOptionalMetric(row.DurationSeconds),
+                row.IsCompleted);
+        }).ToArray();
+    }
+
     private async Task<List<StoryListenEventRow>> GetAllStoryListenEventRowsAsync(
         Uri baseUri,
         string apiKey,
@@ -286,7 +336,7 @@ public sealed class SupabaseStoryTrackingService(
                 "rest/v1/story_listen_events" +
                 "?select=story_slug,story_path,session_id,event_type,listened_seconds,position_seconds,duration_seconds,occurred_at,metadata" +
                 $"&subscriber_id=eq.{escapedSubscriberId}" +
-                "&order=occurred_at.desc" +
+                "&order=occurred_at.desc,story_listen_event_id.desc" +
                 $"&limit={ProgressPageSize}" +
                 $"&offset={offset}");
 
@@ -590,6 +640,39 @@ public sealed class SupabaseStoryTrackingService(
         return normalized is "gratis" or "luister"
             ? normalized
             : null;
+    }
+
+    private sealed class StoryProgressSnapshotRow
+    {
+        [JsonPropertyName("story_slug")]
+        public string StorySlug { get; set; } = string.Empty;
+
+        [JsonPropertyName("story_path")]
+        public string? StoryPath { get; set; }
+
+        [JsonPropertyName("last_listened_at")]
+        public DateTimeOffset LastListenedAt { get; set; }
+
+        [JsonPropertyName("total_listened_seconds")]
+        public decimal TotalListenedSeconds { get; set; }
+
+        [JsonPropertyName("listen_count")]
+        public int ListenCount { get; set; }
+
+        [JsonPropertyName("completed_listen_count")]
+        public int CompletedListenCount { get; set; }
+
+        [JsonPropertyName("position_seconds")]
+        public decimal? PositionSeconds { get; set; }
+
+        [JsonPropertyName("duration_seconds")]
+        public decimal? DurationSeconds { get; set; }
+
+        [JsonPropertyName("is_completed")]
+        public bool IsCompleted { get; set; }
+
+        [JsonPropertyName("metadata")]
+        public JsonElement Metadata { get; set; }
     }
 
     private sealed class StoryListenEventRow

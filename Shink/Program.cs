@@ -173,51 +173,46 @@ builder.Services.AddHttpClient("audio-origin", client =>
     // Audio responses can be long-lived streams. Keep timeout above default 100 seconds.
     client.Timeout = TimeSpan.FromMinutes(30);
 });
-builder.Services.AddHttpClient("supabase-error-logs");
+builder.Services.AddHttpClient("supabase-error-logs").WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IContactEmailService, ResendContactEmailService>();
-builder.Services.AddHttpClient<ISupabaseAuthService, SupabaseAuthService>();
-builder.Services.AddHttpClient<IAuthSessionService, SupabaseAuthSessionService>();
-builder.Services.AddHttpClient<IStoryCatalogService, SupabaseStoryCatalogService>();
-builder.Services.AddHttpClient<IStoreProductCatalogService, SupabaseStoreProductCatalogService>();
+builder.Services.AddHttpClient<ISupabaseAuthService, SupabaseAuthService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IAuthSessionService, SupabaseAuthSessionService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IStoryCatalogService, SupabaseStoryCatalogService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IStoreProductCatalogService, SupabaseStoreProductCatalogService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<PayFastCheckoutService>();
-builder.Services.AddHttpClient<PaystackCheckoutService>();
-builder.Services.AddHttpClient<PaystackAuthorizationRetryBatchService>();
-builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
+builder.Services.AddHttpClient<PaystackCheckoutService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<PaystackAuthorizationRetryBatchService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<MobileStoreEntitlementService>();
-builder.Services.AddHttpClient<StoreSubscriptionReconciliationService>();
+builder.Services.AddHttpClient<StoreSubscriptionReconciliationService>().WithSupabaseResponseCompression();
 builder.Services.AddHostedService<StoreSubscriptionReconciliationWorker>();
-builder.Services.AddHttpClient<IStoreOrderService, SupabaseStoreOrderService>();
+builder.Services.AddHttpClient<IStoreOrderService, SupabaseStoreOrderService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IStoreOrderNotificationService, ResendStoreOrderNotificationService>();
 builder.Services.AddHttpClient<ISubscriptionNotificationEmailService, ResendSubscriptionNotificationEmailService>();
 builder.Services.AddHttpClient<ISubscriptionPaymentRecoveryEmailService, ResendSubscriptionPaymentRecoveryEmailService>();
 builder.Services.AddHttpClient<ISchoolSeatNotificationEmailService, ResendSchoolSeatNotificationEmailService>();
 builder.Services.AddHttpClient<IGratisSubscriberEmailSequenceService, ResendGratisSubscriberEmailSequenceService>();
-builder.Services.AddHttpClient<IAbandonedCartRecoveryService, SupabaseAbandonedCartRecoveryService>();
-builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
-builder.Services.AddHttpClient<IEngagementTrackingService, SupabaseEngagementTrackingService>();
-builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
-builder.Services.AddHttpClient<ISubscriberPlaylistService, SupabaseSubscriberPlaylistService>();
-builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>();
-builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>()
-    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-    {
-        AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli,
-        PooledConnectionLifetime = TimeSpan.FromMinutes(2)
-    });
-builder.Services.AddHttpClient<IReferralService, SupabaseReferralService>();
-builder.Services.AddHttpClient<ISchoolManagementService, SupabaseSchoolManagementService>();
-builder.Services.AddHttpClient<IWordPressMigrationService, WordPressMigrationService>();
-builder.Services.AddHttpClient<IResourceDocumentPreviewBackfillService, SupabaseResourceDocumentPreviewBackfillService>();
-builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>();
-builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>();
-builder.Services.AddHttpClient<ICharacterTrackingService, SupabaseCharacterService>();
+builder.Services.AddHttpClient<IAbandonedCartRecoveryService, SupabaseAbandonedCartRecoveryService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IEngagementTrackingService, SupabaseEngagementTrackingService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<ISubscriberPlaylistService, SupabaseSubscriberPlaylistService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IReferralService, SupabaseReferralService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<ISchoolManagementService, SupabaseSchoolManagementService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IWordPressMigrationService, WordPressMigrationService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IResourceDocumentPreviewBackfillService, SupabaseResourceDocumentPreviewBackfillService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<ICharacterTrackingService, SupabaseCharacterService>().WithSupabaseResponseCompression();
 builder.Services.AddSingleton<IBlogContentRenderer, BlogContentRenderer>();
-builder.Services.AddHttpClient<IBlogCatalogService, SupabaseBlogService>();
-builder.Services.AddHttpClient<IBlogAdminService, SupabaseBlogService>();
+builder.Services.AddHttpClient<IBlogCatalogService, SupabaseBlogService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IBlogAdminService, SupabaseBlogService>().WithSupabaseResponseCompression();
 builder.Services.AddScoped<LandingPageContentValidator>();
-builder.Services.AddHttpClient<ILandingPageAdminService, SupabaseLandingPageService>();
-builder.Services.AddHttpClient<ILandingPageCatalogService, SupabaseLandingPageService>();
-builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificationService>();
+builder.Services.AddHttpClient<ILandingPageAdminService, SupabaseLandingPageService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<ILandingPageCatalogService, SupabaseLandingPageService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificationService>().WithSupabaseResponseCompression();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 if (builder.Configuration.GetValue("BackgroundJobs:Enabled", true))
 {

@@ -1,0 +1,315 @@
+{
+  "events": [
+    {
+      "metadata": {},
+      "event_type": "progress",
+      "session_id": "10000000-0000-0000-0000-000000000008",
+      "story_path": "/luister/blank",
+      "story_slug": "   ",
+      "occurred_at": "2026-10-01T00:00:15+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": 999.0,
+      "listened_seconds": 999.0,
+      "position_seconds": 999.0,
+      "story_listen_event_id": 16
+    },
+    {
+      "metadata": {},
+      "event_type": "pause",
+      "session_id": "10000000-0000-0000-0000-000000000007",
+      "story_path": "/luister/zeta",
+      "story_slug": "zeta",
+      "occurred_at": "2026-10-01T00:00:13+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": null,
+      "listened_seconds": 1.0,
+      "position_seconds": 10.0,
+      "story_listen_event_id": 13
+    },
+    {
+      "metadata": {},
+      "event_type": "progress",
+      "session_id": "10000000-0000-0000-0000-000000000007",
+      "story_path": "/luister/zeta",
+      "story_slug": "zeta",
+      "occurred_at": "2026-10-01T00:00:12+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": 100.0,
+      "listened_seconds": 12.0,
+      "position_seconds": 96.0,
+      "story_listen_event_id": 12
+    },
+    {
+      "metadata": {},
+      "event_type": "pause",
+      "session_id": "10000000-0000-0000-0000-000000000006",
+      "story_path": "/luister/epsilon",
+      "story_slug": "epsilon",
+      "occurred_at": "2026-10-01T00:00:11+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": null,
+      "listened_seconds": 6.0,
+      "position_seconds": 96.0,
+      "story_listen_event_id": 11
+    },
+    {
+      "metadata": {},
+      "event_type": "progress",
+      "session_id": "10000000-0000-0000-0000-000000000006",
+      "story_path": "/luister/epsilon",
+      "story_slug": "epsilon",
+      "occurred_at": "2026-10-01T00:00:10+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": 100.0,
+      "listened_seconds": 12.0,
+      "position_seconds": 90.0,
+      "story_listen_event_id": 10
+    },
+    {
+      "metadata": {
+        "is_completed": true
+      },
+      "event_type": "ended",
+      "session_id": null,
+      "story_path": "/luister/delta",
+      "story_slug": "delta",
+      "occurred_at": "2026-10-01T00:00:08+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": 100.0,
+      "listened_seconds": 1.0,
+      "position_seconds": 1.0,
+      "story_listen_event_id": 9
+    },
+    {
+      "metadata": null,
+      "event_type": "progress",
+      "session_id": "10000000-0000-0000-0000-000000000005",
+      "story_path": "/luister/invalid",
+      "story_slug": "invalid",
+      "occurred_at": "2026-10-01T00:00:07+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": null,
+      "listened_seconds": 0.0,
+      "position_seconds": null,
+      "story_listen_event_id": 8
+    },
+    {
+      "metadata": {
+        "is_completed": "yes"
+      },
+      "event_type": "progress",
+      "session_id": "10000000-0000-0000-0000-000000000005",
+      "story_path": "/luister/invalid",
+      "story_slug": "invalid",
+      "occurred_at": "2026-10-01T00:00:07+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": null,
+      "listened_seconds": 0.0,
+      "position_seconds": 0.0,
+      "story_listen_event_id": 7
+    },
+    {
+      "metadata": {
+        "source": 1,
+        "is_completed": 1
+      },
+      "event_type": "progress",
+      "session_id": "10000000-0000-0000-0000-000000000005",
+      "story_path": "/luister/invalid",
+      "story_slug": "invalid",
+      "occurred_at": "2026-10-01T00:00:06+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": null,
+      "listened_seconds": 5.0,
+      "position_seconds": null,
+      "story_listen_event_id": 6
+    },
+    {
+      "metadata": {
+        "source": " GRATIS ",
+        "is_completed": " TrUe "
+      },
+      "event_type": "progress",
+      "session_id": "10000000-0000-0000-0000-000000000004",
+      "story_path": "//bad",
+      "story_slug": "gamma",
+      "occurred_at": "2026-10-01T00:00:05+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": 0.0,
+      "listened_seconds": 12.0,
+      "position_seconds": null,
+      "story_listen_event_id": 5
+    },
+    {
+      "metadata": {
+        "is_completed": false
+      },
+      "event_type": "ended",
+      "session_id": "10000000-0000-0000-0000-000000000003",
+      "story_path": "/gratis/beta",
+      "story_slug": "beta",
+      "occurred_at": "2026-10-01T00:00:04+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": 100.0,
+      "listened_seconds": 0.0,
+      "position_seconds": 0.0,
+      "story_listen_event_id": 4
+    },
+    {
+      "metadata": {
+        "source": "luister"
+      },
+      "event_type": "progress",
+      "session_id": "10000000-0000-0000-0000-000000000002",
+      "story_path": "/luister/alpha",
+      "story_slug": "alpha",
+      "occurred_at": "2026-10-01T00:00:03+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": null,
+      "listened_seconds": 10.123,
+      "position_seconds": 10.123,
+      "story_listen_event_id": 3
+    },
+    {
+      "metadata": {},
+      "event_type": "pause",
+      "session_id": "10000000-0000-0000-0000-000000000001",
+      "story_path": "/luister/alpha",
+      "story_slug": "alpha",
+      "occurred_at": "2026-10-01T00:00:02+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": null,
+      "listened_seconds": 54.889,
+      "position_seconds": 95.0,
+      "story_listen_event_id": 2
+    },
+    {
+      "metadata": {},
+      "event_type": "progress",
+      "session_id": "10000000-0000-0000-0000-000000000001",
+      "story_path": "/luister/alpha",
+      "story_slug": "alpha",
+      "occurred_at": "2026-10-01T00:00:01.5+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": 100.0,
+      "listened_seconds": 1.0,
+      "position_seconds": 50.0,
+      "story_listen_event_id": 14
+    },
+    {
+      "metadata": {
+        "source": "luister"
+      },
+      "event_type": "progress",
+      "session_id": "10000000-0000-0000-0000-000000000001",
+      "story_path": "/luister/alpha",
+      "story_slug": "alpha",
+      "occurred_at": "2026-10-01T00:00:01+00:00",
+      "subscriber_id": "00000000-0000-0000-0000-000000000001",
+      "duration_seconds": 100.0,
+      "listened_seconds": 40.111,
+      "position_seconds": 40.0,
+      "story_listen_event_id": 1
+    }
+  ],
+  "snapshot": [
+    {
+      "metadata": {
+        "source": null
+      },
+      "story_path": "/luister/zeta",
+      "story_slug": "zeta",
+      "is_completed": false,
+      "listen_count": 1,
+      "duration_seconds": 100.0,
+      "last_listened_at": "2026-10-01T00:00:13+00:00",
+      "position_seconds": 10.0,
+      "completed_listen_count": 0,
+      "total_listened_seconds": 13.0
+    },
+    {
+      "metadata": {
+        "source": null
+      },
+      "story_path": "/luister/epsilon",
+      "story_slug": "epsilon",
+      "is_completed": true,
+      "listen_count": 1,
+      "duration_seconds": 100.0,
+      "last_listened_at": "2026-10-01T00:00:11+00:00",
+      "position_seconds": 96.0,
+      "completed_listen_count": 1,
+      "total_listened_seconds": 18.0
+    },
+    {
+      "metadata": {
+        "source": null
+      },
+      "story_path": "/luister/delta",
+      "story_slug": "delta",
+      "is_completed": true,
+      "listen_count": 0,
+      "duration_seconds": 100.0,
+      "last_listened_at": "2026-10-01T00:00:08+00:00",
+      "position_seconds": 1.0,
+      "completed_listen_count": 0,
+      "total_listened_seconds": 1.0
+    },
+    {
+      "metadata": {
+        "source": null
+      },
+      "story_path": "/luister/invalid",
+      "story_slug": "invalid",
+      "is_completed": false,
+      "listen_count": 1,
+      "duration_seconds": null,
+      "last_listened_at": "2026-10-01T00:00:07+00:00",
+      "position_seconds": null,
+      "completed_listen_count": 0,
+      "total_listened_seconds": 5.0
+    },
+    {
+      "metadata": {
+        "source": " GRATIS "
+      },
+      "story_path": "//bad",
+      "story_slug": "gamma",
+      "is_completed": true,
+      "listen_count": 1,
+      "duration_seconds": null,
+      "last_listened_at": "2026-10-01T00:00:05+00:00",
+      "position_seconds": null,
+      "completed_listen_count": 1,
+      "total_listened_seconds": 12.0
+    },
+    {
+      "metadata": {
+        "source": null
+      },
+      "story_path": "/gratis/beta",
+      "story_slug": "beta",
+      "is_completed": true,
+      "listen_count": 0,
+      "duration_seconds": 100.0,
+      "last_listened_at": "2026-10-01T00:00:04+00:00",
+      "position_seconds": 0.0,
+      "completed_listen_count": 1,
+      "total_listened_seconds": 0.0
+    },
+    {
+      "metadata": {
+        "source": "luister"
+      },
+      "story_path": "/luister/alpha",
+      "story_slug": "alpha",
+      "is_completed": false,
+      "listen_count": 2,
+      "duration_seconds": 100.0,
+      "last_listened_at": "2026-10-01T00:00:03+00:00",
+      "position_seconds": 10.123,
+      "completed_listen_count": 1,
+      "total_listened_seconds": 106.123
+    }
+  ]
+}

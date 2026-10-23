@@ -16,7 +16,7 @@ public class SupabaseTrackingPaginationTests
     private const string SubscriberEmail = "listener@example.com";
 
     [TestMethod]
-    public async Task GetUserStoryProgressAsync_IncludesOlderRowsBeyondFirstPage()
+    public async Task GetUserStoryProgressAsync_MissingSnapshotMigration_IncludesOlderRowsBeyondFirstPage()
     {
         var handler = new PagedTrackingHandler
         {
@@ -135,6 +135,14 @@ public class SupabaseTrackingPaginationTests
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             var query = request.RequestUri?.Query ?? string.Empty;
             var offset = ReadOffset(query);
+
+            if (path.EndsWith("/rest/v1/rpc/get_story_progress_snapshot", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+                {
+                    Content = new StringContent("{\"code\":\"PGRST202\"}", Encoding.UTF8, "application/json")
+                });
+            }
 
             if (request.Method == HttpMethod.Get &&
                 path.EndsWith("/rest/v1/subscribers", StringComparison.Ordinal))
