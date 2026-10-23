@@ -24,7 +24,9 @@ class Kudu:
 
     def request(self, method, path, data=None):
         headers = {"Authorization": "Bearer " + self.token}
-        if method in {"PUT", "DELETE"}:
+        if path.startswith("/api/vfs/") and method in {"PUT", "DELETE"}:
+            # Each job owns its staging files. Kudu otherwise rejects updates
+            # and credential cleanup when a file already has an ETag.
             headers["If-Match"] = "*"
         if isinstance(data, dict):
             data = json.dumps(data).encode()
@@ -119,6 +121,10 @@ def launch_and_wait(kudu, job, recover=False):
     finally:
         try:
             kudu.request("DELETE", "/api/vfs/data/schink-deployments/" + job + "/" + authorization)
+        except urllib.error.HTTPError as error:
+            error.close()
+            if error.code != 404:
+                print("Authorization cleanup failed with HTTP " + str(error.code), flush=True)
         except (OSError, urllib.error.URLError):
             pass  # Normally already removed by the worker.
 

@@ -2,6 +2,8 @@ import base64
 import errno
 import fcntl
 import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import itertools
 import json
 import os
 from pathlib import Path
@@ -9,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 import urllib.error
@@ -22,7 +25,7 @@ import webapp_deployment_worker as worker
 def release(root, version):
     root.mkdir(parents=True, exist_ok=True)
     (root / 'wwwroot').mkdir(exist_ok=True)
-    for name in worker.REQUIRED - {'Shink.staticwebassets.endpoints.json'}:
+    for name in (worker.REQUIRED | {'Shink.pdb'}) - {'Shink.staticwebassets.endpoints.json'}:
         (root / name).write_bytes(version.encode())
     css = (version + ' CSS').encode()
     (root / 'wwwroot/app.css').write_bytes(css)
@@ -113,6 +116,72 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual([('stop', 'old'), ('start', 'new'), ('health', 'new')], self.app.events)
         worker.verify_files(self.root, self.settings['files'])
         self.assertEqual('Running', self.app.state())
+
+    def reject_website_renames(self):
+        replace = worker.os.replace
+        def reject(source, target):
+            if Path(target).is_relative_to(self.root):
+                raise FileNotFoundError(errno.ENOENT, 'Azure temporary-file rename failed')
+            return replace(source, target)
+        return patch.object(worker.os, 'replace', side_effect=reject)
+
+    def test_persistent_website_rename_failure_does_not_block_activation(self):
+        with self.reject_website_renames(), patch.object(worker.time, 'monotonic',
+                side_effect=itertools.count(0, 91).__next__):
+            self.assertEqual(0, worker.transaction(self.job, self.root, self.app))
+        self.assertEqual('succeeded', self.phase())
+        self.assertEqual(b'new', (self.root / 'Shink.pdb').read_bytes())
+        worker.verify_files(self.root, self.settings['files'])
+        self.assertEqual('Running', self.app.state())
+
+    def test_persistent_website_rename_failure_does_not_block_rollback(self):
+        self.assertEqual(0, worker.transaction(self.job, self.root, self.app))
+        # The old files now really need restoring, rather than already matching
+        # the backup when an early activation failure is rolled back.
+        (self.job / 'state.json').write_text(json.dumps({'phase': 'activating'}))
+        self.app.current_state = 'Stopped'
+        with self.reject_website_renames(), patch.object(worker.time, 'monotonic',
+                side_effect=itertools.count(0, 91).__next__):
+            self.assertEqual(1, worker.transaction(self.job, self.root, self.app, recover=True))
+        self.assertEqual('rolled_back', self.phase())
+        self.assertEqual(self.before, tree(self.root))
+        self.assertEqual('Running', self.app.state())
+        self.assertEqual(('health', 'old'), self.app.events[-1])
+
+    def test_corrupt_copy_is_detected_and_rolled_back_while_stopped(self):
+        copy = worker.shutil.copyfile
+        failed = False
+        def corrupt_once(source, target, **kwargs):
+            nonlocal failed
+            if Path(target).is_relative_to(self.root):
+                self.assertEqual('Stopped', self.app.state())
+            result = copy(source, target, **kwargs)
+            if Path(target) == self.root / 'Shink.pdb' and not failed:
+                failed = True
+                Path(target).write_bytes(b'corrupt copy')
+            return result
+        with patch.object(worker.shutil, 'copyfile', side_effect=corrupt_once):
+            self.assertEqual(1, worker.transaction(self.job, self.root, self.app))
+        self.assertTrue(failed)
+        self.assertEqual('rolled_back', self.phase())
+        self.assertEqual(self.before, tree(self.root))
+        self.assertEqual([('start', 'old')], [event for event in self.app.events if event[0] == 'start'])
+
+    def test_corrupt_restoration_is_never_started(self):
+        copy = worker.shutil.copyfile
+        def corrupt_backup_copy(source, target, **kwargs):
+            result = copy(source, target, **kwargs)
+            if Path(source) == self.job / 'backup/Shink.pdb':
+                Path(target).write_bytes(b'corrupt restoration')
+            return result
+        self.app.fail_health = True
+        with patch.object(worker.shutil, 'copyfile', side_effect=corrupt_backup_copy):
+            self.assertEqual(1, worker.transaction(self.job, self.root, self.app))
+        self.assertEqual('recovery_failed', self.phase())
+        state = json.loads((self.job / 'state.json').read_text())
+        self.assertIn('Copied file checksum mismatch', state['recovery_error'])
+        self.assertEqual('Stopped', self.app.state())
+        self.assertNotIn(('start', 'old'), self.app.events)
 
     def test_atomic_copy_retries_azure_file_lock_without_copying_over_target(self):
         source, target = self.base / 'new.pdb', self.root / 'Shink.pdb'
@@ -206,15 +275,15 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(self.before, tree(self.root))
 
     def test_partial_copy_is_rolled_back_before_restart(self):
-        real_copy = worker.atomic_copy
+        real_copy = worker.copy_stopped_file
         failed = False
-        def fail_after_first_replacement(source, target):
+        def fail_after_first_replacement(source, target, expected):
             nonlocal failed
-            real_copy(source, target)
+            real_copy(source, target, expected)
             if target == self.root / 'Shink.dll' and not failed:
                 failed = True
                 raise OSError('Copy failed after replacing assembly')
-        with patch.object(worker, 'atomic_copy', side_effect=fail_after_first_replacement):
+        with patch.object(worker, 'copy_stopped_file', side_effect=fail_after_first_replacement):
             self.assertEqual(1, worker.transaction(self.job, self.root, self.app))
         self.assertEqual('rolled_back', self.phase())
         self.assertEqual(self.before, tree(self.root))
@@ -277,11 +346,16 @@ class App:
     def state(self): return 'Running'
     def stop(self): pass
     def ensure_credentials(self): pass
-real_copy = w.atomic_copy
-def crash(source, target):
-    real_copy(source, target)
-    if target == root / 'Shink.dll': os._exit(91)
-w.atomic_copy = crash
+real_copy = w.shutil.copyfile
+def crash(source, target, **kwargs):
+    if Path(target) == root / 'Shink.dll':
+        with open(source, 'rb') as incoming, open(target, 'wb') as outgoing:
+            outgoing.write(incoming.read(1))
+            outgoing.flush()
+            os.fsync(outgoing.fileno())
+        os._exit(91)
+    return real_copy(source, target, **kwargs)
+w.shutil.copyfile = crash
 w.transaction(Path(sys.argv[2]), root, App())
 '''
         result = subprocess.run([sys.executable, '-c', code, str(Path(worker.__file__).parent),
@@ -289,7 +363,7 @@ w.transaction(Path(sys.argv[2]), root, App())
                                 env={**os.environ, 'TMPDIR': str(self.base)})
         self.assertEqual(91, result.returncode)
         self.assertEqual('activating', self.phase())
-        self.assertEqual('new', self.app.version())
+        self.assertEqual('n', self.app.version())
         self.app.current_state = 'Stopped'
         self.assertEqual(1, worker.transaction(self.job, self.root, self.app, recover=True))
         self.assertEqual('rolled_back', self.phase())
@@ -431,15 +505,15 @@ w.transaction(Path(sys.argv[2]), root, App())
         self.settings['original_state'] = 'Stopped'
         (self.job / 'settings.json').write_text(json.dumps(self.settings))
         self.app.current_state = 'Stopped'
-        real_copy = worker.atomic_copy
+        real_copy = worker.copy_stopped_file
         failed = False
-        def fail_once(source, target):
+        def fail_once(source, target, expected):
             nonlocal failed
-            real_copy(source, target)
+            real_copy(source, target, expected)
             if target == self.root / 'Shink.dll' and not failed:
                 failed = True
                 raise OSError('Copy failed')
-        with patch.object(worker, 'atomic_copy', side_effect=fail_once):
+        with patch.object(worker, 'copy_stopped_file', side_effect=fail_once):
             self.assertEqual(1, worker.transaction(self.job, self.root, self.app))
         self.assertEqual('rolled_back', self.phase())
         self.assertEqual('Stopped', self.app.state())
@@ -542,6 +616,106 @@ w.transaction(Path(sys.argv[2]), root, App())
         self.assertEqual(self.before, tree(self.root))
         self.assertEqual('Running', self.app.state())
         self.assertEqual(('health', 'old'), self.app.events[-1])
+
+
+class KuduHttpTests(unittest.TestCase):
+    """Exercise the real client against Kudu's overwrite/delete HTTP contract."""
+
+    def setUp(self):
+        self.job = 'a' * 32
+        self.prefix = '/api/vfs/data/schink-deployments/' + self.job + '/'
+        self.files = {self.prefix + 'state.json': b'{"phase":"recovery_failed"}'}
+        self.requests = []
+        self.launch_exit = 0
+        self.consume_authorization = False
+        fixture = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def receive(self):
+                body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                fixture.requests.append((self.command, self.path, self.headers.get('If-Match'), body))
+                return body
+
+            def respond(self, status, body=b''):
+                self.send_response(status)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                self.receive()
+                self.respond(200, fixture.files[self.path])
+
+            def do_PUT(self):
+                body = self.receive()
+                if self.path in fixture.files and self.headers.get('If-Match') != '*':
+                    return self.respond(412)
+                fixture.files[self.path] = body
+                self.respond(201)
+
+            def do_DELETE(self):
+                self.receive()
+                if self.path not in fixture.files:
+                    return self.respond(404)
+                if self.headers.get('If-Match') != '*':
+                    return self.respond(409)
+                del fixture.files[self.path]
+                self.respond(204)
+
+            def do_POST(self):
+                self.receive()
+                if fixture.launch_exit == 0:
+                    fixture.files[fixture.prefix + 'state.json'] = b'{"phase":"rolled_back"}'
+                if fixture.consume_authorization:
+                    for path in list(fixture.files):
+                        if path.startswith(fixture.prefix + 'authorization-'):
+                            del fixture.files[path]
+                self.respond(200, json.dumps({'ExitCode': fixture.launch_exit}).encode())
+
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever,
+                                       kwargs={'poll_interval': 0.01}, daemon=True)
+        self.thread.start()
+        def close_server():
+            self.server.shutdown()
+            self.server.server_close()
+            self.thread.join(timeout=2)
+        self.addCleanup(close_server)
+        self.kudu = coordinator.Kudu('http://127.0.0.1:' + str(self.server.server_port), 'fixture-token')
+
+    def recover(self):
+        with patch.object(coordinator, 'az', return_value={'accessToken': 'fixture', 'expires_on': 9999999999}):
+            return coordinator.launch_and_wait(self.kudu, self.job, recover=True)
+
+    def test_existing_state_overwrite_passes_kudu_etag_check(self):
+        self.kudu.put(self.job, 'state.json', {'phase': 'recovery_requested'})
+        self.assertEqual({'phase': 'recovery_requested'}, self.kudu.state(self.job))
+
+    def test_failed_recovery_can_relaunch_and_clean_authorization_over_http(self):
+        self.assertEqual('rolled_back', self.recover()['phase'])
+        updates = [json.loads(body) for method, path, _, body in self.requests
+                   if method == 'PUT' and path == self.prefix + 'state.json']
+        self.assertEqual([{'phase': 'recovery_requested'}], updates)
+        self.assertTrue(any(method == 'POST' for method, _, _, _ in self.requests))
+        self.assertTrue(any(method == 'DELETE' for method, _, _, _ in self.requests))
+        self.assertFalse(any('authorization-' in path for path in self.files))
+        for method, _, header, _ in self.requests:
+            if method in {'GET', 'POST'}:
+                self.assertIsNone(header)
+
+    def test_failed_launch_still_deletes_unconsumed_authorization(self):
+        self.launch_exit = 1
+        with self.assertRaisesRegex(RuntimeError, 'Could not launch'):
+            self.recover()
+        self.assertFalse(any('authorization-' in path for path in self.files))
+
+    def test_cleanup_accepts_authorization_already_consumed_by_worker(self):
+        self.consume_authorization = True
+        self.assertEqual('rolled_back', self.recover()['phase'])
+        self.assertFalse(any('authorization-' in path for path in self.files))
 
 
 if __name__ == '__main__':

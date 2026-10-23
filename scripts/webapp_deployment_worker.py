@@ -112,9 +112,9 @@ def atomic_copy(source, target):
                 os.replace(temporary, target)
                 return
             except OSError as error:
-                # ARM can report Stopped while the old container still holds
-                # files on Azure's shared filesystem. Retain atomic replacement
-                # and allow those transient locks to clear before rolling back.
+                # Retry transient shared-filesystem failures while preparing
+                # the backup. Application files are copied while stopped by
+                # copy_stopped_file, without this rename dependency.
                 if error.errno not in {errno.ENOENT, errno.EACCES, errno.EBUSY, errno.ETXTBSY}:
                     raise
                 # A shared-filesystem rename can complete despite a lost reply.
@@ -125,6 +125,23 @@ def atomic_copy(source, target):
                 time.sleep(3)
         finally:
             Path(temporary).unlink(missing_ok=True)
+
+
+def copy_stopped_file(source, target, expected):
+    """Copy a journaled application file only after app.stop() has succeeded.
+
+    Azure's shared wwwroot has returned ENOENT on temporary-file replacement.
+    Avoid that rename for both activation and rollback. A process interruption
+    can leave a partial file, so the durable journal and full verification must
+    complete before the app is allowed to start.
+    """
+    if digest(source) != expected:
+        raise ValueError("Source file checksum mismatch: " + str(source))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
+    target.chmod(stat.S_IMODE(source.stat().st_mode))
+    if digest(target) != expected:
+        raise ValueError("Copied file checksum mismatch: " + str(target))
 
 
 def write_json(path, value):
@@ -204,7 +221,7 @@ def rollback(job, root, journal, app):
         if previous is None:
             target.unlink(missing_ok=True)
         else:
-            atomic_copy(safe_path(backup, name), target)
+            copy_stopped_file(safe_path(backup, name), target, previous)
     verify_files(root, journal["previous"])
     verify_static_assets(root)
     if journal["original_state"] == "Running":
@@ -302,7 +319,7 @@ def transaction(job, root, app, recover=False):
                 return 0
             app.ensure_credentials()
             # The extracted files have already been verified. Free the upload
-            # and reserve room for the largest atomic replacement before stop.
+            # and reserve working space for changed files before stop.
             package.unlink()
             (job / "candidate.zip").unlink()
             largest = max(safe_path(candidate, name).stat().st_size for name in previous)
@@ -313,7 +330,7 @@ def transaction(job, root, app, recover=False):
             app.stop()
             phase("activating")
             for name in previous:
-                atomic_copy(safe_path(candidate, name), safe_path(root, name))
+                copy_stopped_file(safe_path(candidate, name), safe_path(root, name), files[name])
             verify_files(root, files)
             verify_static_assets(root)
             if settings["original_state"] == "Running":
