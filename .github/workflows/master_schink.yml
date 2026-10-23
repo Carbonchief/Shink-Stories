@@ -55,6 +55,7 @@ jobs:
   publish:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       id-token: write
       contents: read
@@ -76,6 +77,8 @@ jobs:
               'Shink/Shink.csproj',
               '.github/workflows/master_schink.yml',
               'scripts/deploy-webapp-quiesced.sh',
+              'scripts/deploy_webapp.py',
+              'scripts/webapp_deployment_worker.py',
             ];
 
             const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
@@ -258,7 +261,19 @@ jobs:
         working-directory: ${{ env.PUBLISH_DIR }}
         run: zip -q -r "$GITHUB_WORKSPACE/webapp.zip" .
 
-      - name: Deploy with the web app stopped
+      - name: Stage, validate, and activate with automatic rollback
         if: steps.publish_check.outputs.should_publish == 'true'
-        timeout-minutes: 12
-        run: bash scripts/deploy-webapp-quiesced.sh "$AZURE_WEBAPP_RESOURCE_GROUP" "$AZURE_WEBAPP_NAME" "$GITHUB_WORKSPACE/webapp.zip"
+        timeout-minutes: 25
+        run: bash scripts/deploy-webapp-quiesced.sh "$AZURE_WEBAPP_RESOURCE_GROUP" "$AZURE_WEBAPP_NAME" "$GITHUB_WORKSPACE/webapp.zip" --state-file "$RUNNER_TEMP/schink-deployment-job.json"
+
+      - name: Recover interrupted activation
+        if: always() && steps.publish_check.outputs.should_publish == 'true'
+        timeout-minutes: 15
+        run: python3 scripts/deploy_webapp.py --recover "$RUNNER_TEMP/schink-deployment-job.json"
+
+      - name: Verify public service health
+        if: success() && steps.publish_check.outputs.should_publish == 'true'
+        run: |
+          response="$(curl --fail --silent --show-error --max-time 30 --retry 3 --retry-all-errors \
+            -H 'Cache-Control: no-cache' -A 'Schink-Deployment-Health/1.0' https://www.schink.co.za/healthz)"
+          test "$response" = ok
