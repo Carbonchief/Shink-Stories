@@ -14,8 +14,10 @@ public sealed class SupabaseStoryCatalogService(
     HttpClient httpClient,
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
-    ILogger<SupabaseStoryCatalogService> logger) : IStoryCatalogService
+    ILogger<SupabaseStoryCatalogService> logger,
+    IPublicContentVersions? contentVersions = null) : IStoryCatalogService
 {
+    private const string FullStorySelect = "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,video_bucket,video_object_key,video_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
     private const string CacheKey = "stories:catalog:v2";
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan FavouritesCacheDuration = TimeSpan.FromSeconds(30);
@@ -136,7 +138,7 @@ public sealed class SupabaseStoryCatalogService(
             string.Equals(candidate.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
         var playlistSlugsByStoryId = snapshot.PlaylistSlugsByStoryId;
-        return row is null ? null : MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId));
+        return row is null ? null : await FindFullStoryAsync(row, playlistSlugsByStoryId, candidate => string.Equals(candidate.AccessLevel, "free", StringComparison.OrdinalIgnoreCase), cancellationToken);
     }
 
     public async Task<StoryItem?> FindLuisterBySlugAsync(string? slug, CancellationToken cancellationToken = default)
@@ -152,7 +154,7 @@ public sealed class SupabaseStoryCatalogService(
             string.Equals(candidate.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
         var playlistSlugsByStoryId = snapshot.PlaylistSlugsByStoryId;
-        return row is null ? null : MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId));
+        return row is null ? null : await FindFullStoryAsync(row, playlistSlugsByStoryId, IsLuisterStoryRow, cancellationToken);
     }
 
     public async Task<StoryItem?> FindAnyBySlugAsync(string? slug, CancellationToken cancellationToken = default)
@@ -167,7 +169,24 @@ public sealed class SupabaseStoryCatalogService(
             string.Equals(candidate.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
         var playlistSlugsByStoryId = snapshot.PlaylistSlugsByStoryId;
-        return row is null ? null : MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId));
+        return row is null ? null : await FindFullStoryAsync(row, playlistSlugsByStoryId, _ => true, cancellationToken);
+    }
+
+    private async Task<StoryItem?> FindFullStoryAsync(StoryCatalogRow row,
+        IReadOnlyDictionary<Guid, IReadOnlyList<string>> playlistSlugs,
+        Func<StoryCatalogRow, bool> allowed, CancellationToken cancellationToken)
+    {
+        if (row.IsSummary)
+        {
+            if (!TryBuildSupabaseBaseUri(out var baseUri) || string.IsNullOrWhiteSpace(ResolveReadApiKey())) return null;
+            var rows = await FetchPublishedRowsWithSelectAsync(baseUri, ResolveReadApiKey(), FullStorySelect,
+                retryWithoutTestQuestionsOnMissingColumn: false, cancellationToken, onlySlug: row.Slug);
+            var fullRow = rows?.FirstOrDefault(candidate => string.Equals(candidate.Slug, row.Slug, StringComparison.OrdinalIgnoreCase));
+            if (fullRow is null || !allowed(fullRow)) return null;
+            row = fullRow;
+        }
+
+        return MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugs));
     }
 
     private async Task<IReadOnlyList<StoryCatalogRow>> GetPublishedRowsAsync(CancellationToken cancellationToken)
@@ -178,7 +197,8 @@ public sealed class SupabaseStoryCatalogService(
 
     private async Task<StoryCatalogSnapshot> GetCatalogSnapshotAsync(CancellationToken cancellationToken)
     {
-        if (_memoryCache.TryGetValue(CacheKey, out StoryCatalogSnapshot? cachedSnapshot) &&
+        var cacheKey = await PublicContentCacheKeys.ResolveAsync(contentVersions, "stories", CacheKey, cancellationToken);
+        if (cacheKey is not null && _memoryCache.TryGetValue(cacheKey, out StoryCatalogSnapshot? cachedSnapshot) &&
             cachedSnapshot is not null)
         {
             return cachedSnapshot;
@@ -187,14 +207,17 @@ public sealed class SupabaseStoryCatalogService(
         await RefreshLock.WaitAsync(cancellationToken);
         try
         {
-            if (_memoryCache.TryGetValue(CacheKey, out cachedSnapshot) &&
+            if (cacheKey is not null && _memoryCache.TryGetValue(cacheKey, out cachedSnapshot) &&
                 cachedSnapshot is not null)
             {
                 return cachedSnapshot;
             }
 
             var snapshot = await FetchCatalogSnapshotAsync(CancellationToken.None);
-            _memoryCache.Set(CacheKey, snapshot, CacheDuration);
+            if (cacheKey is not null)
+            {
+                _memoryCache.Set(cacheKey, snapshot, CacheDuration);
+            }
             return snapshot;
         }
         finally
@@ -251,8 +274,36 @@ public sealed class SupabaseStoryCatalogService(
 
     private async Task<IReadOnlyList<StoryCatalogRow>> FetchPublishedRowsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
-        const string storySelectWithVideoAndTestQuestions =
-            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,video_bucket,video_object_key,video_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
+        using var listingRequest = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "rest/v1/rpc/get_story_catalogue_listing"));
+        listingRequest.Headers.TryAddWithoutValidation("apikey", apiKey);
+        listingRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        listingRequest.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+        try
+        {
+            using var response = await _httpClient.SendAsync(listingRequest, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                var listingRows = await JsonSerializer.DeserializeAsync<List<StoryCatalogRow>>(stream, JsonOptions, cancellationToken) ?? [];
+                return listingRows.Where(IsPublishedAndUsable).OrderByDescending(row => row.PublishedAt)
+                    .ThenBy(row => row.SortOrder).ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase).ToArray();
+            }
+
+            var error = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.StatusCode != HttpStatusCode.NotFound || !error.Contains("PGRST202", StringComparison.Ordinal))
+            {
+                _logger.LogWarning("Supabase story listing snapshot failed. Status={StatusCode}", (int)response.StatusCode);
+                return BuildLegacyFallbackRows();
+            }
+            _logger.LogWarning("Story listing RPC is missing; apply the public_content_egress_followups migration.");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase story listing failed unexpectedly.");
+            return BuildLegacyFallbackRows();
+        }
+
+        const string storySelectWithVideoAndTestQuestions = FullStorySelect;
         const string storySelectWithVideoWithoutTestQuestions =
             "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,video_bucket,video_object_key,video_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
         const string storySelectWithoutVideoWithTestQuestions =
@@ -324,13 +375,15 @@ public sealed class SupabaseStoryCatalogService(
         string apiKey,
         string selectColumns,
         bool retryWithoutTestQuestionsOnMissingColumn,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? onlySlug = null)
     {
         var requestUri = new Uri(
             baseUri,
             "rest/v1/stories" +
             $"?select={selectColumns}" +
             "&status=eq.published" +
+            (onlySlug is null ? "" : "&slug=eq." + Uri.EscapeDataString(onlySlug) + "&limit=1") +
             "&order=published_at.desc.nullslast" +
             "&order=sort_order.asc");
 
@@ -1659,6 +1712,9 @@ public sealed class SupabaseStoryCatalogService(
 
     private sealed class StoryCatalogRow
     {
+        [JsonPropertyName("is_summary")]
+        public bool IsSummary { get; set; }
+
         [JsonPropertyName("story_id")]
         public Guid StoryId { get; set; }
 

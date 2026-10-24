@@ -315,7 +315,7 @@ public sealed class MobilePerformanceReliabilitySourceTests
         var helpers = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "PageHelpers.cs")).ReplaceLineEndings("\n");
         var storyDetail = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "StoryDetailPage.cs")).ReplaceLineEndings("\n");
 
-        StringAssert.Contains(search, "Shadow = IsAndroid\n                ? null");
+        StringAssert.Matches(search, new System.Text.RegularExpressions.Regex(@"Shadow\s*=\s*IsAndroid\s*\?\s*null"));
         StringAssert.Contains(characters, "Shadow = IsAndroid\n                ? null");
         StringAssert.Contains(playlists, "Shadow = IsAndroid\n                    ? null");
         StringAssert.Contains(helpers, "Shadow = DeviceInfo.Current.Platform == DevicePlatform.Android\n                ? null");

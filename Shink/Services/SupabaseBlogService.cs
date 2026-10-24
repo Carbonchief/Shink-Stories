@@ -15,7 +15,8 @@ public sealed partial class SupabaseBlogService(
     IMemoryCache memoryCache,
     IBlogContentRenderer blogContentRenderer,
     IUserNotificationService userNotificationService,
-    ILogger<SupabaseBlogService> logger) : IBlogCatalogService, IBlogAdminService
+    ILogger<SupabaseBlogService> logger,
+    IPublicContentVersions? contentVersions = null) : IBlogCatalogService, IBlogAdminService
 {
     private const string PublishedBlogCacheKey = "blog:published:v1";
     private static readonly TimeSpan PublishedBlogCacheDuration = TimeSpan.FromMinutes(2);
@@ -379,7 +380,8 @@ public sealed partial class SupabaseBlogService(
 
     private async Task<IReadOnlyList<BlogPostDetail>> GetPublishedSnapshotAsync(CancellationToken cancellationToken)
     {
-        if (_memoryCache.TryGetValue(PublishedBlogCacheKey, out IReadOnlyList<BlogPostDetail>? cachedPosts) &&
+        var cacheKey = await PublicContentCacheKeys.ResolveAsync(contentVersions, "blogs", PublishedBlogCacheKey, cancellationToken);
+        if (cacheKey is not null && _memoryCache.TryGetValue(cacheKey, out IReadOnlyList<BlogPostDetail>? cachedPosts) &&
             cachedPosts is not null)
         {
             return cachedPosts;
@@ -388,14 +390,17 @@ public sealed partial class SupabaseBlogService(
         await RefreshLock.WaitAsync(cancellationToken);
         try
         {
-            if (_memoryCache.TryGetValue(PublishedBlogCacheKey, out cachedPosts) &&
+            if (cacheKey is not null && _memoryCache.TryGetValue(cacheKey, out cachedPosts) &&
                 cachedPosts is not null)
             {
                 return cachedPosts;
             }
 
             var posts = await BuildPublishedSnapshotAsync(CancellationToken.None);
-            _memoryCache.Set(PublishedBlogCacheKey, posts, PublishedBlogCacheDuration);
+            if (cacheKey is not null)
+            {
+                _memoryCache.Set(cacheKey, posts, PublishedBlogCacheDuration);
+            }
             return posts;
         }
         finally

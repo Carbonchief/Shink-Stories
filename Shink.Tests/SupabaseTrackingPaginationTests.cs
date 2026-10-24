@@ -33,7 +33,7 @@ public class SupabaseTrackingPaginationTests
     }
 
     [TestMethod]
-    public async Task GetUserProfileListenStatsAsync_IncludesOlderRowsBeyondFirstPage()
+    public async Task GetUserProfileListenStatsAsync_MissingSnapshotMigration_IncludesOlderRowsBeyondFirstPage()
     {
         var handler = new PagedTrackingHandler
         {
@@ -136,7 +136,8 @@ public class SupabaseTrackingPaginationTests
             var query = request.RequestUri?.Query ?? string.Empty;
             var offset = ReadOffset(query);
 
-            if (path.EndsWith("/rest/v1/rpc/get_story_progress_snapshot", StringComparison.Ordinal))
+            if (path.EndsWith("/rest/v1/rpc/get_story_progress_snapshot", StringComparison.Ordinal) ||
+                path.EndsWith("/rest/v1/rpc/get_character_profile_listen_snapshot", StringComparison.Ordinal))
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
                 {

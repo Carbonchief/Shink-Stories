@@ -28,6 +28,9 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private readonly Grid _bottomBarOverlay;
     private readonly ContentView _bottomBarHost;
     private readonly CollectionView _charactersView;
+    private readonly MobileCharacterGalleryCollection _characterItems = new();
+    private (bool SignedIn, int Unlocked, int Total)? _renderedHeader;
+    private int _renderedCharacterCount = -1;
     private readonly GridItemsLayout _charactersGridLayout;
     private readonly RefreshView _refreshView;
     private readonly Grid _profileOverlay;
@@ -350,11 +353,31 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
     private void RenderCharacters(MobileCharactersResponse response)
     {
-        _charactersView.Header = BuildPageHeader(response);
-        _charactersView.ItemsSource = response.Characters;
-        _charactersView.Footer = response.Characters.Count == 0
-            ? BuildState("Geen karakters is nog beskikbaar nie.")
-            : new BoxView { HeightRequest = BottomBarContentInset, Color = Colors.Transparent };
+        var header = (response.IsSignedIn, response.UnlockedCount, response.TotalCount);
+        if (!IsAndroid || _renderedHeader != header)
+        {
+            _charactersView.Header = BuildPageHeader(response);
+            _renderedHeader = header;
+        }
+
+        if (IsAndroid)
+        {
+            _characterItems.Synchronize(response.Characters);
+            if (!ReferenceEquals(_charactersView.ItemsSource, _characterItems))
+                _charactersView.ItemsSource = _characterItems;
+        }
+        else
+        {
+            _charactersView.ItemsSource = response.Characters;
+        }
+
+        if (!IsAndroid || _renderedCharacterCount != response.Characters.Count)
+        {
+            _charactersView.Footer = response.Characters.Count == 0
+                ? BuildState("Geen karakters is nog beskikbaar nie.")
+                : new BoxView { HeightRequest = BottomBarContentInset, Color = Colors.Transparent };
+            _renderedCharacterCount = response.Characters.Count;
+        }
         ApplyResponsiveLayout();
     }
 
@@ -403,7 +426,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         }
 
         _charactersView.ItemsSource = Array.Empty<MobileCharacterCard>();
-        _charactersView.ItemsSource = _response.Characters;
+        _charactersView.ItemsSource = IsAndroid ? _characterItems : _response.Characters;
         _charactersView.Header = BuildPageHeader(_response);
     }
 
@@ -428,6 +451,8 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
     private void RenderLoadingState()
     {
+        _renderedHeader = null;
+        _renderedCharacterCount = -1;
         _charactersView.Header = new VerticalStackLayout
         {
             Padding = new Thickness(0, FloatingTopBarContentInset, 0, 16),
@@ -447,6 +472,8 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
     private void RenderState(string message, bool isError = false)
     {
+        _renderedHeader = null;
+        _renderedCharacterCount = -1;
         _charactersView.Header = new VerticalStackLayout
         {
             Padding = new Thickness(0, FloatingTopBarContentInset, 0, 16),

@@ -9,6 +9,10 @@ public interface IUserNotificationService
         bool history = false,
         CancellationToken cancellationToken = default);
 
+    Task<UserNotificationPageResult> GetNotificationSummaryAsync(
+        string? email, CancellationToken cancellationToken = default) =>
+        GetNotificationsAsync(email, take: 1, cancellationToken: cancellationToken);
+
     Task<NotificationSyncResult> SyncCharacterUnlockNotificationsAsync(
         string? email,
         string? storySlug = null,

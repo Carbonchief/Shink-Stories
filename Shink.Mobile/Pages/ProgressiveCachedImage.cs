@@ -222,6 +222,19 @@ internal sealed class ProgressiveCachedImage : Image
             return;
         }
 
+#if ANDROID
+        // RecyclerView can detach/reattach a cached cell without changing its
+        // artwork. A new FileImageSource for that same path makes MAUI restart
+        // the image request and invalidate measurement during the fling.
+        if (_hasDisplayedArtwork && Source is FileImageSource currentFile &&
+            source is FileImageSource nextFile &&
+            string.Equals(currentFile.File, nextFile.File, StringComparison.Ordinal))
+        {
+            Opacity = 1;
+            return;
+        }
+#endif
+
 #if IOS
         if (PrepareForScrolling && DeviceInfo.Current.Idiom == DeviceIdiom.Tablet &&
             source is FileImageSource fileSource && System.IO.Path.IsPathRooted(fileSource.File))

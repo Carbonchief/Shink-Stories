@@ -34,12 +34,21 @@ public sealed class SupabaseUserNotificationService(
     private const int MaxNotificationPageSize = 25;
     private const int NotificationInsertBatchSize = 200;
 
-    public async Task<UserNotificationPageResult> GetNotificationsAsync(
+    public Task<UserNotificationPageResult> GetNotificationsAsync(
         string? email,
         int take = DefaultNotificationPageSize,
         DateTimeOffset? before = null,
         bool history = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        GetNotificationPageAsync(email, take, before, history, includeItems: true, cancellationToken);
+
+    public Task<UserNotificationPageResult> GetNotificationSummaryAsync(
+        string? email, CancellationToken cancellationToken = default) =>
+        GetNotificationPageAsync(email, DefaultNotificationPageSize, null, false, includeItems: false, cancellationToken);
+
+    private async Task<UserNotificationPageResult> GetNotificationPageAsync(
+        string? email, int take, DateTimeOffset? before, bool history, bool includeItems,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -71,6 +80,34 @@ public sealed class SupabaseUserNotificationService(
 
             var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
             var pageSize = Math.Clamp(take, 1, MaxNotificationPageSize);
+            using var snapshotRequest = CreateJsonRequest(HttpMethod.Post,
+                new Uri(baseUri, "rest/v1/rpc/get_notification_page_snapshot"), apiKey,
+                new { p_subscriber_id = subscriberId, p_take = pageSize, p_before = before,
+                    p_history = history, p_include_items = includeItems }, "return=representation");
+            using var snapshotResponse = await _httpClient.SendAsync(snapshotRequest, cancellationToken);
+            if (snapshotResponse.IsSuccessStatusCode)
+            {
+                await using var snapshotStream = await snapshotResponse.Content.ReadAsStreamAsync(cancellationToken);
+                var snapshot = await JsonSerializer.DeserializeAsync<NotificationPageSnapshot>(snapshotStream, JsonOptions, cancellationToken)
+                    ?? throw new JsonException("Missing notification snapshot.");
+                return new UserNotificationPageResult(
+                    (snapshot.Notifications ?? []).Where(row => row.NotificationId != Guid.Empty).Select(MapNotification).ToArray(),
+                    snapshot.UnreadCount, snapshot.HasMore, snapshot.HasHistory);
+            }
+
+            var snapshotError = await snapshotResponse.Content.ReadAsStringAsync(cancellationToken);
+            if (snapshotResponse.StatusCode != HttpStatusCode.NotFound || !snapshotError.Contains("PGRST202", StringComparison.Ordinal))
+            {
+                _logger.LogWarning("Supabase notification snapshot failed. Status={StatusCode}", (int)snapshotResponse.StatusCode);
+                return EmptyNotificationPageResult;
+            }
+            _logger.LogWarning("Notification snapshot RPC is missing; apply the public_content_egress_followups migration.");
+            if (!includeItems)
+            {
+                var count = await GetNotificationCountAsync(baseUri, apiKey, escapedSubscriberId,
+                    unreadOnly: true, includeCleared: false, before: null, cancellationToken);
+                return new UserNotificationPageResult([], count, false, false);
+            }
             var unreadCount = await GetNotificationCountAsync(
                 baseUri,
                 apiKey,
@@ -843,7 +880,7 @@ public sealed class SupabaseUserNotificationService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/subscriber_notifications" +
-            "?on_conflict=subscriber_id,source_key");
+            "?on_conflict=subscriber_id,source_key&select=notification_id");
 
         using var request = CreateJsonRequest(
             HttpMethod.Post,
@@ -1709,4 +1746,12 @@ public sealed class SupabaseUserNotificationService(
         [JsonPropertyName("notification_id")]
         public Guid NotificationId { get; init; }
     }
+    private sealed class NotificationPageSnapshot
+    {
+        [JsonPropertyName("notifications")] public List<NotificationRow>? Notifications { get; set; }
+        [JsonPropertyName("unread_count")] public int UnreadCount { get; set; }
+        [JsonPropertyName("has_more")] public bool HasMore { get; set; }
+        [JsonPropertyName("has_history")] public bool HasHistory { get; set; }
+    }
+
 }

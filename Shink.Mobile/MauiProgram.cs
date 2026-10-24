@@ -22,6 +22,7 @@ public static class MauiProgram
                 fonts.AddFont("Poppins-Regular.ttf", "Poppins");
                 fonts.AddFont("Poppins-SemiBold.ttf", "PoppinsSemiBold");
                 fonts.AddFont("Poppins-Bold.ttf", "PoppinsBold");
+                fonts.AddFont("schink_onboarding_rounded.ttf", "SchinkOnboardingRounded");
             })
             .ConfigureMauiHandlers(handlers =>
             {
@@ -32,6 +33,8 @@ public static class MauiProgram
                 handlers.AddHandler<
                     Microsoft.Maui.Controls.CollectionView,
                     Microsoft.Maui.Controls.Handlers.Items.CollectionViewHandler>();
+
+                handlers.AddHandler<LuisterCarouselView, Shink.Mobile.Platforms.iOS.LuisterCarouselViewHandler>();
 
                 handlers.AddHandler<CastRoutePickerView, Shink.Mobile.Platforms.iOS.CastRoutePickerViewHandler>();
                 handlers.AddHandler<AppleSignInButton, Shink.Mobile.Platforms.iOS.AppleSignInButtonHandler>();
@@ -82,6 +85,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<StoryPlaybackSession>();
         builder.Services.AddSingleton<IOrientationService, OrientationService>();
         builder.Services.AddSingleton<AppShell>();
+        builder.Services.AddTransient<OnboardingPage>();
         builder.Services.AddTransient<HomePage>();
         builder.Services.AddTransient<GratisPage>();
         builder.Services.AddTransient<LuisterPage>();
@@ -211,7 +215,8 @@ public static class MauiProgram
             {
                 if (view is not CollectionView collectionView ||
                     handler.PlatformView is not AndroidX.RecyclerView.Widget.RecyclerView recyclerView ||
-                    collectionView.AutomationId is not ("luister-feed" or "luister-carousel" or "characters-grid"))
+                    collectionView.AutomationId is not ("luister-feed" or "luister-carousel" or "characters-grid"
+                        or "search-results" or "playlist-stories" or "playlist-tracks"))
                 {
                     return;
                 }
@@ -221,8 +226,15 @@ public static class MauiProgram
                 {
                     "luister-carousel" => 2,
                     "characters-grid" => 12,
+                    "playlist-tracks" => 12,
+                    "playlist-stories" => 16,
+                    "search-results" => 6,
                     _ => 8
                 });
+                // These lists fill a bounded page viewport. Retain nearby cells
+                // for direction reversals without treating their item heights as
+                // uniform or caching the complete catalogue.
+                recyclerView.HasFixedSize = true;
                 if (collectionView.AutomationId == "luister-carousel")
                 {
                     recyclerView.HasFixedSize = true;

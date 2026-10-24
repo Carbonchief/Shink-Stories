@@ -144,9 +144,10 @@ public sealed class CatalogRefreshTests
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Assert.AreEqual(HttpMethod.Get, request.Method, "Catalogue reads must not write data.");
+            var isListingRpc = request.RequestUri!.AbsolutePath.EndsWith("/rpc/get_story_catalogue_listing", StringComparison.Ordinal);
+            Assert.AreEqual(isListingRpc ? HttpMethod.Post : HttpMethod.Get, request.Method);
             Assert.AreEqual("example.supabase.co", request.RequestUri!.Host);
-            _counts.AddOrUpdate(request.RequestUri.Segments[^1], 1, (_, count) => count + 1);
+            _counts.AddOrUpdate(isListingRpc ? "stories" : request.RequestUri.Segments[^1], 1, (_, count) => count + 1);
             await Release.Task.WaitAsync(cancellationToken);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {

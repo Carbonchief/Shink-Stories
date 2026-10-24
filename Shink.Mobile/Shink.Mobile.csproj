@@ -5,7 +5,9 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>Shink.Mobile</RootNamespace>
     <UseMaui>true</UseMaui>
-    <MauiVersion>10.0.100</MauiVersion>
+    <!-- Servicing fixes include Android grid spacing (dotnet/maui#38925)
+         and iOS scrolling/layout fixes. Keep the stable iOS collection handler. -->
+    <MauiVersion>10.0.120</MauiVersion>
     <SingleProject>true</SingleProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -15,7 +17,7 @@
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
     <ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
-		<ApplicationVersion>35</ApplicationVersion>
+		<ApplicationVersion>37</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' == 'true'">24.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' != 'true'">21.0</SupportedOSPlatformVersion>
@@ -97,11 +99,16 @@
               Alias="PoppinsSemiBold" />
     <MauiFont Include="../Shink/wwwroot/fonts/poppins/Poppins-Bold.ttf"
               Alias="PoppinsBold" />
+    <MauiFont Include="Resources/Fonts/schink_onboarding_rounded.ttf"
+              Alias="SchinkOnboardingRounded" />
+    <MauiAsset Include="Resources/Fonts/Nunito-OFL.txt" LogicalName="font-licenses/Nunito-OFL.txt" />
     <MauiSplashScreen Include="Resources/Splash/schink_stories_logo_white.png"
                       Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'"
                       Color="#13AFC1"
                       BaseSize="320,140" />
     <MauiImage Include="Resources/Images/*" />
+    <MauiImage Update="Resources/Images/paywall_*.png" Resize="False" />
+    <MauiImage Update="Resources/Images/schink_onboarding_*.jpg" Resize="False" />
     <MauiImage Include="Resources/Splash/schink_stories_full_splash.png"
                Link="Resources/Images/schink_stories_full_splash_runtime.png"
                Resize="False" />

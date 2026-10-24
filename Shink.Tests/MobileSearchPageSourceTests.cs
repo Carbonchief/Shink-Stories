@@ -89,7 +89,13 @@ public sealed class MobileSearchPageSourceTests
         var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "SearchPage.cs"));
 
         Assert.DoesNotContain("Sien opsies", source, StringComparison.Ordinal);
-        StringAssert.Contains(source, "if (!story.IsLocked)");
+        StringAssert.Contains(source, "_listenAction.IsVisible = !story.IsLocked;");
+        StringAssert.Contains(source, "Content = new ReusableSearchResultCardView(this)");
+        Assert.DoesNotContain("container.Content = BuildResultCard(", source, StringComparison.Ordinal);
+        var bindStart = source.IndexOf("public void Bind(StorySearchCandidate candidate)", StringComparison.Ordinal);
+        var clearStart = source.IndexOf("public void Clear()", bindStart, StringComparison.Ordinal);
+        Assert.DoesNotContain("AutomationId =", source[bindStart..clearStart], StringComparison.Ordinal,
+            "MAUI AutomationId is immutable; changing it during recycling crashes the list.");
         StringAssert.Contains(source, "Text = \"Luister\"");
         Assert.AreEqual(2, source.Split("LineBreakMode = LineBreakMode.WordWrap", StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("LineBreakMode = LineBreakMode.TailTruncation", source, StringComparison.Ordinal);

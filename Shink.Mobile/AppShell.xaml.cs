@@ -6,11 +6,12 @@ namespace Shink.Mobile;
 
 public partial class AppShell : Shell
 {
+    private const string OnboardingCompletedPreferenceKey = "mobile_onboarding_completed_v1";
     private readonly IServiceProvider _services;
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly MobileAnalyticsService _analytics;
-    private bool? _isSignedInRendered;
+    private string? _renderedShellState;
     private bool _isInitializing;
     private bool _isRendering;
     private bool _hasCheckedSession;
@@ -43,9 +44,8 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(KarakterRaaiGamePage), typeof(KarakterRaaiGamePage));
         Routing.RegisterRoute(nameof(KennisgewingsPage), typeof(KennisgewingsPage));
 
-        _sessionState.Changed += _ => MainThread.BeginInvokeOnMainThread(RenderShellFromSessionState);
+        _sessionState.Changed += _ => MainThread.BeginInvokeOnMainThread(() => RenderShellFromSessionState());
         Navigated += OnShellNavigated;
-        _isSignedInRendered = null;
         RenderShellFromSessionState();
         _ = _sessionState.HydrateSensitiveCacheAsync();
         _ = _apiClient.MaintainImageCacheAsync();
@@ -89,14 +89,17 @@ public partial class AppShell : Shell
         RenderShellFromSessionState();
     }
 
-    private void RenderShellFromSessionState()
+    private void RenderShellFromSessionState(bool openSignIn = false)
     {
         if (_isRendering)
         {
             return;
         }
 
-        if (_isSignedInRendered == _sessionState.Current.IsSignedIn)
+        var isSignedIn = _sessionState.Current.IsSignedIn;
+        var hasCompletedOnboarding = Preferences.Default.Get(OnboardingCompletedPreferenceKey, false);
+        var shellState = isSignedIn ? "signed_in" : hasCompletedOnboarding ? "signed_out" : "onboarding";
+        if (_renderedShellState == shellState)
         {
             return;
         }
@@ -104,24 +107,27 @@ public partial class AppShell : Shell
         _isRendering = true;
         try
         {
-            if (_sessionState.Current.IsSignedIn)
+            if (isSignedIn)
             {
+                // Existing accounts should not see first-run onboarding after
+                // a later sign-out, including when upgrading to this version.
+                if (!hasCompletedOnboarding)
+                    Preferences.Default.Set(OnboardingCompletedPreferenceKey, true);
                 BuildSignedInShell();
-                _isSignedInRendered = true;
-                _analytics.TrackEvent("mobile_shell_rendered", new Dictionary<string, object>
-                {
-                    ["shell_state"] = "signed_in"
-                });
+            }
+            else if (shellState == "onboarding")
+            {
+                BuildOnboardingShell();
             }
             else
             {
-                BuildSignedOutShell();
-                _isSignedInRendered = false;
-                _analytics.TrackEvent("mobile_shell_rendered", new Dictionary<string, object>
-                {
-                    ["shell_state"] = "signed_out"
-                });
+                BuildSignedOutShell(openSignIn);
             }
+            _renderedShellState = shellState;
+            _analytics.TrackEvent("mobile_shell_rendered", new Dictionary<string, object>
+            {
+                ["shell_state"] = shellState
+            });
         }
         finally
         {
@@ -129,29 +135,50 @@ public partial class AppShell : Shell
         }
     }
 
-    private void BuildSignedOutShell()
+    private void BuildOnboardingShell()
     {
-        if (_isSignedInRendered == false)
+        Items.Clear();
+        Items.Add(new ShellContent
         {
-            return;
-        }
+            Title = "Welkom",
+            Route = "Onboarding",
+            ContentTemplate = new DataTemplate(() =>
+            {
+                var page = _services.GetRequiredService<OnboardingPage>();
+                page.Completed += OnOnboardingCompleted;
+                return page;
+            })
+        });
+    }
 
+    private void OnOnboardingCompleted(object? sender, EventArgs args)
+    {
+        var openSignIn = sender is OnboardingPage { OpenSignInOnCompletion: true };
+        if (sender is OnboardingPage page)
+            page.Completed -= OnOnboardingCompleted;
+
+        Preferences.Default.Set(OnboardingCompletedPreferenceKey, true);
+        RenderShellFromSessionState(openSignIn);
+    }
+
+    private void BuildSignedOutShell(bool openSignIn)
+    {
         Items.Clear();
         Items.Add(new ShellContent
         {
             Title = "Teken in",
-            ContentTemplate = new DataTemplate(() => _services.GetRequiredService<AccountPage>())
+            ContentTemplate = new DataTemplate(() =>
+            {
+                var page = _services.GetRequiredService<AccountPage>();
+                if (openSignIn)
+                    page.ShowSignIn();
+                return page;
+            })
         });
-        _isSignedInRendered = false;
     }
 
     private void BuildSignedInShell()
     {
-        if (_isSignedInRendered == true)
-        {
-            return;
-        }
-
         Items.Clear();
         Items.Add(new ShellContent
         {
@@ -167,7 +194,6 @@ public partial class AppShell : Shell
         };
         Shell.SetFlyoutItemIsVisible(karaktersContent, false);
         Items.Add(karaktersContent);
-        _isSignedInRendered = true;
     }
 
     private void OnShellNavigated(object? sender, ShellNavigatedEventArgs args)

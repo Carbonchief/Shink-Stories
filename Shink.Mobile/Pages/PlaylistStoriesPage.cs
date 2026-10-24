@@ -55,6 +55,8 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
     private readonly GridItemsLayout _storiesLayout;
     private readonly CollectionView _storiesView;
     private MobilePlaylist? _playlist;
+    private readonly MobileStoryAccessRefresh _accessRefresh = new();
+    private CancellationTokenSource? _accessRefreshCancellation;
     private Border? _hero;
     private Color _pageTextColor = DefaultTextColor;
     private double _lastPageWidth;
@@ -88,6 +90,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
 
         _storiesView = new CollectionView
         {
+            AutomationId = "playlist-stories",
             BackgroundColor = Colors.Transparent,
             ItemsSource = _stories,
             SelectionMode = SelectionMode.None,
@@ -123,18 +126,53 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         if (query.TryGetValue("playlist", out var value) && value is MobilePlaylist playlist)
         {
             SetPlaylist(playlist);
+            _accessRefresh.MarkRefreshed(_sessionState.Current);
         }
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
+        _accessRefreshCancellation = new CancellationTokenSource();
+        _sessionState.Changed += OnAccessSessionChanged;
+        _ = RefreshStoryAccessAsync();
         if (_playlist is not null)
             _analytics.TrackEvent("mobile_playlist_viewed", new Dictionary<string, object>
             {
                 ["playlist_slug"] = _playlist.Slug,
                 ["story_count"] = _playlist.Stories.Count
             });
+    }
+
+    protected override void OnDisappearing()
+    {
+        _sessionState.Changed -= OnAccessSessionChanged;
+        _accessRefreshCancellation?.Cancel();
+        _accessRefreshCancellation?.Dispose();
+        _accessRefreshCancellation = null;
+        base.OnDisappearing();
+    }
+
+    private void OnAccessSessionChanged(MobileSession session) =>
+        MainThread.BeginInvokeOnMainThread(() => _ = RefreshStoryAccessAsync());
+
+    private async Task RefreshStoryAccessAsync()
+    {
+        if (_playlist is null || _accessRefreshCancellation is null) return;
+        try
+        {
+            await _accessRefresh.RefreshAsync(
+                () => _sessionState.Current,
+                token => _apiClient.GetLuisterAsync(token),
+                response =>
+                {
+                    if (MobileStoryAccessRefresh.FindPlaylist(response, _playlist.Slug) is { } playlist)
+                        SetPlaylist(playlist);
+                },
+                _accessRefreshCancellation.Token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { _analytics.TrackRecoverableFailure(ex, "mobile_playlist_access_refresh"); }
     }
 
     protected override void OnSizeAllocated(double width, double height)
@@ -168,21 +206,26 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         _playlist = playlist;
         var appearance = ResolveShowcaseAppearance(playlist);
         _pageTextColor = appearance.FontColor;
-        var pageBackground = new LinearGradientBrush(
-            [
-                new GradientStop(appearance.BackgroundStartColor, 0),
-                new GradientStop(appearance.BackgroundEndColor, 1)
-            ],
-            new Point(0, 0),
-            new Point(0, 1));
+        Brush pageBackground = appearance.BackgroundStartColor.Equals(appearance.BackgroundEndColor)
+            ? new SolidColorBrush(appearance.BackgroundStartColor)
+            : new LinearGradientBrush(
+                [
+                    new GradientStop(appearance.BackgroundStartColor, 0),
+                    new GradientStop(appearance.BackgroundEndColor, 1)
+                ],
+                new Point(0, 0),
+                new Point(0, 1));
         Background = pageBackground;
-        _storiesView.Background = pageBackground;
+        // The transparent list already shows the page background. Painting the
+        // same full-screen brush here doubles overdraw on every scrolling frame.
         _stories.Clear();
         foreach (var story in playlist.Stories)
         {
             _stories.Add(new StoryCardItem(
                 story,
-                PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg")));
+                IsAndroid
+                    ? PageHelpers.BuildStoryCardImageRequest(story, _apiClient, "schink_background.jpeg")
+                    : PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg")));
         }
 
         _storiesView.Header = BuildHeader(playlist, appearance);

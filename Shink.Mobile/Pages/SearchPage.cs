@@ -40,6 +40,8 @@ public sealed class SearchPage : ContentPage
     private bool _isPageActive;
     private bool _hasLoadedCatalog;
     private bool _isLoadingCatalog;
+    private readonly MobileStoryAccessRefresh _accessRefresh = new();
+    private CancellationTokenSource? _accessRefreshCancellation;
     private double _resultsScrollOffset;
     private int _revealGeneration;
 
@@ -128,6 +130,7 @@ public sealed class SearchPage : ContentPage
         _searchFieldOverlay = BuildSearchFieldOverlay();
         _resultsView = new CollectionView
         {
+            AutomationId = "search-results",
             Background = Brush.Transparent,
             Header = _searchHeader,
             ItemsSource = _visibleResults,
@@ -246,17 +249,27 @@ public sealed class SearchPage : ContentPage
     {
         base.OnAppearing();
         _isPageActive = true;
+        _accessRefreshCancellation = new CancellationTokenSource();
+        _sessionState.Changed += OnAccessSessionChanged;
         _topBarHost.Content = BuildTopBar();
         ScheduleStickySearchFieldPositionUpdate();
         if (!_hasLoadedCatalog && !_isLoadingCatalog)
         {
             _ = LoadCatalogAsync();
         }
+        else if (!_isLoadingCatalog)
+        {
+            _ = RefreshStoryAccessAsync();
+        }
     }
 
     protected override void OnDisappearing()
     {
         _isPageActive = false;
+        _sessionState.Changed -= OnAccessSessionChanged;
+        _accessRefreshCancellation?.Cancel();
+        _accessRefreshCancellation?.Dispose();
+        _accessRefreshCancellation = null;
         _searchCancellation?.Cancel();
         _loadCancellation?.Cancel();
         base.OnDisappearing();
@@ -497,6 +510,7 @@ public sealed class SearchPage : ContentPage
         _loadCancellation?.Dispose();
         _loadCancellation = new CancellationTokenSource();
         var cancellationToken = _loadCancellation.Token;
+        var shouldRefreshAccess = false;
         UpdateSearchActivity();
 
         try
@@ -512,12 +526,16 @@ public sealed class SearchPage : ContentPage
                 }
             }
 
+            var requestedSession = _sessionState.Current;
             var response = await _apiClient.GetLuisterAsync(cancellationToken);
             if (response is null || cancellationToken.IsCancellationRequested)
             {
                 return;
             }
 
+            shouldRefreshAccess = true;
+            if (!MobileStoryAccessRefresh.HasSameAccess(requestedSession, _sessionState.Current)) return;
+            _accessRefresh.MarkRefreshed(requestedSession);
             _catalog = BuildSearchCatalog(response);
             _hasLoadedCatalog = true;
             await MainThread.InvokeOnMainThreadAsync(RenderSearchResults);
@@ -537,7 +555,32 @@ public sealed class SearchPage : ContentPage
         {
             _isLoadingCatalog = false;
             await MainThread.InvokeOnMainThreadAsync(UpdateSearchActivity);
+            if (_isPageActive && (shouldRefreshAccess || cancellationToken.IsCancellationRequested))
+                await RefreshStoryAccessAsync();
         }
+    }
+
+    private void OnAccessSessionChanged(MobileSession session) =>
+        MainThread.BeginInvokeOnMainThread(() => _ = RefreshStoryAccessAsync());
+
+    private async Task RefreshStoryAccessAsync()
+    {
+        if (!_isPageActive || _isLoadingCatalog || _accessRefreshCancellation is null) return;
+        try
+        {
+            await _accessRefresh.RefreshAsync(
+                () => _sessionState.Current,
+                token => _apiClient.GetLuisterAsync(token),
+                response =>
+                {
+                    _catalog = BuildSearchCatalog(response);
+                    _hasLoadedCatalog = true;
+                    RenderSearchResults();
+                },
+                _accessRefreshCancellation.Token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { _analytics.TrackRecoverableFailure(ex, "mobile_search_access_refresh"); }
     }
 
     private void QueueSearch()
@@ -636,7 +679,8 @@ public sealed class SearchPage : ContentPage
         {
             Padding = new Thickness(22, 0),
             MaximumWidthRequest = 760,
-            HorizontalOptions = LayoutOptions.Fill
+            HorizontalOptions = LayoutOptions.Fill,
+            Content = new ReusableSearchResultCardView(this)
         };
         container.BindingContextChanged += (_, _) => BindResultContainer(container);
         container.Loaded += (_, _) =>
@@ -657,11 +701,11 @@ public sealed class SearchPage : ContentPage
         container.Scale = 1;
         if (container.BindingContext is not StorySearchResult result)
         {
-            container.Content = null;
+            ((ReusableSearchResultCardView)container.Content!).Clear();
             return;
         }
 
-        container.Content = BuildResultCard(result.Candidate);
+        ((ReusableSearchResultCardView)container.Content!).Bind(result.Candidate);
         if (IsAndroid || !container.IsLoaded)
         {
             return;
@@ -713,122 +757,151 @@ public sealed class SearchPage : ContentPage
         }
     }
 
-    private View BuildResultCard(StorySearchCandidate candidate)
+    private sealed class ReusableSearchResultCardView : ContentView
     {
-        var story = candidate.Story;
-        var artwork = new Border
+        private readonly SearchPage _owner;
+        private readonly ProgressiveCachedImage _image;
+        private readonly Label _kind;
+        private readonly Label _title;
+        private readonly Label _description;
+        private readonly Border _listenAction;
+        private StorySearchCandidate? _candidate;
+
+        public ReusableSearchResultCardView(SearchPage owner)
         {
-            WidthRequest = 94,
-            HeightRequest = 124,
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 14 },
-            Content = new ProgressiveCachedImage(
-                _apiClient,
-                PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg"))
+            _owner = owner;
+            _image = new ProgressiveCachedImage(owner._apiClient)
             {
                 Aspect = Aspect.AspectFill,
                 WidthRequest = 94,
                 HeightRequest = 124
-            }
-        };
-
-        var details = new VerticalStackLayout
-        {
-            Spacing = 4,
-            VerticalOptions = LayoutOptions.Center,
-            Children =
+            };
+            var artwork = new Border
             {
-                new Label
-                {
-                    Text = candidate.Kind,
-                    FontFamily = PoppinsBoldFontFamily,
-                    FontSize = 10,
-                    CharacterSpacing = 1.1,
-                    TextTransform = TextTransform.Uppercase,
-                    TextColor = Color.FromArgb("#687472")
-                },
-                new Label
-                {
-                    Text = story.Title,
-                    FontFamily = PoppinsBoldFontFamily,
-                    FontSize = 18,
-                    TextColor = Color.FromArgb("#113D4D"),
-                    MaxLines = 2,
-                    LineBreakMode = LineBreakMode.WordWrap,
-                    LineHeight = 1.08
-                },
-                new Label
-                {
-                    Text = story.Description,
-                    FontFamily = PoppinsFontFamily,
-                    FontSize = 12,
-                    TextColor = Color.FromArgb("#394847"),
-                    MaxLines = 2,
-                    LineBreakMode = LineBreakMode.WordWrap,
-                    LineHeight = 1.08
-                }
-            }
-        };
+                WidthRequest = 94,
+                HeightRequest = 124,
+                StrokeThickness = 0,
+                StrokeShape = new RoundRectangle { CornerRadius = 14 },
+                Content = _image
+            };
 
-        if (!story.IsLocked)
-        {
+            _kind = new Label
+            {
+                FontFamily = PoppinsBoldFontFamily,
+                FontSize = 10,
+                CharacterSpacing = 1.1,
+                TextTransform = TextTransform.Uppercase,
+                TextColor = Color.FromArgb("#687472")
+            };
+            _title = new Label
+            {
+                FontFamily = PoppinsBoldFontFamily,
+                FontSize = 18,
+                TextColor = Color.FromArgb("#113D4D"),
+                MaxLines = 2,
+                LineBreakMode = LineBreakMode.WordWrap,
+                LineHeight = 1.08
+            };
+            _description = new Label
+            {
+                FontFamily = PoppinsFontFamily,
+                FontSize = 12,
+                TextColor = Color.FromArgb("#394847"),
+                MaxLines = 2,
+                LineBreakMode = LineBreakMode.WordWrap,
+                LineHeight = 1.08
+            };
+            var details = new VerticalStackLayout
+            {
+                Spacing = 4,
+                VerticalOptions = LayoutOptions.Center,
+                Children = { _kind, _title, _description }
+            };
+
             details.Children.Add(
-                new Border
-                {
-                    BackgroundColor = Color.FromArgb("#F39A32"),
-                    StrokeThickness = 0,
-                    StrokeShape = new RoundRectangle { CornerRadius = 999 },
-                    Padding = new Thickness(12, 5),
-                    Margin = new Thickness(0, 3, 0, 0),
-                    HorizontalOptions = LayoutOptions.Start,
-                    Content = new Label
+                    _listenAction = new Border
                     {
-                        Text = "Luister",
-                        FontFamily = PoppinsBoldFontFamily,
-                        FontSize = 11,
-                        TextColor = Color.FromArgb("#1E1E1E"),
-                        InputTransparent = true
-                    }
-                });
+                        BackgroundColor = Color.FromArgb("#F39A32"),
+                        StrokeThickness = 0,
+                        StrokeShape = new RoundRectangle { CornerRadius = 999 },
+                        Padding = new Thickness(12, 5),
+                        Margin = new Thickness(0, 3, 0, 0),
+                        HorizontalOptions = LayoutOptions.Start,
+                        Content = new Label
+                        {
+                            Text = "Luister",
+                            FontFamily = PoppinsBoldFontFamily,
+                            FontSize = 11,
+                            TextColor = Color.FromArgb("#1E1E1E"),
+                            InputTransparent = true
+                        }
+                    });
+
+            var content = new Grid
+            {
+                ColumnSpacing = 14,
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = GridLength.Auto },
+                    new ColumnDefinition { Width = GridLength.Star }
+                },
+                Children = { artwork, details }
+            };
+            Grid.SetColumn(details, 1);
+
+            var card = new Border
+            {
+                BackgroundColor = Color.FromArgb("#FFFDF8"),
+                Stroke = Color.FromArgb("#D5DCD7"),
+                StrokeThickness = 1,
+                StrokeShape = new RoundRectangle { CornerRadius = 20 },
+                Padding = 12,
+                MaximumWidthRequest = 716,
+                HorizontalOptions = LayoutOptions.Center,
+                Content = content,
+                Shadow = IsAndroid
+                    ? null!
+                    : new Shadow
+                    {
+                        Brush = Brush.Black,
+                        Offset = new Point(0, 7),
+                        Radius = 18,
+                        Opacity = 0.13f
+                    },
+                AutomationId = "story-search-result"
+            };
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += async (_, _) =>
+            {
+                if (_candidate is { } candidate)
+                    await owner.OpenStoryAsync(candidate);
+            };
+            card.GestureRecognizers.Add(tap);
+            Content = card;
         }
 
-        var content = new Grid
+        public void Bind(StorySearchCandidate candidate)
         {
-            ColumnSpacing = 14,
-            ColumnDefinitions =
-            {
-                new ColumnDefinition { Width = GridLength.Auto },
-                new ColumnDefinition { Width = GridLength.Star }
-            },
-            Children = { artwork, details }
-        };
-        Grid.SetColumn(details, 1);
+            IsVisible = true;
+            if (ReferenceEquals(_candidate, candidate)) return;
+            _candidate = candidate;
+            var story = candidate.Story;
+            _image.Request = PageHelpers.BuildStoryImageRequest(story, _owner._apiClient, "schink_background.jpeg");
+            _kind.Text = candidate.Kind;
+            _title.Text = story.Title;
+            _description.Text = story.Description;
+            _listenAction.IsVisible = !story.IsLocked;
+            // AutomationId is immutable in MAUI. The cell is reused for other
+            // stories, so only its accessible description follows the item.
+            SemanticProperties.SetDescription(Content!, story.Title);
+        }
 
-        var card = new Border
+        public void Clear()
         {
-            BackgroundColor = Color.FromArgb("#FFFDF8"),
-            Stroke = Color.FromArgb("#D5DCD7"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 20 },
-            Padding = 12,
-            MaximumWidthRequest = 716,
-            HorizontalOptions = LayoutOptions.Center,
-            Content = content,
-            Shadow = IsAndroid
-                ? null!
-                : new Shadow
-                {
-                    Brush = Brush.Black,
-                    Offset = new Point(0, 7),
-                    Radius = 18,
-                    Opacity = 0.13f
-                },
-            AutomationId = $"story-search-result-{story.Slug}"
-        };
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) => await OpenStoryAsync(candidate);
-        card.GestureRecognizers.Add(tap);
-        return card;
+            _candidate = null;
+            _image.Request = null;
+            IsVisible = false;
+        }
     }
 
     private async Task OpenStoryAsync(StorySearchCandidate candidate)

@@ -56,6 +56,8 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     private bool _isPlaybackEventSubscribed;
     private bool _isSummaryExpanded;
     private bool _autoplayAfterLoad;
+    private readonly MobileStoryAccessRefresh _accessRefresh = new();
+    private CancellationTokenSource? _accessRefreshCancellation;
     private bool _isPlaybackRequestInFlight;
     private bool _isProgressScrubbing;
     private bool _isUpdatingProgressSlider;
@@ -86,6 +88,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
         _trackList = new CollectionView
         {
+            AutomationId = "playlist-tracks",
             BackgroundColor = Colors.Transparent,
             ItemsSource = _tracks,
             SelectionMode = SelectionMode.None,
@@ -114,6 +117,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         if (query.TryGetValue("playlist", out var value) && value is MobilePlaylist playlist)
         {
             SetPlaylist(playlist);
+            _accessRefresh.MarkRefreshed(_sessionState.Current);
         }
     }
 
@@ -121,6 +125,9 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     {
         base.OnAppearing();
         _isPageActive = true;
+        _accessRefreshCancellation = new CancellationTokenSource();
+        _sessionState.Changed += OnAccessSessionChanged;
+        _ = RefreshStoryAccessAsync();
         if (_playlist is not null)
             TrackPlaylistEvent("mobile_playlist_player_opened");
         SubscribePlaybackEvents();
@@ -133,6 +140,10 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     protected override void OnDisappearing()
     {
         _isPageActive = false;
+        _sessionState.Changed -= OnAccessSessionChanged;
+        _accessRefreshCancellation?.Cancel();
+        _accessRefreshCancellation?.Dispose();
+        _accessRefreshCancellation = null;
         _loadCts?.Cancel();
         StopProgressTimer();
         UnsubscribePlaybackEvents();
@@ -141,14 +152,38 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         base.OnDisappearing();
     }
 
+    private void OnAccessSessionChanged(MobileSession session) =>
+        MainThread.BeginInvokeOnMainThread(() => _ = RefreshStoryAccessAsync());
+
+    private async Task RefreshStoryAccessAsync()
+    {
+        if (_playlist is null || !_isPageActive || _accessRefreshCancellation is null) return;
+        try
+        {
+            await _accessRefresh.RefreshAsync(
+                () => _sessionState.Current,
+                token => _apiClient.GetLuisterAsync(token),
+                response =>
+                {
+                    if (MobileStoryAccessRefresh.FindPlaylist(response, _playlist.Slug) is { } playlist)
+                        SetPlaylist(playlist);
+                },
+                _accessRefreshCancellation.Token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { _analytics.TrackRecoverableFailure(ex, "mobile_playlist_player_access_refresh"); }
+    }
+
     private void SetPlaylist(MobilePlaylist playlist)
     {
-        var requestedStory = playlist.Stories.FirstOrDefault(_storyPlaybackSession.IsCurrentStory)
+        _loadCts?.Cancel();
+        var requestedStory = playlist.Stories.FirstOrDefault(story => SameStory(story, _currentStory))
+            ?? playlist.Stories.FirstOrDefault(_storyPlaybackSession.IsCurrentStory)
             ?? playlist.Stories.FirstOrDefault(story => !story.IsLocked)
             ?? playlist.Stories.FirstOrDefault();
         _playlistPlaybackState.Set(playlist, requestedStory);
         _playlist = _playlistPlaybackState.CurrentPlaylist ?? playlist;
-        _currentStory = _playlist.Stories.FirstOrDefault(_storyPlaybackSession.IsCurrentStory)
+        _currentStory = _playlist.Stories.FirstOrDefault(story => SameStory(story, requestedStory))
             ?? _playlist.Stories.FirstOrDefault(story => !story.IsLocked)
             ?? _playlist.Stories.FirstOrDefault();
         _currentDetail = null;
@@ -431,6 +466,8 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
             WidthRequest = 50,
             HeightRequest = 50,
             CornerRadius = 25,
+            // Clip the gradient too; native button corner rounding can leave it square in dark mode.
+            Clip = new EllipseGeometry { Center = new Point(25, 25), RadiusX = 25, RadiusY = 25 },
             Padding = 0
         };
         SemanticProperties.SetDescription(_playButton, "Speel of pouse storie");

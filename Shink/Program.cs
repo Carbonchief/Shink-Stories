@@ -174,11 +174,14 @@ builder.Services.AddHttpClient("audio-origin", client =>
     client.Timeout = TimeSpan.FromMinutes(30);
 });
 builder.Services.AddHttpClient("supabase-error-logs").WithSupabaseResponseCompression();
+builder.Services.AddHttpClient("supabase-content-versions", client => client.Timeout = TimeSpan.FromSeconds(3)).WithSupabaseResponseCompression();
+builder.Services.AddSingleton<IPublicContentVersions, SupabasePublicContentVersions>();
+builder.Services.AddTransient<SupabasePublicContentCacheHandler>();
 builder.Services.AddHttpClient<IContactEmailService, ResendContactEmailService>();
 builder.Services.AddHttpClient<ISupabaseAuthService, SupabaseAuthService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IAuthSessionService, SupabaseAuthSessionService>().WithSupabaseResponseCompression();
-builder.Services.AddHttpClient<IStoryCatalogService, SupabaseStoryCatalogService>().WithSupabaseResponseCompression();
-builder.Services.AddHttpClient<IStoreProductCatalogService, SupabaseStoreProductCatalogService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IStoryCatalogService, SupabaseStoryCatalogService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
+builder.Services.AddHttpClient<IStoreProductCatalogService, SupabaseStoreProductCatalogService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
 builder.Services.AddHttpClient<PayFastCheckoutService>();
 builder.Services.AddHttpClient<PaystackCheckoutService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<PaystackAuthorizationRetryBatchService>().WithSupabaseResponseCompression();
@@ -197,21 +200,21 @@ builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingServi
 builder.Services.AddHttpClient<IEngagementTrackingService, SupabaseEngagementTrackingService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<ISubscriberPlaylistService, SupabaseSubscriberPlaylistService>().WithSupabaseResponseCompression();
-builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IReferralService, SupabaseReferralService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<ISchoolManagementService, SupabaseSchoolManagementService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IWordPressMigrationService, WordPressMigrationService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IResourceDocumentPreviewBackfillService, SupabaseResourceDocumentPreviewBackfillService>().WithSupabaseResponseCompression();
-builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>().WithSupabaseResponseCompression();
-builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>().WithSupabaseResponseCompression();
-builder.Services.AddHttpClient<ICharacterTrackingService, SupabaseCharacterService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
+builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
+builder.Services.AddHttpClient<ICharacterTrackingService, SupabaseCharacterService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
 builder.Services.AddSingleton<IBlogContentRenderer, BlogContentRenderer>();
-builder.Services.AddHttpClient<IBlogCatalogService, SupabaseBlogService>().WithSupabaseResponseCompression();
-builder.Services.AddHttpClient<IBlogAdminService, SupabaseBlogService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IBlogCatalogService, SupabaseBlogService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
+builder.Services.AddHttpClient<IBlogAdminService, SupabaseBlogService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
 builder.Services.AddScoped<LandingPageContentValidator>();
-builder.Services.AddHttpClient<ILandingPageAdminService, SupabaseLandingPageService>().WithSupabaseResponseCompression();
-builder.Services.AddHttpClient<ILandingPageCatalogService, SupabaseLandingPageService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<ILandingPageAdminService, SupabaseLandingPageService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
+builder.Services.AddHttpClient<ILandingPageCatalogService, SupabaseLandingPageService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
 builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificationService>().WithSupabaseResponseCompression();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 if (builder.Configuration.GetValue("BackgroundJobs:Enabled", true))
@@ -3425,6 +3428,7 @@ app.MapGet("/api/notifications", async (
     int? limit,
     DateTimeOffset? before,
     bool? history,
+    bool? summary,
     HttpContext httpContext) =>
 {
     if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
@@ -3434,12 +3438,10 @@ app.MapGet("/api/notifications", async (
 
     var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
                        ?? httpContext.User.Identity?.Name;
-    var notificationPage = await userNotificationService.GetNotificationsAsync(
-        signedInEmail,
-        limit ?? 10,
-        before,
-        history ?? false,
-        httpContext.RequestAborted);
+    var notificationPage = summary == true
+        ? await userNotificationService.GetNotificationSummaryAsync(signedInEmail, httpContext.RequestAborted)
+        : await userNotificationService.GetNotificationsAsync(
+            signedInEmail, limit ?? 10, before, history ?? false, httpContext.RequestAborted);
 
     return Results.Ok(new
     {

@@ -126,7 +126,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "private async Task TriggerRefreshAsync()");
         StringAssert.Contains(luisterPage, "_loadCancellation?.Cancel();");
         StringAssert.Contains(luisterPage, "_loadCancellation = new CancellationTokenSource();");
-        StringAssert.Contains(luisterPage, "var cancellationToken = _loadCancellation.Token;");
+        StringAssert.Contains(luisterPage, "var loadCancellation = _loadCancellation;");
+        StringAssert.Contains(luisterPage, "var cancellationToken = loadCancellation.Token;");
+        StringAssert.Contains(luisterPage, "if (ReferenceEquals(_loadCancellation, loadCancellation))");
         StringAssert.Contains(luisterPage, "await MainThread.InvokeOnMainThreadAsync(() =>");
         StringAssert.Contains(luisterPage, "_refreshView.IsRefreshing = false");
         StringAssert.Contains(luisterPage, "if (cancellationToken.IsCancellationRequested || !_isPageActive)");
@@ -572,7 +574,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(client, "private sealed record MobileLuisterCacheEntry(DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);");
 
         StringAssert.Contains(luisterPage, "await LoadAsync();");
-        StringAssert.Contains(luisterPage, "var renderedCachedData = !forceRefresh && await TryRenderCachedLuisterAsync(cancellationToken);");
+        StringAssert.Contains(luisterPage, "var renderedCachedData = false;");
+        StringAssert.Contains(luisterPage, "renderedCachedData = !forceRefresh && await TryRenderCachedLuisterAsync(cancellationToken);");
         StringAssert.Contains(luisterPage, "if (!renderedCachedData)");
         StringAssert.Contains(luisterPage, "private async Task<bool> TryRenderCachedLuisterAsync(CancellationToken cancellationToken)");
         StringAssert.Contains(luisterPage, "var cachedResponse = await _apiClient.GetCachedLuisterAsync(cancellationToken);");
@@ -643,7 +646,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(models, "decimal? DurationSeconds");
         StringAssert.Contains(storyDetail, "StoryPlaybackSession _storyPlaybackSession");
         StringAssert.Contains(storyDetail, "await _storyPlaybackSession.PlayAsync(");
-        StringAssert.Contains(playbackSession, "await _audioPlaybackService.PlayAsync(");
+        StringAssert.Contains(playbackSession, "await PlayAudioWithRetryAsync(");
+        StringAssert.Contains(playbackSession, "AudioPlaybackRetry.PlayAsync(playbackUrl,");
+        StringAssert.Contains(playbackSession, "url => _audioPlaybackService.PlayAsync(url,");
         StringAssert.Contains(playbackSession, "new AudioPlaybackMetadata(");
         StringAssert.Contains(storyDetail, "Shell.SetTabBarIsVisible(this, false)");
         StringAssert.Contains(storyDetail, "BuildCoverArt(detail)");
@@ -696,7 +701,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(audioService, "GetByteArrayAsync(artworkUrl");
         StringAssert.Contains(audioService, "player.Error += (_, args) =>");
         StringAssert.Contains(audioService, "args.Handled = true;");
-        StringAssert.Contains(audioService, "ready.TrySetException(new InvalidOperationException(\"Kon nie die audio stroom oopmaak nie.\"));");
+        StringAssert.Contains(audioService, "ready.TrySetException(new AudioPlaybackLoadException(\"Kon nie die audio stroom oopmaak nie.\"));");
         Assert.IsFalse(storyDetail.Contains("<audio id=\"story-audio\"", StringComparison.Ordinal));
         Assert.IsFalse(storyDetail.Contains("new WebView", StringComparison.Ordinal));
         StringAssert.Contains(audioService, "AVFoundation.AVPlayer");

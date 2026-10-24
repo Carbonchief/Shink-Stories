@@ -31,7 +31,7 @@ public class MobilePlansSourceTests
         var luister = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
         var account = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
         var shell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
-        var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
+        var plans = ReadPlansSource();
 
         StringAssert.Contains(luister, "if (story.IsLocked)");
         StringAssert.Contains(luister, "await PageHelpers.OpenPlansForStoryAsync(detail.Story, _sessionState);");
@@ -65,7 +65,7 @@ public class MobilePlansSourceTests
     {
         var account = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
         var helpers = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PageHelpers.cs"));
-        var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
+        var plans = ReadPlansSource();
         var destination = account[account.IndexOf("private async Task OpenPostAuthenticationDestinationAsync", StringComparison.Ordinal)..];
         destination = destination[..destination.IndexOf("private void SetStatus", StringComparison.Ordinal)];
         var paidBranch = destination[destination.IndexOf("        if (hasStoryReturnPath)\n", StringComparison.Ordinal)..];
@@ -79,7 +79,7 @@ public class MobilePlansSourceTests
     [TestMethod]
     public void MobileSubscriptionsUseNativeStoresAndVerifiedEntitlements()
     {
-        var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
+        var plans = ReadPlansSource();
         var billing = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileStoreBillingService.cs"));
         var api = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
@@ -155,7 +155,7 @@ public class MobilePlansSourceTests
     [TestMethod]
     public void MobilePlansRemainVisibleWhenStoreProductsHaveNotLoaded()
     {
-        var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
+        var plans = ReadPlansSource();
 
         StringAssert.Contains(plans, "foreach (var plan in plans)");
         StringAssert.Contains(plans, "_storeProducts.TryGetValue(plan.ProductId, out var product)");
@@ -169,9 +169,9 @@ public class MobilePlansSourceTests
     [TestMethod]
     public void MobilePlanIntroUsesTheTransparentCenteredLogo()
     {
-        var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
+        var plans = ReadPlansSource();
 
-        StringAssert.Contains(plans, "CreatePackageImageSource(\"schink_stories_logo_white_raw.png\")");
+        StringAssert.Contains(plans, "OpenAppPackageFileAsync(\"schink_stories_logo_white_raw.png\")");
         StringAssert.Contains(plans, "BackgroundColor = Colors.Transparent");
         StringAssert.Contains(plans, "HorizontalOptions = LayoutOptions.Center");
         Assert.DoesNotContain("Source = \"schink_stories_logo_white.png\"", plans, StringComparison.Ordinal);
@@ -181,7 +181,7 @@ public class MobilePlansSourceTests
     public void MobilePaywallResumesTheLockedStoryAndPostSignInAccessCheck()
     {
         var helpers = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PageHelpers.cs"));
-        var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
+        var plans = ReadPlansSource();
         var account = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
         var story = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
         var playlistStories = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlaylistStoriesPage.cs"));
@@ -204,7 +204,7 @@ public class MobilePlansSourceTests
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
         var entitlement = File.ReadAllText(GetRepoPath("Shink", "Services", "MobileStoreEntitlementService.cs"));
         var ledger = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
-        var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
+        var plans = ReadPlansSource();
         var luister = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
         var downloads = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "OfflineStoryDownloadService.cs"));
 
@@ -219,12 +219,18 @@ public class MobilePlansSourceTests
         StringAssert.Contains(program, "StoryAccessPolicy.GetAllowedTierCodes");
         StringAssert.Contains(plans, "_sessionState.Current.HasPaidSubscription");
         StringAssert.Contains(plans, "Jy hoef nie weer te betaal nie");
-        StringAssert.Contains(luister, "previous.HasFullStoryAccess == current.HasFullStoryAccess");
+        StringAssert.Contains(luister, "MobileStoryAccessRefresh.HasSameAccess(previous, current)");
         StringAssert.Contains(luister, "await _apiClient.GetSessionAsync();");
         StringAssert.Contains(downloads, "_sessionState.Current.HasFullStoryAccess");
         StringAssert.Contains(downloads, "detail.Story.RequiresFullStoryAccess");
         StringAssert.Contains(downloads, "session.HasFullStoryAccess");
     }
+
+    private static string ReadPlansSource() =>
+        File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs")) +
+        File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.Design.cs")) +
+        File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PaywallHeroView.cs")) +
+        File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "PaywallPresentation.cs"));
 
     private static string GetRepoPath(params string[] segments)
     {

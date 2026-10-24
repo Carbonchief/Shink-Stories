@@ -805,6 +805,8 @@ function getNotificationCenterState(centerRoot) {
         state = {
             isLoaded: false,
             isLoading: false,
+            requestVersion: 0,
+            refreshQueued: false,
             isMarkingRead: false,
             isClearing: false,
             isLoadingMore: false,
@@ -1182,6 +1184,47 @@ function getOldestNotificationCreatedAt(notifications) {
         : null;
 }
 
+// Background refreshes need only the badge. Full messages are requested when
+// the panel opens; the service still evaluates new character unlocks immediately.
+function refreshNotificationCenter(centerRoot) {
+    if (centerRoot.classList.contains(OPEN_CLASS)) {
+        return loadNotificationCenter(centerRoot, { force: true });
+    }
+
+    const state = getNotificationCenterState(centerRoot);
+    state.isLoaded = false;
+    return loadNotificationBadge(centerRoot);
+}
+
+async function loadNotificationBadge(centerRoot) {
+    const parts = findNotificationCenterParts(centerRoot);
+    if (!parts) return;
+    const state = getNotificationCenterState(parts.centerRoot);
+    const requestVersion = ++state.requestVersion;
+    try {
+        const response = await fetch(`${NOTIFICATION_ENDPOINT}?summary=true`, {
+            method: "GET", credentials: "same-origin", headers: { Accept: "application/json" }
+        });
+        if (!response.ok) {
+            if (response.status === 401 && requestVersion === state.requestVersion) {
+                state.unreadCount = 0;
+                setNotificationCount(parts, 0);
+            }
+            return;
+        }
+        const payload = await response.json();
+        if (requestVersion !== state.requestVersion || parts.centerRoot.classList.contains(OPEN_CLASS) ||
+            state.isMarkingRead || state.isClearing || state.clearingNotificationIds.size > 0 ||
+            state.removingNotificationIds.size > 0) return;
+        if (payload && Number.isFinite(payload.unreadCount)) {
+            state.unreadCount = payload.unreadCount;
+            setNotificationCount(parts, state.unreadCount);
+        }
+    } catch {
+        // Keep the last known badge during a transient network failure.
+    }
+}
+
 async function loadNotificationCenter(centerRoot, options = {}) {
     const parts = findNotificationCenterParts(centerRoot);
     if (!parts) {
@@ -1190,10 +1233,13 @@ async function loadNotificationCenter(centerRoot, options = {}) {
 
     const { force = false } = options;
     const state = getNotificationCenterState(parts.centerRoot);
-    if (state.isLoading || (state.isLoaded && !force)) {
+    if (state.isLoading) {
+        state.refreshQueued ||= force;
         return;
     }
+    if (state.isLoaded && !force) return;
 
+    const requestVersion = ++state.requestVersion;
     state.isLoading = true;
     parts.notificationLoading.hidden = false;
     syncNotificationClearButton(parts, state);
@@ -1207,6 +1253,7 @@ async function loadNotificationCenter(centerRoot, options = {}) {
             }
         });
 
+        if (requestVersion !== state.requestVersion) return;
         if (!response.ok) {
             state.hasMore = false;
             state.nextBefore = null;
@@ -1224,6 +1271,7 @@ async function loadNotificationCenter(centerRoot, options = {}) {
         }
 
         const payload = await response.json();
+        if (requestVersion !== state.requestVersion) return;
         const notifications = payload && Array.isArray(payload.notifications)
             ? payload.notifications
             : [];
@@ -1249,6 +1297,7 @@ async function loadNotificationCenter(centerRoot, options = {}) {
             void markNotificationCenterRead(parts.centerRoot);
         }
     } catch {
+        if (requestVersion !== state.requestVersion) return;
         state.notifications = [];
         state.unreadCount = 0;
         state.hasMore = false;
@@ -1265,6 +1314,10 @@ async function loadNotificationCenter(centerRoot, options = {}) {
         parts.notificationLoading.hidden = true;
         syncNotificationClearButton(parts, state);
         syncNotificationLoadMoreButton(parts, state);
+        if (state.refreshQueued) {
+            state.refreshQueued = false;
+            void refreshNotificationCenter(parts.centerRoot);
+        }
     }
 }
 
@@ -1290,6 +1343,7 @@ async function loadMoreNotifications(centerRoot) {
         return;
     }
 
+    const requestVersion = state.requestVersion;
     state.isLoadingMore = true;
     syncNotificationClearButton(parts, state);
     syncNotificationLoadMoreButton(parts, state);
@@ -1311,6 +1365,7 @@ async function loadMoreNotifications(centerRoot) {
         }
 
         const payload = await response.json();
+        if (requestVersion !== state.requestVersion) return;
         const notifications = payload && Array.isArray(payload.notifications)
             ? payload.notifications
             : [];
@@ -1345,6 +1400,7 @@ async function markNotificationCenterRead(centerRoot) {
     }
 
     const state = getNotificationCenterState(parts.centerRoot);
+    state.requestVersion += 1;
     if (state.isMarkingRead || state.isClearing || state.unreadCount <= 0) {
         return;
     }
@@ -1411,6 +1467,7 @@ async function markSingleNotificationRead(centerRoot, notificationId) {
     }
 
     const state = getNotificationCenterState(parts.centerRoot);
+    state.requestVersion += 1;
     const endpoint = buildNotificationReadItemEndpoint(notificationId);
     if (!endpoint) {
         return false;
@@ -1494,6 +1551,7 @@ async function clearNotificationCenter(centerRoot) {
     }
 
     const state = getNotificationCenterState(parts.centerRoot);
+    state.requestVersion += 1;
     if (state.isMarkingRead ||
         state.isClearing ||
         (state.clearingNotificationIds instanceof Set && state.clearingNotificationIds.size > 0) ||
@@ -1568,6 +1626,7 @@ async function clearSingleNotification(centerRoot, notificationId) {
     }
 
     const state = getNotificationCenterState(parts.centerRoot);
+    state.requestVersion += 1;
     if (state.isMarkingRead ||
         state.isClearing ||
         !(state.clearingNotificationIds instanceof Set) ||
@@ -2268,7 +2327,7 @@ function wireNotificationCenter(notificationToggle) {
     }
 
     notificationToggle.dataset.notificationCenterWired = "true";
-    void loadNotificationCenter(parts.centerRoot, { force: true });
+    void refreshNotificationCenter(parts.centerRoot);
 }
 
 function startAccountMenuDelegates() {
@@ -2427,7 +2486,7 @@ function startNotificationCenterDelegates() {
                 state.isShowingHistory = false;
                 state.clearingNotificationIds = new Set();
                 state.removingNotificationIds = new Set();
-                void loadNotificationCenter(centerRoot, { force: true });
+                void refreshNotificationCenter(centerRoot);
             }
         });
     });
@@ -2448,7 +2507,7 @@ function startNotificationCenterDelegates() {
                 state.isShowingHistory = false;
                 state.clearingNotificationIds = new Set();
                 state.removingNotificationIds = new Set();
-                void loadNotificationCenter(centerRoot, { force: true });
+                void refreshNotificationCenter(centerRoot);
             }
         });
     });

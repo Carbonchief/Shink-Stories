@@ -126,6 +126,7 @@ public class StoryTrackingSourceTests
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
         var analytics = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileAnalyticsService.cs"));
         var crashReporter = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileCrashReporter.cs"));
+        var crashDiagnostics = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileCrashDiagnostics.cs"));
         var app = File.ReadAllText(GetRepoPath("Shink.Mobile", "App.xaml.cs"));
         var shell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
         var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
@@ -141,7 +142,8 @@ public class StoryTrackingSourceTests
         StringAssert.Contains(analytics, "public sealed class MobileAnalyticsService");
         StringAssert.Contains(analytics, "_postHog.Capture(");
         StringAssert.Contains(analytics, "_postHog.CaptureScreenView(");
-        StringAssert.Contains(analytics, "private string ResolveDistinctId() => _anonymousDistinctId;");
+        StringAssert.Contains(analytics, "MobileAnalyticsIdentity.FromSession(_sessionState.Current, _anonymousDistinctId)");
+        StringAssert.Contains(analytics, "_postHog.Capture(identity.DistinctId, eventName,");
         Assert.IsFalse(analytics.Contains("_postHog.IdentifyAsync(", StringComparison.Ordinal));
         Assert.IsFalse(analytics.Contains("[\"email\"]", StringComparison.Ordinal));
         StringAssert.Contains(analytics, "_postHog.CaptureException(");
@@ -153,7 +155,8 @@ public class StoryTrackingSourceTests
         StringAssert.Contains(crashReporter, "PersistPendingCrash(");
         StringAssert.Contains(crashReporter, "ReplayPendingCrashesAsync()");
         StringAssert.Contains(crashReporter, "ExceptionDispatchInfo.SetRemoteStackTrace(");
-        StringAssert.Contains(crashReporter, "SensitiveValuePattern.Replace(");
+        StringAssert.Contains(crashReporter, "return MobileCrashDiagnostics.Sanitize(value, maximumLength);");
+        StringAssert.Contains(crashDiagnostics, "SensitiveValuePattern.Replace(value, \"$1[redacted]\")");
         StringAssert.Contains(app, "_analytics.TrackAppOpened();");
         StringAssert.Contains(shell, "_analytics.TrackScreenView(");
         StringAssert.Contains(shell, "mobile_shell_rendered");

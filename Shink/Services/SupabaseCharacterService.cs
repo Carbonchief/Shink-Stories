@@ -13,7 +13,8 @@ public sealed partial class SupabaseCharacterService(
     HttpClient httpClient,
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
-    ILogger<SupabaseCharacterService> logger) : ICharacterCatalogService, ICharacterAdminService, ICharacterTrackingService
+    ILogger<SupabaseCharacterService> logger,
+    IPublicContentVersions? contentVersions = null) : ICharacterCatalogService, ICharacterAdminService, ICharacterTrackingService
 {
     private const string PublishedCharactersCacheKey = "story-characters:published:v1";
     private const string SubscriberCachePrefix = "character-tracking:subscriber:";
@@ -31,7 +32,8 @@ public sealed partial class SupabaseCharacterService(
 
     public async Task<IReadOnlyList<StoryCharacterItem>> GetPublishedCharactersAsync(CancellationToken cancellationToken = default)
     {
-        if (_memoryCache.TryGetValue(PublishedCharactersCacheKey, out IReadOnlyList<StoryCharacterItem>? cachedCharacters) &&
+        var cacheKey = await PublicContentCacheKeys.ResolveAsync(contentVersions, "characters", PublishedCharactersCacheKey, cancellationToken);
+        if (cacheKey is not null && _memoryCache.TryGetValue(cacheKey, out IReadOnlyList<StoryCharacterItem>? cachedCharacters) &&
             cachedCharacters is not null)
         {
             return cachedCharacters;
@@ -40,13 +42,13 @@ public sealed partial class SupabaseCharacterService(
         await PublishedCharactersRefreshLock.WaitAsync(cancellationToken);
         try
         {
-            if (_memoryCache.TryGetValue(PublishedCharactersCacheKey, out cachedCharacters) &&
+            if (cacheKey is not null && _memoryCache.TryGetValue(cacheKey, out cachedCharacters) &&
                 cachedCharacters is not null)
             {
                 return cachedCharacters;
             }
 
-            return await FetchPublishedCharactersAsync(CancellationToken.None);
+            return await FetchPublishedCharactersAsync(cacheKey, CancellationToken.None);
         }
         finally
         {
@@ -54,7 +56,7 @@ public sealed partial class SupabaseCharacterService(
         }
     }
 
-    private async Task<IReadOnlyList<StoryCharacterItem>> FetchPublishedCharactersAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<StoryCharacterItem>> FetchPublishedCharactersAsync(string? cacheKey, CancellationToken cancellationToken)
     {
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
@@ -113,7 +115,10 @@ public sealed partial class SupabaseCharacterService(
                 .ThenBy(character => character.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            _memoryCache.Set(PublishedCharactersCacheKey, characters, PublishedCharactersCacheDuration);
+            if (cacheKey is not null)
+            {
+                _memoryCache.Set(cacheKey, characters, PublishedCharactersCacheDuration);
+            }
             return characters;
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
@@ -316,6 +321,28 @@ public sealed partial class SupabaseCharacterService(
                 return Array.Empty<UserCharacterProfileListenItem>();
             }
 
+            using var snapshotRequest = CreateJsonRequest(HttpMethod.Post,
+                new Uri(baseUri, "rest/v1/rpc/get_character_profile_listen_snapshot"), apiKey,
+                new { p_subscriber_id = subscriberId }, "return=representation");
+            using var snapshotResponse = await _httpClient.SendAsync(snapshotRequest, cancellationToken);
+            if (snapshotResponse.IsSuccessStatusCode)
+            {
+                await using var stream = await snapshotResponse.Content.ReadAsStreamAsync(cancellationToken);
+                var summaries = await JsonSerializer.DeserializeAsync<List<CharacterProfileSummaryRow>>(stream, JsonOptions, cancellationToken) ?? [];
+                return summaries.Where(row => row.CharacterId != Guid.Empty && !string.IsNullOrWhiteSpace(row.CharacterSlug))
+                    .Select(row => new UserCharacterProfileListenItem(row.CharacterId, row.CharacterSlug.Trim().ToLowerInvariant(),
+                        row.ListenCount, row.LastListenedAt))
+                    .OrderByDescending(row => row.LastListenedAtUtc).ToArray();
+            }
+
+            var snapshotError = await snapshotResponse.Content.ReadAsStringAsync(cancellationToken);
+            if (snapshotResponse.StatusCode != HttpStatusCode.NotFound || !snapshotError.Contains("PGRST202", StringComparison.Ordinal))
+            {
+                _logger.LogWarning("Character profile snapshot failed. Status={StatusCode}", (int)snapshotResponse.StatusCode);
+                return [];
+            }
+
+            _logger.LogWarning("Character profile snapshot RPC is missing; apply the public_content_egress_followups migration.");
             var rows = await GetAllCharacterAudioPlayRowsAsync(baseUri, apiKey, subscriberId, cancellationToken);
             return rows
                 .Where(row => row.CharacterId != Guid.Empty)
@@ -1230,4 +1257,12 @@ public sealed partial class SupabaseCharacterService(
         [JsonPropertyName("occurred_at")]
         public DateTimeOffset OccurredAt { get; set; }
     }
+    private sealed class CharacterProfileSummaryRow
+    {
+        [JsonPropertyName("character_id")] public Guid CharacterId { get; set; }
+        [JsonPropertyName("character_slug")] public string CharacterSlug { get; set; } = "";
+        [JsonPropertyName("listen_count")] public int ListenCount { get; set; }
+        [JsonPropertyName("last_listened_at")] public DateTimeOffset LastListenedAt { get; set; }
+    }
+
 }

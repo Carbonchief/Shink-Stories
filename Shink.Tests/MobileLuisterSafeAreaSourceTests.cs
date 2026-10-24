@@ -112,7 +112,7 @@ public sealed class MobileLuisterSafeAreaSourceTests
     }
 
     [TestMethod]
-    public void LuisterCarouselArtworkAlignsWithShowcaseArtwork()
+    public void LuisterCarouselArtworkKeepsItsGutterWhenTheFeedScrolls()
     {
         var source = File.ReadAllText(FindLuisterPage());
 
@@ -120,11 +120,19 @@ public sealed class MobileLuisterSafeAreaSourceTests
         StringAssert.Contains(
             source,
             "private const double CarouselEdgeSpacerWidth = PageHorizontalPadding - CarouselItemSpacing;");
-        StringAssert.Contains(
-            source,
-            "IsIOS ? PageHorizontalPadding : CarouselEdgeSpacerWidth;");
-        StringAssert.Contains(source, "WidthRequest = ResolveCarouselEdgeSpacerWidth(),");
+        // Android keeps its existing spacer plus item spacing. The iOS legacy
+        // handler represents headers as negative offsets, which UIKit can reset
+        // while the parent scrolls, so iOS must use real item-layout insets.
+        StringAssert.Contains(source, "BuildCarouselEdgeSpacer() => IsIOS ? null : new BoxView");
+        StringAssert.Contains(source, "WidthRequest = CarouselEdgeSpacerWidth,");
+        StringAssert.Contains(source, "EdgeInset = PageHorizontalPadding,");
         StringAssert.Contains(source, "ItemSpacing = CarouselItemSpacing,");
+
+        var mobileRoot = Directory.GetParent(Path.GetDirectoryName(FindLuisterPage())!)!.FullName;
+        var handler = File.ReadAllText(Path.Combine(mobileRoot, "Platforms", "iOS", "LuisterCarouselViewHandler.cs"));
+        StringAssert.Contains(handler, "LuisterCarouselViewHandler : CollectionViewHandler");
+        StringAssert.Contains(handler, "inset.Left += (nfloat)edgeInset;");
+        StringAssert.Contains(handler, "inset.Right += (nfloat)edgeInset;");
     }
 
     private static string FindLuisterPage()

@@ -141,6 +141,7 @@ public static class MobileAnalyticsSchema
 
     public static string ScreenName(string? pageType, string? route) => pageType switch
     {
+        "OnboardingPage" => "onboarding",
         "LuisterPage" => "listen",
         "KaraktersPage" => "characters",
         "StoryDetailPage" => "story_detail",

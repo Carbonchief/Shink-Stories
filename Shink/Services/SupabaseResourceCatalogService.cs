@@ -10,7 +10,8 @@ public sealed class SupabaseResourceCatalogService(
     HttpClient httpClient,
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
-    ILogger<SupabaseResourceCatalogService> logger) : IResourceCatalogService
+    ILogger<SupabaseResourceCatalogService> logger,
+    IPublicContentVersions? contentVersions = null) : IResourceCatalogService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(1);
@@ -24,7 +25,8 @@ public sealed class SupabaseResourceCatalogService(
 
     public async Task<IReadOnlyList<ResourceTypeCatalog>> GetResourceTypesAsync(CancellationToken cancellationToken = default)
     {
-        if (_memoryCache.TryGetValue(ResourceCatalogCacheKeys.Catalog, out IReadOnlyList<ResourceTypeCatalog>? cachedCatalog) &&
+        var cacheKey = await PublicContentCacheKeys.ResolveAsync(contentVersions, "resources", ResourceCatalogCacheKeys.Catalog, cancellationToken);
+        if (cacheKey is not null && _memoryCache.TryGetValue(cacheKey, out IReadOnlyList<ResourceTypeCatalog>? cachedCatalog) &&
             cachedCatalog is not null)
         {
             return cachedCatalog;
@@ -33,14 +35,17 @@ public sealed class SupabaseResourceCatalogService(
         await RefreshLock.WaitAsync(cancellationToken);
         try
         {
-            if (_memoryCache.TryGetValue(ResourceCatalogCacheKeys.Catalog, out cachedCatalog) &&
+            if (cacheKey is not null && _memoryCache.TryGetValue(cacheKey, out cachedCatalog) &&
                 cachedCatalog is not null)
             {
                 return cachedCatalog;
             }
 
             var catalog = await FetchCatalogAsync(CancellationToken.None);
-            _memoryCache.Set(ResourceCatalogCacheKeys.Catalog, catalog, CacheDuration);
+            if (cacheKey is not null)
+            {
+                _memoryCache.Set(cacheKey, catalog, CacheDuration);
+            }
             return catalog;
         }
         finally

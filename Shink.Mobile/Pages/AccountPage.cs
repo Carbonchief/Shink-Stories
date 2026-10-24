@@ -788,6 +788,8 @@ public sealed class AccountPage : ContentPage
         }
     }
 
+    public void ShowSignIn() => SetAuthPanelMode(AuthPanelMode.SignIn);
+
     private void SetAuthPanelMode(AuthPanelMode mode)
     {
         _authPanelMode = mode;

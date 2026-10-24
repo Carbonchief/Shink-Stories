@@ -12,7 +12,8 @@ public sealed class SupabaseStoreProductCatalogService(
     HttpClient httpClient,
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
-    ILogger<SupabaseStoreProductCatalogService> logger) : IStoreProductCatalogService
+    ILogger<SupabaseStoreProductCatalogService> logger,
+    IPublicContentVersions? contentVersions = null) : IStoreProductCatalogService
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(2);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -52,7 +53,8 @@ public sealed class SupabaseStoreProductCatalogService(
 
     private async Task<IReadOnlyList<StoreProduct>> GetCatalogAsync(CancellationToken cancellationToken)
     {
-        if (_memoryCache.TryGetValue(StoreProductCatalogCacheKeys.Catalog, out IReadOnlyList<StoreProduct>? cached) &&
+        var cacheKey = await PublicContentCacheKeys.ResolveAsync(contentVersions, "products", StoreProductCatalogCacheKeys.Catalog, cancellationToken);
+        if (cacheKey is not null && _memoryCache.TryGetValue(cacheKey, out IReadOnlyList<StoreProduct>? cached) &&
             cached is not null)
         {
             return cached;
@@ -61,14 +63,17 @@ public sealed class SupabaseStoreProductCatalogService(
         await RefreshLock.WaitAsync(cancellationToken);
         try
         {
-            if (_memoryCache.TryGetValue(StoreProductCatalogCacheKeys.Catalog, out cached) &&
+            if (cacheKey is not null && _memoryCache.TryGetValue(cacheKey, out cached) &&
                 cached is not null)
             {
                 return cached;
             }
 
             var products = await FetchCatalogAsync(CancellationToken.None);
-            _memoryCache.Set(StoreProductCatalogCacheKeys.Catalog, products, CacheDuration);
+            if (cacheKey is not null)
+            {
+                _memoryCache.Set(cacheKey, products, CacheDuration);
+            }
             return products;
         }
         finally

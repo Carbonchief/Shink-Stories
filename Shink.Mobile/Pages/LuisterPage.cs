@@ -12,12 +12,15 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private static readonly Color LuisterBackgroundColor = Color.FromArgb("#408D93");
     private const double PageHorizontalPadding = 18;
     private const double CarouselItemSpacing = 14;
-    // Android applies ItemSpacing between the header and first item; iOS does not.
-    // Compensate per platform so the first carousel card starts on the same
-    // vertical line as the showcase artwork above it.
+    // Android applies ItemSpacing between the header and first item. iOS uses
+    // native section insets so its gutter survives parent scrolling/recycling.
     private const double CarouselEdgeSpacerWidth = PageHorizontalPadding - CarouselItemSpacing;
-    private static double ResolveCarouselEdgeSpacerWidth() =>
-        IsIOS ? PageHorizontalPadding : CarouselEdgeSpacerWidth;
+
+    private static View? BuildCarouselEdgeSpacer() => IsIOS ? null : new BoxView
+    {
+        WidthRequest = CarouselEdgeSpacerWidth,
+        Color = Colors.Transparent
+    };
     private static readonly TimeSpan ScrollIdlePollInterval = TimeSpan.FromMilliseconds(100);
     private const long ScrollIdleThresholdMilliseconds = 180;
     // Keep the first feed item below the native-style app bar and the last item
@@ -79,6 +82,8 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private IReadOnlyList<MobileLuisterSection> _sections = Array.Empty<MobileLuisterSection>();
     private MobileNotificationPage? _notificationPage;
     private MobileSession? _lastRenderedSession;
+    private readonly MobileStoryAccessRefresh _accessRefresh = new();
+    private bool _isLoadingFeed;
     private string? _loadErrorMessage;
     private bool _hasLoaded;
     private bool _isPageActive;
@@ -491,6 +496,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
         else
         {
+            await RefreshStoryAccessAsync();
             _ = RefreshVisibleStateAfterNavigationAsync(_pageActivityCancellation.Token);
         }
 
@@ -605,6 +611,9 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 _notificationPage = null;
             }
 
+            // A chrome/favourite render can already have seen the new session
+            // while the catalogue still contains locks fetched before payment.
+            _ = RefreshStoryAccessAsync();
             if (IsFeedSessionEquivalent(_lastRenderedSession, session))
             {
                 // The session endpoint commonly returns the same state already
@@ -622,7 +631,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             }
             else
             {
-                RenderContent();
+                RenderFloatingTopBar();
             }
             if (session.IsSignedIn)
             {
@@ -642,29 +651,24 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         _loadCancellation?.Cancel();
         _loadCancellation?.Dispose();
         _loadCancellation = new CancellationTokenSource();
-        var cancellationToken = _loadCancellation.Token;
-        var renderedCachedData = !forceRefresh && await TryRenderCachedLuisterAsync(cancellationToken);
-
-        if (!renderedCachedData)
-        {
-            await MainThread.InvokeOnMainThreadAsync(() =>
-            {
-                if (!_isPageActive || cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                RenderLoadingState();
-            });
-        }
-
+        var loadCancellation = _loadCancellation;
+        var cancellationToken = loadCancellation.Token;
+        _isLoadingFeed = true;
+        var renderedCachedData = false;
+        var shouldRefreshAccess = false;
         try
         {
-            var sessionTask = _apiClient.GetSessionAsync(cancellationToken);
-            var luisterTask = _apiClient.GetLuisterAsync(cancellationToken);
-            await Task.WhenAll(sessionTask, luisterTask);
-
-            var response = await luisterTask;
+            renderedCachedData = !forceRefresh && await TryRenderCachedLuisterAsync(cancellationToken);
+            if (!renderedCachedData)
+            {
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    if (_isPageActive && !cancellationToken.IsCancellationRequested) RenderLoadingState();
+                });
+            }
+            await _apiClient.GetSessionAsync(cancellationToken);
+            var requestedSession = _sessionState.Current;
+            var response = await _apiClient.GetLuisterAsync(cancellationToken);
             if (cancellationToken.IsCancellationRequested || !_isPageActive)
             {
                 return;
@@ -684,7 +688,13 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 return;
             }
 
+            shouldRefreshAccess = true;
+            if (!MobileStoryAccessRefresh.HasSameAccess(requestedSession, _sessionState.Current))
+            {
+                return;
+            }
             ApplyLuisterResponse(response);
+            _accessRefresh.MarkRefreshed(requestedSession);
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 if (!_isPageActive || cancellationToken.IsCancellationRequested)
@@ -727,7 +737,35 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
         finally
         {
-            await MainThread.InvokeOnMainThreadAsync(() => _refreshView.IsRefreshing = false);
+            if (ReferenceEquals(_loadCancellation, loadCancellation))
+            {
+                _isLoadingFeed = false;
+                await MainThread.InvokeOnMainThreadAsync(() => _refreshView.IsRefreshing = false);
+                if (_isPageActive && (shouldRefreshAccess || cancellationToken.IsCancellationRequested))
+                    await RefreshStoryAccessAsync();
+            }
+        }
+    }
+
+    private async Task RefreshStoryAccessAsync()
+    {
+        if (!_isPageActive || _isLoadingFeed) return;
+        try
+        {
+            await _accessRefresh.RefreshAsync(
+                () => _sessionState.Current,
+                token => _apiClient.GetLuisterAsync(token),
+                response =>
+                {
+                    ApplyLuisterResponse(response);
+                    RenderContent();
+                },
+                _pageActivityCancellation?.Token ?? default);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _analytics.TrackRecoverableFailure(ex, "mobile_story_access_refresh");
         }
     }
 
@@ -856,10 +894,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     }
 
     private static bool IsFeedAccessEquivalent(MobileSession? previous, MobileSession current) =>
-        previous is not null &&
-        previous.IsSignedIn == current.IsSignedIn &&
-        previous.HasPaidSubscription == current.HasPaidSubscription &&
-        previous.HasFullStoryAccess == current.HasFullStoryAccess;
+        MobileStoryAccessRefresh.HasSameAccess(previous, current);
 
     private void ApplyFavoriteSessionState(MobileSession previous, MobileSession current)
     {
@@ -1288,20 +1323,13 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             {
                 IsVisible = false
             };
-            _carousel = new CollectionView
+            _carousel = new LuisterCarouselView
             {
                 AutomationId = "luister-carousel",
+                EdgeInset = PageHorizontalPadding,
                 Margin = new Thickness(-PageHorizontalPadding, 0),
-                Header = new BoxView
-                {
-                    WidthRequest = ResolveCarouselEdgeSpacerWidth(),
-                    Color = Colors.Transparent
-                },
-                Footer = new BoxView
-                {
-                    WidthRequest = ResolveCarouselEdgeSpacerWidth(),
-                    Color = Colors.Transparent
-                },
+                Header = BuildCarouselEdgeSpacer(),
+                Footer = BuildCarouselEdgeSpacer(),
                 ItemsLayout = new LinearItemsLayout(ItemsLayoutOrientation.Horizontal)
                 {
                     ItemSpacing = CarouselItemSpacing,
@@ -2470,22 +2498,15 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         double heightRequest,
         Func<T, View> buildItem)
     {
-        var carousel = new CollectionView
+        var carousel = new LuisterCarouselView
         {
             AutomationId = "luister-carousel",
+            EdgeInset = PageHorizontalPadding,
             ItemsSource = items,
             HeightRequest = heightRequest,
             Margin = new Thickness(-PageHorizontalPadding, 0),
-            Header = new BoxView
-            {
-                WidthRequest = ResolveCarouselEdgeSpacerWidth(),
-                Color = Colors.Transparent
-            },
-            Footer = new BoxView
-            {
-                WidthRequest = ResolveCarouselEdgeSpacerWidth(),
-                Color = Colors.Transparent
-            },
+            Header = BuildCarouselEdgeSpacer(),
+            Footer = BuildCarouselEdgeSpacer(),
             ItemsLayout = new LinearItemsLayout(ItemsLayoutOrientation.Horizontal)
             {
                 ItemSpacing = CarouselItemSpacing,

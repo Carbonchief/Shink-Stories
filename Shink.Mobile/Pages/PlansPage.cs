@@ -4,62 +4,63 @@ using Shink.Mobile.Services;
 namespace Shink.Mobile.Pages;
 
 [QueryProperty(nameof(ReturnUrl), "returnUrl")]
-public sealed class PlansPage : ContentPage
+public sealed partial class PlansPage : ContentPage
 {
     private static readonly Color PageBackgroundColor = Color.FromArgb("#FFF7E8");
-    private static readonly Color TextColor = Color.FromArgb("#1B2231");
-    private static readonly Color MutedTextColor = Color.FromArgb("#69716D");
-    private static readonly Color AccentColor = Color.FromArgb("#123F3F");
-    private static readonly Color GoldColor = Color.FromArgb("#E8B52F");
-    private static readonly Color SoftGoldColor = Color.FromArgb("#FFF3CF");
-    private static readonly Color BorderColor = Color.FromArgb("#E9E1D0");
-
+    private static readonly Color TextColor = Color.FromArgb("#102C32");
+    private static readonly Color MutedTextColor = Color.FromArgb("#4F5A5D");
+    private static readonly Color AccentColor = Color.FromArgb("#003F46");
+    private static readonly Color BorderColor = Color.FromArgb("#E8DCC9");
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly MobileAnalyticsService _analytics;
     private readonly IMobileStoreBillingService _storeBilling;
     private readonly VerticalStackLayout _content;
+    private readonly VerticalStackLayout _body;
     private readonly NavigationGate _navigationGate = new();
     private readonly Dictionary<string, MobileStoreProduct> _storeProducts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (Border Card, RadioButton Radio)> _planControls = new(StringComparer.Ordinal);
+    private IReadOnlyList<MobilePlan> _plans = [];
+    private string? _selectedProductId;
+    private Button? _purchaseButton;
+    private Label? _renewalDisclosure;
+    private bool _hasParentAccess;
     private bool _isLoading;
     private bool _isOpeningPlan;
 
-    public PlansPage(
-        MobileApiClient apiClient,
-        SessionState sessionState,
-        MobileAnalyticsService analytics,
-        IMobileStoreBillingService storeBilling,
-        StoryPlaybackSession storyPlaybackSession)
+    public PlansPage(MobileApiClient apiClient, SessionState sessionState, MobileAnalyticsService analytics,
+        IMobileStoreBillingService storeBilling, StoryPlaybackSession storyPlaybackSession)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _analytics = analytics;
         _storeBilling = storeBilling;
-
         Title = "Opsies";
+        AutomationId = "paywall-page";
         BackgroundColor = PageBackgroundColor;
         SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
         Shell.SetNavBarIsVisible(this, false);
         Shell.SetTabBarIsVisible(this, false);
 
+        _body = new VerticalStackLayout { Padding = new Thickness(16, 0, 16, 12), Spacing = 6, SafeAreaEdges = SafeAreaEdges.None };
         _content = new VerticalStackLayout
         {
-            Padding = new Thickness(20, 18, 20, 30),
-            Spacing = 18
+            Spacing = 0, SafeAreaEdges = SafeAreaEdges.None,
+            BackgroundColor = PageBackgroundColor, MaximumWidthRequest = 580,
+            HorizontalOptions = LayoutOptions.Center,
+            Children = { new PaywallHeroView(() => _navigationGate.RunAsync(ClosePaywallAsync)), _body }
         };
-        MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
-        SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
-
         var scrollView = new ScrollView
         {
-            BackgroundColor = PageBackgroundColor,
-            Content = _content
+            BackgroundColor = PageBackgroundColor, Content = _content,
+            SafeAreaEdges = SafeAreaEdges.None, HorizontalScrollBarVisibility = ScrollBarVisibility.Never
         };
         Content = PersistentPlaybackHost.Wrap(scrollView, storyPlaybackSession);
+        SizeChanged += (_, _) => _content.WidthRequest = Math.Min(580, Math.Max(0, Width));
+        RenderIntro();
     }
 
     public string? ReturnUrl { get; set; }
-
     private bool IsPaywall => !string.IsNullOrWhiteSpace(ReturnUrl);
 
     protected override async void OnAppearing()
@@ -71,546 +72,112 @@ public sealed class PlansPage : ContentPage
             return;
         }
         if (_isLoading) return;
-
-        _analytics.TrackEvent(
-            IsPaywall ? "mobile_paywall_viewed" : "mobile_plans_viewed",
-            new Dictionary<string, object>
-            {
-                ["has_return_path"] = IsPaywall,
-                ["is_signed_in"] = _sessionState.Current.IsSignedIn
-            });
         _isLoading = true;
-        try { await LoadAsync(); }
+        try
+        {
+            if (!await EnsureParentAccessAsync()) return;
+            _analytics.TrackEvent(IsPaywall ? "mobile_paywall_viewed" : "mobile_plans_viewed",
+                new Dictionary<string, object>
+                {
+                    ["has_return_path"] = IsPaywall,
+                    ["is_signed_in"] = _sessionState.Current.IsSignedIn
+                });
+            await LoadAsync();
+        }
         finally { _isLoading = false; }
+    }
+
+    private async Task<bool> EnsureParentAccessAsync()
+    {
+        if (_hasParentAccess) return true;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var challenge = PaywallParentChallenge.Create();
+            var response = await DisplayPromptAsync("Vir ouers", challenge.Instruction,
+                "Maak oop", "Terug", maxLength: 4, keyboard: Keyboard.Numeric);
+            if (response is null) break;
+            if (challenge.IsCorrect(response)) return _hasParentAccess = true;
+            await DisplayAlertAsync("Probeer weer", "Die syfers stem nie ooreen nie.", "Reg so");
+        }
+        await ClosePaywallAsync();
+        return false;
     }
 
     private async Task LoadAsync()
     {
-        _content.Children.Clear();
-        _content.Children.Add(BuildHeader());
-        _content.Children.Add(BuildLegalLinks());
-        _content.Children.Add(BuildIntro());
-        _content.Children.Add(new ActivityIndicator
-        {
-            IsRunning = true,
-            Color = AccentColor,
-            HorizontalOptions = LayoutOptions.Center
-        });
-
+        RenderIntro();
+        _body.Children.Add(new ActivityIndicator { IsRunning = true, Color = AccentColor, HeightRequest = 40 });
+        _body.Children.Add(BuildFooter());
         try
         {
             var response = await _apiClient.GetPlansAsync();
             var plans = (response?.Plans ?? Array.Empty<MobilePlan>())
                 .Where(plan => plan.ProductId is "schink_stories_maandeliks" or "schink_stories_jaarliks")
-                .OrderBy(plan => plan.BillingPeriodMonths)
-                .ToArray();
-            var storeProducts = await _storeBilling.GetProductsAsync(
-                plans.Select(plan => plan.ProductId).ToArray());
+                .OrderBy(plan => plan.BillingPeriodMonths).ToArray();
+            _plans = plans;
+            var products = await _storeBilling.GetProductsAsync(plans.Select(plan => plan.ProductId).ToArray());
             _storeProducts.Clear();
-            foreach (var product in storeProducts)
-            {
-                _storeProducts[product.ProductId] = product;
-            }
-
-            _content.Children.Clear();
-            _content.Children.Add(BuildHeader());
-            _content.Children.Add(BuildLegalLinks());
-            _content.Children.Add(BuildIntro());
-
+            foreach (var product in products) _storeProducts[product.ProductId] = product;
             if (_sessionState.Current.HasPaidSubscription)
             {
-                _content.Children.Add(BuildActiveAccessCard());
-                _content.Children.Add(BuildPurchaseDetails());
+                RenderIntro();
+                _body.Children.Add(BuildNotice("Jou volle toegang is reeds aktief. Jy hoef nie weer te betaal nie."));
+                var continueButton = BuildTextLinkButton("Luister verder");
+                continueButton.Clicked += async (_, _) => await OpenReturnPathAsync();
+                _body.Children.Add(continueButton);
                 return;
             }
-
+            RenderIntro();
             if (plans.Length == 0)
+                _body.Children.Add(BuildNotice("Geen planne is tans beskikbaar nie. Probeer asseblief weer."));
+            else
             {
-                _content.Children.Add(BuildNotice("Geen planne is tans beskikbaar nie. Probeer asseblief weer."));
-                _content.Children.Add(BuildRetryButton());
-                _content.Children.Add(BuildRestoreButton());
-                _content.Children.Add(BuildPurchaseDetails());
-                return;
+                if (!_plans.Any(p => p.ProductId == _selectedProductId && HasPrice(p.ProductId)))
+                    _selectedProductId = plans.OrderByDescending(p => p.BillingPeriodMonths).FirstOrDefault(p => HasPrice(p.ProductId))?.ProductId;
+                foreach (var plan in plans)
+                {
+                    _storeProducts.TryGetValue(plan.ProductId, out var product);
+                    _body.Children.Add(BuildPlanOption(plan, product));
+                }
+                _purchaseButton = BuildPurchaseButton();
+                _renewalDisclosure = new Label
+                {
+                    FontSize = 14, TextColor = MutedTextColor, HorizontalTextAlignment = TextAlignment.Center,
+                    LineBreakMode = LineBreakMode.WordWrap, AutomationId = "paywall-renewal-disclosure",
+                    Margin = new Thickness(0, 2)
+                };
+                _body.Children.Add(_purchaseButton);
+                _body.Children.Add(_renewalDisclosure);
+                UpdateSelection();
+                if (_storeProducts.Count < plans.Length || plans.Any(p => !HasPrice(p.ProductId)))
+                    _body.Children.Add(BuildNotice("Die winkelpryse is tans nie beskikbaar nie. Probeer asseblief weer voordat jy aankoop."));
             }
-
-            foreach (var plan in plans)
-            {
-                _storeProducts.TryGetValue(plan.ProductId, out var product);
-                _content.Children.Add(BuildPlanCard(plan, product));
-            }
-
-            if (_storeProducts.Count < plans.Length)
-            {
-                _content.Children.Add(BuildNotice("Die winkelpryse is tans nie beskikbaar nie. Probeer asseblief weer voordat jy aankoop."));
-            }
-
-            _content.Children.Add(BuildRetryButton());
-            _content.Children.Add(BuildRestoreButton());
-            _content.Children.Add(BuildPurchaseDetails());
+            if (plans.Length == 0 || plans.Any(p => !HasPrice(p.ProductId))) _body.Children.Add(BuildRetryButton());
+            _body.Children.Add(BuildFooter());
         }
         catch (Exception)
         {
-            _content.Children.Clear();
-            _content.Children.Add(BuildHeader());
-            _content.Children.Add(BuildLegalLinks());
-            _content.Children.Add(BuildIntro());
-            _content.Children.Add(BuildNotice("Die winkelprodukte kon nie nou gelaai word nie. Probeer asseblief weer."));
-            _content.Children.Add(BuildRetryButton());
-            _content.Children.Add(BuildRestoreButton());
-            _content.Children.Add(BuildPurchaseDetails());
+            RenderIntro();
+            _body.Children.Add(BuildNotice("Die winkelprodukte kon nie nou gelaai word nie. Probeer asseblief weer."));
+            _body.Children.Add(BuildRetryButton());
+            _body.Children.Add(BuildFooter());
         }
     }
 
-    private View BuildHeader()
-    {
-        var backButton = new Border
-        {
-            BackgroundColor = Colors.White,
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 23 },
-            WidthRequest = 46,
-            HeightRequest = 46,
-            Content = new Label
-            {
-                Text = "‹",
-                FontSize = 34,
-                TextColor = AccentColor,
-                HorizontalTextAlignment = TextAlignment.Center,
-                VerticalTextAlignment = TextAlignment.Center,
-                Margin = new Thickness(0, -4, 0, 0)
-            }
-        };
-        var backTap = new TapGestureRecognizer();
-        backTap.Tapped += async (_, _) => await _navigationGate.RunAsync(ClosePaywallAsync);
-        backButton.GestureRecognizers.Add(backTap);
-
-        var title = new Label
-        {
-            Text = IsPaywall ? "Maak die storie oop" : "Schink Stories",
-            FontSize = 24,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = TextColor,
-            HorizontalTextAlignment = TextAlignment.Center,
-            VerticalTextAlignment = TextAlignment.Center
-        };
-
-        var spacer = new BoxView
-        {
-            WidthRequest = 46,
-            HeightRequest = 46,
-            Opacity = 0
-        };
-
-        var grid = new Grid
-        {
-            ColumnDefinitions =
-            {
-                new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Auto)
-            },
-            Children =
-            {
-                backButton,
-                title,
-                spacer
-            }
-        };
-        Grid.SetColumn(title, 1);
-        Grid.SetColumn(spacer, 2);
-        return grid;
-    }
-
-    private View BuildIntro()
-    {
-        var benefits = new VerticalStackLayout { Spacing = 10 };
-        benefits.Children.Add(BuildBenefitRow("✓", "Onbeperkte toegang tot alle stories en reekse"));
-        benefits.Children.Add(BuildBenefitRow("✓", "Veilige, advertensievrye luistertyd"));
-        benefits.Children.Add(BuildBenefitRow("✓", "Gebruik dieselfde rekening op die app en webwerf"));
-        benefits.Children.Add(BuildBenefitRow("✓", "Laai stories af om later te luister"));
-
-        return new Border
-        {
-            BackgroundColor = AccentColor,
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 28 },
-            Padding = new Thickness(22, 24),
-            Content = new VerticalStackLayout
-            {
-                Spacing = 16,
-                Children =
-                {
-                    new Image
-                    {
-                        Source = CreatePackageImageSource("schink_stories_logo_white_raw.png"),
-                        BackgroundColor = Colors.Transparent,
-                        HeightRequest = 44,
-                        Aspect = Aspect.AspectFit,
-                        HorizontalOptions = LayoutOptions.Center
-                    },
-                    new Label
-                    {
-                        Text = IsPaywall ? "Jou volgende storie wag" : "Al die stories. Een eenvoudige plan.",
-                        FontSize = 27,
-                        FontAttributes = FontAttributes.Bold,
-                        TextColor = Colors.White
-                    },
-                    new Label
-                    {
-                        Text = IsPaywall
-                            ? "Kies maandeliks of jaarliks en luister dadelik verder."
-                            : "Kies die opsie wat by jou gesin pas.",
-                        FontSize = 15,
-                        TextColor = Color.FromArgb("#DDEDE8")
-                    },
-                    benefits
-                }
-            }
-        };
-    }
-
-    private static View BuildBenefitRow(string marker, string text)
-    {
-        var grid = new Grid
-        {
-            ColumnDefinitions =
-            {
-                new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(GridLength.Star)
-            },
-            ColumnSpacing = 10
-        };
-        grid.Children.Add(new Label
-        {
-            Text = marker,
-            FontSize = 15,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = GoldColor
-        });
-        var label = new Label
-        {
-            Text = text,
-            FontSize = 14,
-            TextColor = Colors.White,
-            LineBreakMode = LineBreakMode.WordWrap
-        };
-        grid.Children.Add(label);
-        Grid.SetColumn(label, 1);
-        return grid;
-    }
-
-    private static ImageSource CreatePackageImageSource(string fileName) =>
-        ImageSource.FromStream(_ => FileSystem.OpenAppPackageFileAsync(fileName));
-
-    private View BuildPlanCard(MobilePlan plan, MobileStoreProduct? product)
-    {
-        var isYearly = plan.BillingPeriodMonths >= 12;
-        var hasStoreProduct = product is not null && !string.IsNullOrWhiteSpace(product.LocalizedPrice);
-        var displayPrice = product?.LocalizedPrice;
-        if (string.IsNullOrWhiteSpace(displayPrice))
-        {
-            displayPrice = "Prys nie beskikbaar nie";
-        }
-
-        var actionButton = new Button
-        {
-            Text = hasStoreProduct
-                ? (_sessionState.Current.IsSignedIn
-                    ? (isYearly ? "Kies jaarliks" : "Kies maandeliks")
-                    : "Teken in om voort te gaan")
-                : "Tans nie beskikbaar nie",
-            BackgroundColor = hasStoreProduct
-                ? (isYearly ? GoldColor : AccentColor)
-                : Color.FromArgb("#E7E1D7"),
-            TextColor = hasStoreProduct
-                ? (isYearly ? TextColor : Colors.White)
-                : MutedTextColor,
-            FontAttributes = FontAttributes.Bold,
-            CornerRadius = 22,
-            HeightRequest = 50,
-            IsEnabled = hasStoreProduct,
-            Opacity = hasStoreProduct ? 1 : 0.78
-        };
-        actionButton.AutomationId = isYearly ? "paywall-yearly-button" : "paywall-monthly-button";
-        SemanticProperties.SetDescription(
-            actionButton,
-            $"{plan.Name}, {displayPrice} {(isYearly ? "per jaar" : "per maand")}");
-        if (product is not null)
-        {
-            actionButton.Clicked += async (_, _) => await OpenPlanAsync(plan, product);
-        }
-
-        var heading = new Grid
-        {
-            ColumnDefinitions =
-            {
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Auto)
-            },
-            ColumnSpacing = 10
-        };
-        heading.Children.Add(new Label
-        {
-            Text = isYearly ? "Jaarliks" : "Maandeliks",
-            FontSize = 20,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = TextColor
-        });
-        if (isYearly)
-        {
-            var badge = new Border
-            {
-                BackgroundColor = SoftGoldColor,
-                StrokeThickness = 0,
-                StrokeShape = new RoundRectangle { CornerRadius = 999 },
-                Padding = new Thickness(10, 5),
-                Content = new Label
-                {
-                    Text = "JAARLIKSE PLAN",
-                    FontSize = 10,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = Color.FromArgb("#765500")
-                }
-            };
-            heading.Children.Add(badge);
-            Grid.SetColumn(badge, 1);
-        }
-
-        var priceRow = new HorizontalStackLayout
-        {
-            Spacing = 6,
-            Children =
-            {
-                new Label
-                {
-                    Text = displayPrice,
-                    FontSize = 30,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = hasStoreProduct ? AccentColor : MutedTextColor
-                },
-                new Label
-                {
-                    Text = isYearly ? "/ jaar" : "/ maand",
-                    FontSize = 14,
-                    TextColor = MutedTextColor,
-                    VerticalTextAlignment = TextAlignment.End,
-                    Margin = new Thickness(0, 0, 0, 5)
-                }
-            }
-        };
-
-        var cardContent = new VerticalStackLayout
-        {
-            Spacing = 12,
-            Children =
-            {
-                heading,
-                priceRow,
-                new Label
-                {
-                    Text = plan.Description,
-                    FontSize = 14,
-                    TextColor = MutedTextColor
-                }
-            }
-        };
-        cardContent.Children.Add(actionButton);
-
-        var card = new Border
-        {
-            BackgroundColor = Colors.White,
-            Stroke = isYearly ? GoldColor : BorderColor,
-            StrokeThickness = isYearly ? 2 : 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 26 },
-            Padding = new Thickness(20),
-            Content = cardContent
-        };
-        MobileResponsiveLayout.ApplyCenteredContent(card, Width, 720);
-        return card;
-    }
-
-    private View BuildRetryButton()
-    {
-        var button = BuildTextLinkButton("Herlaai winkelpryse");
-        button.Clicked += async (_, _) =>
-        {
-            if (_isLoading || _isOpeningPlan) return;
-            _isLoading = true;
-            try { await LoadAsync(); } finally { _isLoading = false; }
-        };
-        return button;
-    }
-
-    private View BuildRestoreButton()
-    {
-        var restoreButton = new Button
-        {
-            Text = "Herstel aankoop",
-            BackgroundColor = Colors.Transparent,
-            TextColor = AccentColor,
-            FontAttributes = FontAttributes.Bold,
-            HeightRequest = 46
-        };
-        restoreButton.Clicked += async (_, _) => await RestorePurchasesAsync();
-        return restoreButton;
-    }
-
-    private View BuildActiveAccessCard()
-    {
-        var continueButton = new Button
-        {
-            Text = IsPaywall ? "Luister verder" : "Gaan na stories",
-            BackgroundColor = GoldColor,
-            TextColor = TextColor,
-            FontAttributes = FontAttributes.Bold,
-            CornerRadius = 23,
-            HeightRequest = 50,
-            AutomationId = "paywall-active-access-button"
-        };
-        continueButton.Clicked += async (_, _) => await OpenReturnPathAsync();
-
-        return new Border
-        {
-            BackgroundColor = Colors.White,
-            Stroke = GoldColor,
-            StrokeThickness = 2,
-            StrokeShape = new RoundRectangle { CornerRadius = 26 },
-            Padding = 20,
-            Content = new VerticalStackLayout
-            {
-                Spacing = 12,
-                Children =
-                {
-                    new Label
-                    {
-                        Text = "✓ Jou volle toegang is reeds aktief",
-                        FontSize = 20,
-                        FontAttributes = FontAttributes.Bold,
-                        TextColor = AccentColor
-                    },
-                    new Label
-                    {
-                        Text = "Hierdie rekening werk reeds op die Schink Stories-app en webwerf. Jy hoef nie weer te betaal nie.",
-                        FontSize = 14,
-                        TextColor = MutedTextColor
-                    },
-                    continueButton
-                }
-            }
-        };
-    }
-
-    private static View BuildPurchaseDetails() =>
-        new Border
-        {
-            BackgroundColor = Colors.White,
-            Stroke = BorderColor,
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 22 },
-            Padding = 18,
-            Content = new VerticalStackLayout
-            {
-                Spacing = 8,
-                Children =
-                {
-                    new Label
-                    {
-                        Text = "Hoe dit werk",
-                        FontSize = 15,
-                        FontAttributes = FontAttributes.Bold,
-                        TextColor = TextColor
-                    },
-                    new Label
-                    {
-                        Text = "Betaling word veilig deur die App Store of Google Play voltooi. Jou intekening hernu outomaties tensy jy dit minstens 24 uur voor die einde van die huidige tydperk kanselleer. Bestuur of kanselleer dit in jou winkelrekening.",
-                        FontSize = 12,
-                        TextColor = MutedTextColor,
-                        LineBreakMode = LineBreakMode.WordWrap
-                    },
-                    new Label
-                    {
-                        Text = "Jou Schink-rekening hou toegang op die app en www.schink.co.za in pas.",
-                        FontSize = 12,
-                        FontAttributes = FontAttributes.Bold,
-                        TextColor = AccentColor
-                    }
-                }
-            }
-        };
-
-    private View BuildLegalLinks()
-    {
-        var termsButton = BuildTextLinkButton("Terme en voorwaardes");
-        termsButton.AutomationId = "plans-terms-link";
-        termsButton.Clicked += async (_, _) => await OpenLegalLinkAsync("/terme-en-voorwaardes");
-
-        var privacyButton = BuildTextLinkButton("Privaatheidsbeleid");
-        privacyButton.AutomationId = "plans-privacy-link";
-        privacyButton.Clicked += async (_, _) => await OpenLegalLinkAsync("/privaatheidsbeleid");
-
-        return new VerticalStackLayout
-        {
-            Spacing = 0,
-            HorizontalOptions = LayoutOptions.Center,
-            Children = { privacyButton, termsButton }
-        };
-    }
-
-    private async Task OpenLegalLinkAsync(string path)
-    {
-        try
-        {
-            if (await Launcher.Default.OpenAsync(new Uri(_apiClient.BuildAbsoluteUrl(path))))
-            {
-                return;
-            }
-        }
-        catch (Exception)
-        {
-            // Keep a failed browser handoff visible and recoverable.
-        }
-
-        await DisplayAlertAsync("Kon nie die blad oopmaak nie",
-            "Probeer asseblief weer. Jy kan die beleid en voorwaardes ook by www.schink.co.za lees.",
-            "Reg so");
-    }
-
-    private static Button BuildTextLinkButton(string text) =>
-        new()
-        {
-            Text = text,
-            BackgroundColor = Colors.Transparent,
-            TextColor = AccentColor,
-            FontSize = 13,
-            FontAttributes = FontAttributes.Bold,
-            MinimumHeightRequest = 44,
-            Padding = new Thickness(10, 0)
-        };
-
-    private static View BuildNotice(string message) =>
-        new Border
-        {
-            BackgroundColor = Colors.White,
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 22 },
-            Padding = 20,
-            Content = new Label
-            {
-                Text = message,
-                FontSize = 15,
-                TextColor = MutedTextColor,
-                HorizontalTextAlignment = TextAlignment.Center
-            }
-        };
+    private bool HasPrice(string productId) => _storeProducts.TryGetValue(productId, out var product) &&
+        !string.IsNullOrWhiteSpace(product.LocalizedPrice);
 
     private async Task OpenPlanAsync(MobilePlan plan, MobileStoreProduct product)
     {
-        if (_isOpeningPlan)
+        if (_isOpeningPlan) return;
+        if (_sessionState.Current.HasPaidSubscription)
         {
+            await OpenReturnPathAsync();
             return;
         }
 
         _isOpeningPlan = true;
+        UpdateSelection();
         try
         {
             if (!_sessionState.Current.IsSignedIn)
@@ -685,6 +252,7 @@ public sealed class PlansPage : ContentPage
         finally
         {
             _isOpeningPlan = false;
+            UpdateSelection();
         }
     }
 
@@ -706,6 +274,7 @@ public sealed class PlansPage : ContentPage
         }
 
         _isOpeningPlan = true;
+        UpdateSelection();
         try
         {
             var purchases = await _storeBilling.RestoreAsync();
@@ -743,6 +312,7 @@ public sealed class PlansPage : ContentPage
         finally
         {
             _isOpeningPlan = false;
+            UpdateSelection();
         }
     }
 
@@ -791,7 +361,7 @@ public sealed class PlansPage : ContentPage
     }
 
     private Task ClosePaywallAsync() =>
-        IsPaywall
+        _sessionState.Current.IsSignedIn
             ? Shell.Current.GoToAsync("//Luister", animate: true)
             : Shell.Current.GoToAsync("..", animate: true);
 

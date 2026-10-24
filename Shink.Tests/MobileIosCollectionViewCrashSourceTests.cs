@@ -11,7 +11,7 @@ public sealed class MobileIosCollectionViewCrashSourceTests
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
         var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
 
-        StringAssert.Contains(project, "<MauiVersion>10.0.100</MauiVersion>");
+        StringAssert.Contains(project, "<MauiVersion>10.0.120</MauiVersion>");
         Assert.IsFalse(mauiProgram.Contains("UIKit.UIUserInterfaceIdiom.Pad", StringComparison.Ordinal),
             "The stable handler must also cover the iPhone TemplatedCell2 crash.");
         StringAssert.Contains(

@@ -101,13 +101,14 @@ public sealed class StoryCatalogBehaviorTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Assert.AreEqual(HttpMethod.Get, request.Method);
+            var isListingRpc = request.RequestUri!.AbsolutePath.EndsWith("/rpc/get_story_catalogue_listing", StringComparison.Ordinal);
+            Assert.AreEqual(isListingRpc ? HttpMethod.Post : HttpMethod.Get, request.Method);
             Assert.AreEqual("example.supabase.co", request.RequestUri!.Host);
             RequestCount++;
             var query = System.Web.HttpUtility.ParseQueryString(request.RequestUri.Query);
             object rows = request.RequestUri.Segments[^1] switch
             {
-                "stories" => Enumerable.Range(0, StoryCount).Select(index => new
+                "stories" or "get_story_catalogue_listing" => Enumerable.Range(0, StoryCount).Select(index => new
                 {
                     story_id = Id(index + 1), slug = $"story-{index}", title = $"{TitlePrefix}Story {index}",
                     status = index == 4 ? "draft" : "published", access_level = index == 0 ? "free" : "subscriber",
