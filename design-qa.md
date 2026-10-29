@@ -1,111 +1,78 @@
-# Free signup design QA — 12 October 2026
+# Profile avatar selection — 28 October 2026
 
-**Final result: passed**
+final result: passed
 
-Source visual: `/var/folders/rs/x50hrf3x2hz_92h06ptk8s_w0000gn/T/codex-clipboard-d3ac0e0a-e0bf-4eea-8af5-d2f304006637.png` (1600 × 900).
+## Follow-up: onboarding and dropdown actions
 
-Implementation: `http://127.0.0.1:5265/teken-op?returnUrl=%2Fluister`.
+The user's updated requirements distinguish two flows. First-time setup shows **Begin luister**, allows submission without a selection, assigns a random catalogue avatar on the server when none was chosen, saves it, and always redirects to `/luister`. Entering through the account dropdown adds `mode=edit` and the originating local page address. That flow shows the requested **Save** label and returns to the original address, including its query string. Existing avatar and cookie protection remain in place.
 
-Evidence directory: `/Users/luanvanderwalt/.codex/visualizations/2026/10/12/01a131b7-8bce-7e12-b43b-a937786a5e65/free-signup/`.
+Verified in the actual local browser: an empty onboarding selection saved a random Panda avatar and opened the real Luister page; opening the dropdown from `/meer-oor-ons?bron=avatar-toets` showed Save, changing to Roomys and saving returned to that exact address, and reopening preselected Roomys. No browser warnings or errors occurred in the checked flow. The Save state is captured at 390 × 844 CSS pixels in `output/avatar-selection/save-flow.png`. The temporary capture viewport was cleared afterward. Current focused regression batch: **52 passed**, including selected and random onboarding, edit return paths, retry mode preservation, CSRF, and existing sign-up rendering. Log: `output/avatar-selection/flow-tests.log`. The website was rebuilt by this test run; `git diff --check` passed.
 
-- `desktop-viewport.png`: 1600 × 900 CSS/pixel viewport, device scale factor 1, signed out, empty form, light theme.
-- `desktop.png`: 1600 × 1133 full page, including the existing footer.
-- `mobile.png`: 390 × 844 CSS viewport, full-page capture, device scale factor 1.
-- `mobile-small.png`: 320 × 740 CSS viewport, full-page capture, device scale factor 1.
-- `comparison.png`: source and implementation side by side; full-page implementation cropped to the matching 1600 × 900 viewport. No density scaling before comparison.
-- `comparison-focused.png`: source and implementation card regions at original density, inspected together for asset, type, field, and button fidelity.
+These updated action and navigation requirements supersede the initial required-choice and post-sign-up continuation behavior described in the historical comparison notes below. They do not change the supplied layout or artwork.
 
-## Findings
+## Annotation follow-up: circular header avatar
 
-No remaining actionable P0/P1/P2 findings.
+The user's browser annotation requested a circular portrait without the square behind it. Updated the header avatar wrapper to `border-radius: 50%`, made the image inherit that radius, removed the mobile rounded-square override, and removed the image wrapper's background and shadow. Rebuilt the website successfully and refreshed the annotated 284px browser viewport. Computed styles confirm a 24px circular image and wrapper, transparent background, and no shadow. Screenshot: `output/avatar-selection/header-circle.png`. `git diff --check` passed.
 
-- **Fonts and typography:** existing local Poppins matches the reference. The heading retains its two-line wrapping and 23px desktop size. Input text remains at least 16px on mobile. Placeholder contrast is stronger than the reference.
-- **Spacing and layout:** desktop card width is 466px, with the reference's centered narrow input column and wider green button. The card grows vertically for the requested provider buttons and the existing email preference and sign-in link. At 320px the card is 288px wide and the inputs are 242px wide; document width equals viewport width. All actions remain reachable by normal scrolling.
-- **Colors and tokens:** teal-to-yellow background, cream card, dark teal text, and green primary action follow the reference. Provider buttons use white/Google and black/Apple styling.
-- **Image quality:** original Schink turquoise logo and original Oortjies holding a book are reused. The mouse's paper background blends into the card without a visible rectangular edge. Icons use the installed Font Awesome brand font.
-- **Copy and content:** the heading, four fields, and “Volgende” follow the source. Added provider actions appear below an “of” divider in Afrikaans. The site's existing header, required footer, email preference, and sign-in link are intentionally retained.
+## Reference and browser evidence
+
+- Source visual truth: `output/avatar-selection/source-mockup.png`, copied from the user's attached mockup. Source dimensions: 1600 × 900 pixels.
+- Implementation: the actual compiled `/profielprentjie` Razor page, MainLayout, and avatar POST endpoint, hosted by a temporary local preview harness at `http://localhost:5278/preview`.
+- The harness is outside this repository at `/tmp/shink-avatar-preview/`. It supplies an isolated sample account and in-memory profile storage. No preview authentication route or fake service was added to the product.
+- Desktop CSS viewport: 1600 × 1000; browser density: 2. Captured at 3200 × 2000, normalized to 1600 × 1000. The native browser capture uses Display P3 pixels; captures were tagged accordingly and converted to sRGB before comparison.
+- Full desktop, with the saved Panda portrait in the header and picker: `output/avatar-selection/final-desktop.png`.
+- Unselected content region: `output/avatar-selection/desktop-picker.png`. The existing header begins above the mockup content. Cropping at y=66 removes that existing header and compares a 1600 × 900 content region with the source. The picker section's natural height is approximately 903 pixels; the final three background pixels are outside this crop.
+- Combined full-view comparison, source on the left and implementation on the right: `output/avatar-selection/visual-comparison.png`. The composite has a 2× backing resolution of 6400 × 1800.
+- Focused typography and image comparison: `output/avatar-selection/heading-comparison.png`.
+- Focused CTA comparison: `output/avatar-selection/button-comparison.png`.
+- Open profile dropdown: `output/avatar-selection/profile-menu.png`.
+- Mobile, 390 × 844 CSS pixels, normalized from a 2× capture: `output/avatar-selection/mobile.png`.
+- Additional narrow-screen check: 320 × 640 CSS pixels. Document width remained 320 pixels, avatar targets measured 58.5 pixels, and the CTA remained fully within the viewport.
 
 ## Comparison history
 
-1. Initial desktop capture showed a visible paper rectangle around Oortjies and excess vertical space pushing the providers below the fold. Changed the blend mode and tightened image/header/card spacing. The final full-view and focused comparisons show the rectangle removed and the complete desktop card visible within the 900px viewport.
-2. Checked 390px and 320px layouts after refinement. No clipping or horizontal overflow; fields, button, providers, and sign-in link remain readable and usable.
+1. Initial browser capture found a P1 background extraction artifact: a centered one-pixel source strip included heading pixels, repeating as horizontal lines. Extracted the unobstructed strip at x=1, refreshed without the old cached asset, and captured again. No lines remain in the combined comparison or final desktop/mobile captures.
+2. The initial native capture appeared desaturated. DOM color values matched the implementation; normalizing the native Display P3 capture to sRGB resolved this comparison-only discrepancy. No product palette changes were made to compensate for capture color management.
+3. Rechecked the final build after the account and return-path tests. Required selection blocked an empty submit, saving Panda reached the local success page, reopening restored Panda, and the final capture shows Panda in both the header and selected state.
 
-## Functional verification
+## Required fidelity surfaces
 
-- Home “Luister 3 Stories Gratis” opens the compact free form.
-- Home paid signup retains the selected monthly plan and full membership form.
-- Switching from paid to free opens the compact form and returns password sign-in, Google, and Apple to `/luister`, without a checkout destination.
-- Empty required fields and mismatched passwords show Afrikaans validation messages.
-- A valid local submission reaches the existing signup endpoint and displays its configured-service error without losing the form. External credentials and background billing jobs were disabled in the preview.
-- Google gets the existing browser-specific PKCE/implicit configuration; both provider links preserve a safe local listening/story destination.
-- Fresh final-preview console check: no errors. Earlier connection errors were caused by deliberately restarting the local preview during rebuilds.
-- 63 focused tests pass, covering rendered free/paid/school/voucher forms, safe authentication return paths, browser autofill input synchronization, free story routing, referrals, email preference behavior, and existing signup checks.
+- **Fonts and typography:** Existing local Poppins assets are used. Desktop heading is 32px/500, CTA is 24px/700. Mobile heading is 24px and wraps to two balanced lines. The copy matches the supplied Afrikaans mockup. Native text remains selectable and accessible.
+- **Spacing and layout rhythm:** Centered 636px content area, four columns, approximately 142px portraits, 22px column gaps, and 10px desktop row gaps. The CTA is 396 × 60px with 16px corners. On mobile, the grid and CTA shrink within 22px side padding. Selection rings and focus outlines do not overlap neighboring portraits.
+- **Colors and tokens:** The supplied background was reused as an unobstructed raster strip. The green CTA and dark teal heading match the reference after capture color normalization. The existing site header and footer remain present as required by AGENTS.md; they were excluded only from the standalone mockup comparison.
+- **Image quality and fidelity:** All 16 portraits were individually extracted from the supplied artwork in the original order, with carefully aligned 142 × 142 bounds and circular presentation. No replacement illustrations or placeholders were generated. Portraits remain at or below their source CSS size.
+- **Copy and content:** “Kies ’n prentjie vir jou profiel” and the onboarding “Begin luister” are preserved. The dropdown adds “Verander profielprentjie” and opens the **Save** action specifically requested by the user. Authentication and save failures use Afrikaans messages. Onboarding goes to Luister; editing returns to the originating local page.
 
-Live account creation and external Google/Apple authorization were not exercised. No production data, content, deployment, or Git remote was changed.
+## Findings
+
+No actionable P0, P1, or P2 findings remain.
+
+P3: Native font antialiasing differs slightly from the raster mockup. The final row and CTA are approximately 3–4 pixels lower than the source. This does not change the composition or interaction and is accepted as minor rendering/layout polish.
+
+## Interaction and account verification
+
+- All 16 portrait files loaded successfully in the browser.
+- Empty onboarding submission assigned and saved a random avatar; editing retains selection validation.
+- Clicking Panda displayed its selection ring and check mark.
+- Submitting saved the portrait through the actual antiforgery-protected form endpoint into the isolated preview store. Begin luister opened Luister and Save returned to the original page with its query string intact.
+- Reopening restored the saved choice and displayed the same image in the header.
+- The profile dropdown displayed the new option, and clicking it opened `/profielprentjie`.
+- Keyboard ArrowRight moved the selected radio from Panda to Lama; Panda could be reselected.
+- Desktop, 390px mobile, and 320px narrow mobile had no horizontal overflow.
+- Browser console checks after the final flow returned no errors or warnings.
+- Automated verification: 84 tests passed across avatar behavior, sign-up rendering/routing, authentication, MainLayout, and WordPress migration coverage. The test build compiled the current website source. `git diff --check` passed. Detailed output: `output/avatar-selection/tests.log`.
+- Tests cover signed-in account ownership, CSRF rejection, invalid avatar IDs, save failures, unchanged session expiry/roles, local return-path validation, random and selected onboarding, edit-mode return paths, and preservation during WordPress sign-in sync.
+
+## Scope and remaining integration limits
+
+The existing Supabase profile columns were verified with a read-only query through the project-specific Shink connector. The write implementation is covered using a stub HTTP server/handler contract; no live profile was changed. Real provider sign-up and production persistence were not exercised in the browser. No migration is needed. No commit, push, deployment, release, or communication was performed.
 
 ## Implementation checklist
 
-- [x] Match the supplied card design using existing brand assets.
-- [x] Keep paid, school, and voucher signup flows available.
-- [x] Add Google and Apple below “of”.
-- [x] Verify desktop, mobile, validation, navigation, and console state.
-- [x] Leave the local preview open.
-
-final result: passed
-
----
-
-# Native paywall design QA — 21 October 2026
-
-**Findings**
-
-No remaining actionable P0/P1/P2 issues in the implemented native paywall.
-
-Source visual: `/var/folders/rs/x50hrf3x2hz_92h06ptk8s_w0000gn/T/codex-clipboard-e6ac576e-cf8e-4d01-9c2d-4339929322f6.png` (1312 × 1199).
-
-Implementation: native MAUI `PlansPage`, mirrored at `http://localhost:3200/`. Evidence: `artifacts/paywall-design/implementation/`.
-
-**Comparison conditions**
-
-- Annual selected, parent area approved, Afrikaans, light theme. The reference's R999 annual amount is illustrative; the preview uses the existing catalog's R990. App source displays localized store metadata.
-- Reference iOS screen crop: x111/y26, 514 × 1095 pixels, normalized to 402 × 856. Native iPhone: 1206 × 2622 pixels, 402 × 874 points at 3x, normalized to 402 × 874. The source screen aspect ratio and native simulator chrome differ slightly; device bezels are excluded from judgment.
-- `comparison.png`: source and native screen together at equal content width. `comparison-hero.png`: focused original-character, logo, and background comparison. These combined images were opened and inspected.
-- `phone-annual.png`, `phone-monthly.png`, `phone-footer.png`, `phone-initial.png`, `phone-restore.png`, and `phone-continue-free.png` cover the native phone states.
-- `tablet-portrait.png`: 1668 × 2420 pixels, 834 × 1210 points at 2x. `tablet-landscape.png` and `tablet-unavailable-price.png`: 2420 × 1668 pixels, 1210 × 834 points at 2x.
-
-**Required fidelity surfaces**
-
-- Fonts and typography: the existing rounded Schink font supplies the two-line display heading. Native UI text remains readable, with 14-point renewal disclosure. Native font metrics differ from the illustrated mock; no text truncation in the verified standard-size states.
-- Spacing and layout: original forest/book composition, centered logo, benefits, two plan cards, and single primary action follow the reference hierarchy. Native safe areas and minimum 44-point footer actions require a short scroll on the phone; all footer actions are reachable, as captured in `phone-footer.png`. Tablets use a centered 580-point maximum-width column and scroll in shorter landscape windows.
-- Colors and tokens: cream `#FFF7E8`, dark teal `#003F46`, mint selection, and gold value badge follow the concept. Selected radio/card states remain clear. System status/navigation chrome stays native.
-- Image quality: Skillie, Oortjies, and Prinses Panda are byte-identical copies of existing original PNGs, rendered as separate native layers. No generated character substitute, stretching, or visible rectangular character background. Existing original white logo reused. The forest/book background is retained from the approved background plate.
-- Copy and content: Afrikaans benefits and plan labels retained. Purchase button and renewal terms show the same selected store price and period. Platform-specific cancellation wording, free continuation, restore, terms, and privacy are present. Value badge is suppressed when comparable store prices are unavailable.
-
-**Comparison history**
-
-1. Initial phone capture (`phone-annual-initial.png`) exposed an incorrect foreground mask covering part of Oortjies. Rebuilt the book-only mask before image scaling and recaptured. `phone-annual.png` and `comparison-hero.png` show the complete original characters, with the book foreground confined below them.
-2. Reduced header/body spacing after initial phone review. Final `comparison.png` shows the complete primary conversion area, with readable renewal text and free continuation. `phone-footer.png` confirms restore/legal actions after a short scroll.
-
-**Functional verification**
-
-- Parent challenge opens the protected area only after the matching digits are entered.
-- Monthly selection changes the radio, card, button, and renewal text together.
-- Empty restore result shows the existing native result dialog; continuing free returns to Stories.
-- Missing annual price disables that option and defaults to the available monthly product; no fabricated annual price or value badge appears.
-- 22 focused tests passed; iOS simulator and Android arm64 builds passed with zero errors. `git diff --check` passed. Original source artwork hashes and packaged copy equality passed.
-- Preview billing/session stubs exist only in an isolated temporary copy. No real store purchase, Android runtime session, physical install, release, or live billing mutation was performed. Real sandbox transactions remain unverified.
-
-**Follow-up polish**
-
-- P3: native font metrics, solid teal header strip, and system status-bar background differ slightly from the painted reference. Existing brand typography and safe-area behavior are retained.
-- Larger accessibility text sizes were not exercised in this pass; the page is scrollable and labels wrap.
-
-**Implementation checklist**
-
-- [x] Use original character artwork and approved background.
-- [x] Preserve native store purchase verification and recovery.
-- [x] Bind price, selection, purchase button, and disclosure consistently.
-- [x] Verify phone, tablet portrait/landscape, unavailable price, and footer states.
-- [x] Keep the local phone preview available.
-
-final result: passed
+- [x] Match the supplied portraits, order, background, typography, and primary CTA.
+- [x] Implement first-sign-up routing to Luister, automatic random selection, and return to the original page after editing.
+- [x] Add the profile dropdown entry and preselect the saved portrait.
+- [x] Save only the authenticated subscriber's avatar and refresh the existing cookie.
+- [x] Preserve chosen avatars during WordPress profile synchronization.
+- [x] Verify browser interactions, responsive behavior, and focused regression tests.
+- [x] Leave the local preview available for review.

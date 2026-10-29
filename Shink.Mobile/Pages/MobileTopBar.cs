@@ -334,7 +334,7 @@ internal static class MobileTopBar
             {
                 BackgroundColor = MobileAndroidChromePalette.ProfileBackground,
                 StrokeThickness = 0,
-                StrokeShape = new RoundRectangle { CornerRadius = 14 },
+                StrokeShape = new Ellipse(),
                 WidthRequest = 48,
                 HeightRequest = 48,
                 Padding = 0,
@@ -361,9 +361,9 @@ internal static class MobileTopBar
 
         return new Border
         {
-            BackgroundColor = MobileAndroidChromePalette.ProfileBackground,
+            BackgroundColor = Colors.Transparent,
             StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 14 },
+            StrokeShape = new Ellipse(),
             WidthRequest = 48,
             HeightRequest = 48,
             Padding = 0,

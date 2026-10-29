@@ -74,14 +74,17 @@ public sealed class SessionState
     private const string LoginUrlPreferenceKey = "mobile_session_login_url";
     private const string SignupUrlPreferenceKey = "mobile_session_signup_url";
     private const string PlansUrlPreferenceKey = "mobile_session_plans_url";
+    private const string AvatarSelectionPreferenceKey = "mobile_avatar_selection_pending";
+    private const string AvatarSupportPreferenceKey = "mobile_profile_avatars_supported";
 
     public MobileSession Current { get; private set; } = LoadCachedSession();
     private int _updateVersion;
 
     public event Action<MobileSession>? Changed;
 
-    public void Update(MobileSession session)
+    public void Update(MobileSession session, bool avatarSelectionCompleted = false)
     {
+        session = MobileAvatarOnboarding.Merge(Current, session, avatarSelectionCompleted);
         Interlocked.Increment(ref _updateVersion);
         Current = session;
         SaveCachedSession(session);
@@ -155,7 +158,9 @@ public sealed class SessionState
             FavoriteStorySlugs: LoadFavoriteStorySlugs(),
             LoginUrl: Preferences.Get(LoginUrlPreferenceKey, string.Empty),
             SignupUrl: Preferences.Get(SignupUrlPreferenceKey, string.Empty),
-            PlansUrl: Preferences.Get(PlansUrlPreferenceKey, string.Empty));
+            PlansUrl: Preferences.Get(PlansUrlPreferenceKey, string.Empty),
+            RequiresAvatarSelection: isSignedIn && Preferences.Get(AvatarSelectionPreferenceKey, false),
+            SupportsProfileAvatars: Preferences.Get(AvatarSupportPreferenceKey, false));
     }
 
     private static IReadOnlyList<string> LoadFavoriteStorySlugs()
@@ -183,6 +188,8 @@ public sealed class SessionState
         Preferences.Set(LoginUrlPreferenceKey, session.LoginUrl);
         Preferences.Set(SignupUrlPreferenceKey, session.SignupUrl);
         Preferences.Set(PlansUrlPreferenceKey, session.PlansUrl);
+        Preferences.Set(AvatarSelectionPreferenceKey, session.IsSignedIn && session.RequiresAvatarSelection);
+        Preferences.Set(AvatarSupportPreferenceKey, session.SupportsProfileAvatars);
 
         if (!session.IsSignedIn)
         {
@@ -459,12 +466,12 @@ public sealed class MobileApiClient
         }
     }
 
-    public async Task<MobileSession> GetSessionAsync(CancellationToken cancellationToken = default)
+    public async Task<MobileSession> GetSessionAsync(CancellationToken cancellationToken = default, bool requiresAvatarSelection = false)
     {
         var session = await GetAsync<MobileSession>("/api/mobile/session", cancellationToken)
             ?? new MobileSession(false, null, null, null, null, null, null, false, false, Array.Empty<string>(), string.Empty, string.Empty, string.Empty);
-        _sessionState.Update(session);
-        return session;
+        _sessionState.Update(session with { RequiresAvatarSelection = requiresAvatarSelection });
+        return _sessionState.Current;
     }
 
     public Task<MobileHomeResponse?> GetHomeAsync(CancellationToken cancellationToken = default) =>
@@ -766,7 +773,7 @@ public sealed class MobileApiClient
     {
         var payload = new { email = email.Trim(), password };
         var result = await PostAsync<AuthResponse>("/api/auth/login", payload, cancellationToken);
-        await GetSessionAsync(cancellationToken);
+        await GetSessionAsync(cancellationToken, requiresAvatarSelection: MobileAvatarOnboarding.IsAvatarRedirect(result?.RedirectPath));
         _analytics.TrackEvent("mobile_auth_signed_in", new Dictionary<string, object>
         {
             ["auth_method"] = "email"
@@ -779,20 +786,21 @@ public sealed class MobileApiClient
 
     public async Task<(bool IsSuccess, string Message)> CompleteGoogleSignInAsync(
         string token,
+        bool marketingConsent = false,
         CancellationToken cancellationToken = default)
     {
         var result = await PostAsync<MobileGoogleAuthCompleteResponse>(
             "/api/mobile/auth/google/complete",
-            new { token },
+            new { token, marketingConsent },
             cancellationToken);
 
-        if (result?.Session is not null)
+        if (result?.Session.IsSignedIn == true)
         {
-            _sessionState.Update(result.Session);
+            _sessionState.Update(result.Session with { RequiresAvatarSelection = result.RequiresAvatarSelection });
         }
         else
         {
-            await GetSessionAsync(cancellationToken);
+            await GetSessionAsync(cancellationToken, requiresAvatarSelection: result?.RequiresAvatarSelection == true);
         }
 
         _analytics.TrackEvent("mobile_auth_signed_in", new Dictionary<string, object>
@@ -808,6 +816,7 @@ public sealed class MobileApiClient
         string? firstName,
         string? lastName,
         string? displayName,
+        bool marketingConsent = false,
         CancellationToken cancellationToken = default)
     {
         var result = await PostAsync<MobileAppleAuthCompleteResponse>(
@@ -818,17 +827,18 @@ public sealed class MobileApiClient
                 nonce,
                 firstName,
                 lastName,
-                displayName
+                displayName,
+                marketingConsent
             },
             cancellationToken);
 
-        if (result?.Session is not null)
+        if (result?.Session.IsSignedIn == true)
         {
-            _sessionState.Update(result.Session);
+            _sessionState.Update(result.Session with { RequiresAvatarSelection = result.RequiresAvatarSelection });
         }
         else
         {
-            await GetSessionAsync(cancellationToken);
+            await GetSessionAsync(cancellationToken, requiresAvatarSelection: result?.RequiresAvatarSelection == true);
         }
 
         _analytics.TrackEvent("mobile_auth_signed_in", new Dictionary<string, object>
@@ -845,6 +855,7 @@ public sealed class MobileApiClient
         string email,
         string mobileNumber,
         string password,
+        bool marketingConsent = false,
         CancellationToken cancellationToken = default)
     {
         var payload = new
@@ -854,16 +865,37 @@ public sealed class MobileApiClient
             displayName = displayName.Trim(),
             email = email.Trim(),
             mobileNumber = mobileNumber.Trim(),
-            password
+            password,
+            marketingConsent
         };
 
         var result = await PostAsync<AuthResponse>("/api/auth/signup", payload, cancellationToken);
-        await GetSessionAsync(cancellationToken);
+        await GetSessionAsync(cancellationToken, requiresAvatarSelection: true);
         _analytics.TrackEvent("mobile_auth_signed_up", new Dictionary<string, object>
         {
             ["auth_method"] = "email"
         });
         return (true, result?.Message ?? "Jou rekening is geskep.");
+    }
+
+    public async Task UpdateAvatarAsync(string? avatarId, bool useRandomIfUnselected, CancellationToken cancellationToken = default)
+    {
+        if (!_sessionState.Current.SupportsProfileAvatars)
+            throw new InvalidOperationException("Profielprentjies is nog nie beskikbaar nie. Probeer asseblief later weer.");
+
+        var email = _sessionState.Current.Email;
+        if (!_sessionState.Current.IsSignedIn || string.IsNullOrWhiteSpace(email))
+            throw new InvalidOperationException("Teken asseblief weer in om jou prentjie te stoor.");
+
+        var response = await PostAsync<MobileAvatarSelectionResponse>("/api/mobile/profile/avatar",
+            new { avatarId, useRandomIfUnselected, expectedAccountEmail = email }, cancellationToken)
+            ?? throw new InvalidOperationException("Ons kon nie jou prentjie stoor nie. Probeer asseblief weer.");
+
+        if (!_sessionState.Current.IsSignedIn || !string.Equals(email, _sessionState.Current.Email, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Jou rekening het verander. Maak die profielprentjies weer oop.");
+
+        _sessionState.Update(_sessionState.Current with { ProfileImageUrl = BuildImageUrl(response.ProfileImageUrl) },
+            avatarSelectionCompleted: true);
     }
 
     public async Task SignOutAsync(CancellationToken cancellationToken = default)

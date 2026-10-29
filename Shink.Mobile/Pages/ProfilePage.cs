@@ -22,9 +22,11 @@ public sealed class ProfilePage : ContentPage
     private readonly Entry _mobileNumberEntry;
     private readonly ActivityIndicator _saveSpinner;
     private readonly Button _saveButton;
+    private readonly Button _changeAvatarButton;
     private readonly Label _statusLabel;
 
     private bool _isSaving;
+    private bool _returningFromAvatarSelection;
 
     public ProfilePage(
         MobileApiClient apiClient,
@@ -82,6 +84,7 @@ public sealed class ProfilePage : ContentPage
             HorizontalTextAlignment = TextAlignment.Center,
             IsVisible = false
         };
+        _changeAvatarButton = BuildChangeAvatarButton();
 
         var profileScroll = new ScrollView
         {
@@ -94,6 +97,7 @@ public sealed class ProfilePage : ContentPage
                 {
                     BuildHeader(),
                     _avatarHost,
+                    _changeAvatarButton,
                     BuildForm(),
                     BuildSaveRow(),
                     _statusLabel,
@@ -114,13 +118,21 @@ public sealed class ProfilePage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        ApplySession(_sessionState.Current);
+        var preserveForm = _returningFromAvatarSelection;
+        _returningFromAvatarSelection = false;
+        if (preserveForm)
+            RenderAvatar(_sessionState.Current);
+        else
+            ApplySession(_sessionState.Current);
 
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             var session = await _apiClient.GetSessionAsync(timeout.Token);
-            ApplySession(session);
+            if (preserveForm)
+                RenderAvatar(session);
+            else
+                ApplySession(session);
         }
         catch
         {
@@ -186,6 +198,30 @@ public sealed class ProfilePage : ContentPage
         Grid.SetColumn(title, 1);
         Grid.SetColumn(spacer, 2);
         return grid;
+    }
+
+    private Button BuildChangeAvatarButton()
+    {
+        var button = new Button
+        {
+            Text = "Verander profielprentjie", BackgroundColor = Colors.Transparent,
+            TextColor = AccentColor, FontSize = 15, HorizontalOptions = LayoutOptions.Center,
+            MinimumHeightRequest = 44
+        };
+        button.Clicked += async (_, _) =>
+        {
+            button.IsEnabled = false;
+            try
+            {
+                _returningFromAvatarSelection = true;
+                await Shell.Current.GoToAsync($"{nameof(AvatarSelectionPage)}?mode=edit", animate: true);
+            }
+            finally
+            {
+                button.IsEnabled = true;
+            }
+        };
+        return button;
     }
 
     private View BuildForm() =>
@@ -285,6 +321,7 @@ public sealed class ProfilePage : ContentPage
 
     private void RenderAvatar(MobileSession session)
     {
+        _changeAvatarButton.IsVisible = session.SupportsProfileAvatars;
         _avatarHost.Children.Clear();
 
         var imageUrl = string.IsNullOrWhiteSpace(session.ProfileImageUrl)

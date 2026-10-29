@@ -324,6 +324,10 @@
                                         <i class="fa-solid fa-book-open" aria-hidden="true"></i>
                                         <span>My stories</span>
                                     </a>
+                                    <a href="@ProfileAvatarHref" class="account-link">
+                                        <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
+                                        <span>Verander profielprentjie</span>
+                                    </a>
                                     <a href="/intekening-en-betaling" class="account-link">
                                         <i class="fa-solid fa-credit-card" aria-hidden="true"></i>
                                         <span>Intekening en betaling</span>
@@ -705,6 +709,9 @@
         SubscriptionAttention.CanAttemptAutomaticRetry &&
         !IsAdminRoute &&
         !IsSubscriptionActionRoute;
+
+    private string ProfileAvatarHref => ProfileAvatarCatalog.SelectionPath(
+        new Uri(NavigationManager.Uri).PathAndQuery, isEditing: true);
 
     private string LoginHref
     {
@@ -1096,9 +1103,9 @@
             return null;
         }
 
-        var claimValue = user.FindFirst("picture")?.Value
+        var claimValue = user.FindFirst("profile_image_url")?.Value
             ?? user.FindFirst("avatar_url")?.Value
-            ?? user.FindFirst("profile_image_url")?.Value
+            ?? user.FindFirst("picture")?.Value
             ?? user.FindFirst("photo_url")?.Value;
 
         if (string.IsNullOrWhiteSpace(claimValue))

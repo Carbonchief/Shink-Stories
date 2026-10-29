@@ -410,7 +410,7 @@
     private string AppleSignInHref => BuildSocialSignInHref("apple");
 
     private string BuildSocialSignInHref(string provider) =>
-        QueryHelpers.AddQueryString($"/api/auth/{provider}/start", "returnUrl", GetSafeNonCheckoutReturnUrl() ?? "/luister");
+        QueryHelpers.AddQueryString($"/api/auth/{provider}/start", "returnUrl", GetSelectedPlanCheckoutPath() ?? GetSafeNonCheckoutReturnUrl() ?? "/luister");
     private IReadOnlyList<PaymentPlan> AvailablePlans =>
         IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.PublicSchoolPlans : HouseholdPlans;
     private static IReadOnlyList<PaymentPlan> HouseholdPlans { get; } =
@@ -691,12 +691,29 @@
         return Task.FromResult("/luister");
     }
 
-    private string GetRedirectTarget(string? apiRedirectPath = null, bool codeApplied = false) =>
-        (codeApplied ? GetSafePostAuthPath(apiRedirectPath) : null)
-        ?? GetSelectedPlanCheckoutPath()
-        ?? GetSafeNonCheckoutReturnUrl()
-        ?? GetSafePostAuthPath(apiRedirectPath)
-        ?? "/luister";
+    private string GetRedirectTarget(string? apiRedirectPath = null, bool codeApplied = false)
+    {
+        var apiTarget = GetAvatarContinuation(apiRedirectPath);
+        var serverChoseCheckout = apiTarget?.StartsWith("/betaal/", StringComparison.OrdinalIgnoreCase) == true;
+        return ProfileAvatarCatalog.SelectionPath(
+            (codeApplied || serverChoseCheckout ? apiTarget : null)
+            ?? GetSelectedPlanCheckoutPath()
+            ?? GetSafeNonCheckoutReturnUrl()
+            ?? apiTarget
+            ?? "/luister");
+    }
+
+    private static string? GetAvatarContinuation(string? redirectPath)
+    {
+        var safePath = GetSafePostAuthPath(redirectPath);
+        if (safePath is null || !safePath.StartsWith(ProfileAvatarCatalog.PagePath + "?", StringComparison.Ordinal))
+        {
+            return safePath;
+        }
+
+        var query = QueryHelpers.ParseQuery(safePath[safePath.IndexOf('?')..]);
+        return ProfileAvatarCatalog.SafeReturnPath(query["returnUrl"]);
+    }
 
     private async Task RedirectToTargetAsync(string target)
     {

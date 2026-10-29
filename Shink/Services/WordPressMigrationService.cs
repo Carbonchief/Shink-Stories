@@ -79,6 +79,7 @@ public sealed partial class WordPressMigrationService(
             var avatarErrors = new ConcurrentQueue<string>();
             var avatarCandidates = wordPressUsers
                 .Where(user => !string.IsNullOrWhiteSpace(user.AvatarSourceUrl))
+                .Where(user => !ProfileAvatarCatalog.IsSelection(existingSubscribersByEmail.GetValueOrDefault(user.Email)?.ProfileImageUrl))
                 .ToList();
             await Parallel.ForEachAsync(
                 avatarCandidates,
@@ -126,6 +127,7 @@ public sealed partial class WordPressMigrationService(
 
             var subscriberPayloads = wordPressUsers
                 .Select(BuildSubscriberUpsertRow)
+                .Select(row => PreserveSelectedAvatar(row, existingSubscribersByEmail.GetValueOrDefault(row.Email)))
                 .ToList();
             var subscriberIdsByEmail = await UpsertSubscribersAsync(baseUri, subscriberPayloads, cancellationToken);
             var upsertedSubscribers = subscriberIdsByEmail.Count;
@@ -236,9 +238,10 @@ public sealed partial class WordPressMigrationService(
             return false;
         }
 
+        var existingSubscriber = (await FetchSubscriberRowsAsync(baseUri, cancellationToken, importedUser.Email)).FirstOrDefault();
         var subscriberIds = await UpsertSubscribersAsync(
             baseUri,
-            [new SubscriberUpsertRow(
+            [PreserveSelectedAvatar(new SubscriberUpsertRow(
                 Email: importedUser.Email,
                 FirstName: importedUser.FirstName,
                 LastName: importedUser.LastName,
@@ -248,7 +251,7 @@ public sealed partial class WordPressMigrationService(
                 LastLoginAt: importedUser.LastLoginAt,
                 ProfileImageUrl: importedUser.ProfileImageUrl,
                 ProfileImageObjectKey: importedUser.ProfileImageObjectKey,
-                ProfileImageContentType: importedUser.ProfileImageContentType)],
+                ProfileImageContentType: importedUser.ProfileImageContentType), existingSubscriber)],
             cancellationToken);
         if (!subscriberIds.TryGetValue(importedUser.Email, out var subscriberId) || string.IsNullOrWhiteSpace(subscriberId))
         {
@@ -1536,17 +1539,15 @@ public sealed partial class WordPressMigrationService(
         return results;
     }
 
-    private async Task<List<SubscriberProfileRow>> FetchSubscriberRowsAsync(Uri baseUri, CancellationToken cancellationToken)
+    private async Task<List<SubscriberProfileRow>> FetchSubscriberRowsAsync(Uri baseUri, CancellationToken cancellationToken, string? email = null)
     {
+        var filter = email is null ? "&limit=5000" : $"&email=eq.{Uri.EscapeDataString(email.Trim().ToLowerInvariant())}&limit=1";
         var uri = new Uri(
             baseUri,
-            "rest/v1/subscribers?select=subscriber_id,email,profile_image_url,profile_image_object_key,profile_image_content_type&limit=5000");
+            "rest/v1/subscribers?select=subscriber_id,email,profile_image_url,profile_image_object_key,profile_image_content_type" + filter);
         using var request = CreateSupabaseRequest(HttpMethod.Get, uri);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            return [];
-        }
+        response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         return await JsonSerializer.DeserializeAsync<List<SubscriberProfileRow>>(stream, cancellationToken: cancellationToken) ?? [];
@@ -1797,6 +1798,16 @@ public sealed partial class WordPressMigrationService(
         ProfileImageUrl: user.ProfileImageUrl,
         ProfileImageObjectKey: user.ProfileImageObjectKey,
         ProfileImageContentType: user.ProfileImageContentType);
+
+    private static SubscriberUpsertRow PreserveSelectedAvatar(SubscriberUpsertRow row, SubscriberProfileRow? existing) =>
+        ProfileAvatarCatalog.IsSelection(existing?.ProfileImageUrl)
+            ? row with
+            {
+                ProfileImageUrl = existing!.ProfileImageUrl,
+                ProfileImageObjectKey = existing.ProfileImageObjectKey,
+                ProfileImageContentType = existing.ProfileImageContentType
+            }
+            : row;
 
     private static MembershipPeriodImportRow BuildMembershipPeriodImportRow(WordPressMembershipPeriod row) => new(
         MembershipPeriodId: row.MembershipPeriodId,

@@ -31,6 +31,7 @@ public sealed class AccountPage : ContentPage
     private readonly VerticalStackLayout _signedOutState;
     private ContentView? _authPanelContentHost;
     private readonly BoxView _authPanelTopSpacer;
+    private readonly MauiScrollView _accountScrollView;
     private VerticalStackLayout? _authHeroStack;
     private Image? _authLogoImage;
     private Label? _authWelcomeLabel;
@@ -82,6 +83,28 @@ public sealed class AccountPage : ContentPage
         };
         ApplySessionState();
 
+        _accountScrollView = new MauiScrollView
+        {
+            SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.SoftInput),
+            Content = new VerticalStackLayout
+            {
+                Spacing = 0,
+                Children = { _signedInState, _signedOutState }
+            }
+        };
+        _accountScrollView.SizeChanged += (_, _) => UpdateAuthPanelTopSpacer();
+#if IOS
+        _accountScrollView.HandlerChanged += (_, _) =>
+        {
+            if (_accountScrollView.Handler?.PlatformView is UIKit.UIScrollView nativeScrollView)
+            {
+                // Keep overflow scrolling, without dragging a form that already fits.
+                nativeScrollView.AlwaysBounceVertical = false;
+                nativeScrollView.Bounces = false;
+            }
+        };
+#endif
+
         var pageContent = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
@@ -100,19 +123,7 @@ public sealed class AccountPage : ContentPage
                     Opacity = 0.48,
                     InputTransparent = true
                 },
-                new MauiScrollView
-                {
-                    SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.SoftInput),
-                    Content = new VerticalStackLayout
-                    {
-                        Spacing = 0,
-                        Children =
-                        {
-                            _signedInState,
-                            _signedOutState
-                        }
-                    }
-                }
+                _accountScrollView
             }
         };
         Content = PersistentPlaybackHost.Wrap(pageContent, storyPlaybackSession, edgeToEdge: true);
@@ -374,6 +385,7 @@ public sealed class AccountPage : ContentPage
                 _authPanelContentHost
             }
         };
+        _authPanelFrame.SizeChanged += (_, _) => UpdateAuthPanelTopSpacer();
         ApplyAuthPanelFrameLayout();
         return _authPanelFrame;
     }
@@ -533,7 +545,30 @@ public sealed class AccountPage : ContentPage
             _authPanelMode == AuthPanelMode.SignIn ? "Teken in" : "Skep rekening"));
         formContent.Children.Add(_statusLabel);
 
-        if (_authPanelMode == AuthPanelMode.SignIn)
+        var isSignup = _authPanelMode == AuthPanelMode.SignUp;
+        var emailConsent = new CheckBox { IsChecked = true, Color = Color.FromArgb("#243238") };
+        var emailConsentLabel = new Label
+        {
+            Text = "Ontvang Schink-e-posse",
+            TextColor = Color.FromArgb("#243238"),
+            FontSize = 14,
+            VerticalOptions = LayoutOptions.Center,
+            LineBreakMode = LineBreakMode.WordWrap
+        };
+        var emailConsentRow = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitionCollection
+            {
+                new() { Width = GridLength.Auto },
+                new() { Width = GridLength.Star }
+            },
+            ColumnSpacing = 8
+        };
+        emailConsentRow.Add(emailConsent, 0, 0);
+        emailConsentRow.Add(emailConsentLabel, 1, 0);
+        SemanticProperties.SetDescription(emailConsent, "Ontvang Schink-e-posse, opsioneel");
+
+        if (_authPanelMode is AuthPanelMode.SignIn or AuthPanelMode.SignUp)
         {
             var loginEmailEntry = CreateEntry("E-pos", Keyboard.Email);
             var loginPasswordEntry = CreateEntry("Wagwoord", isPassword: true);
@@ -634,7 +669,8 @@ public sealed class AccountPage : ContentPage
                         return;
                     }
 
-                    var signInResult = await _apiClient.CompleteGoogleSignInAsync(token);
+                    var signInResult = await _apiClient.CompleteGoogleSignInAsync(token,
+                        marketingConsent: isSignup && emailConsent.IsChecked);
                     await RefreshSessionAsync(signInResult.Message);
                     await OpenPostAuthenticationDestinationAsync();
                 }
@@ -687,7 +723,8 @@ public sealed class AccountPage : ContentPage
                         result.Nonce,
                         result.FirstName,
                         result.LastName,
-                        result.DisplayName);
+                        result.DisplayName,
+                        marketingConsent: isSignup && emailConsent.IsChecked);
                     await RefreshSessionAsync(signInResult.Message);
                     await OpenPostAuthenticationDestinationAsync();
                 }
@@ -714,15 +751,18 @@ public sealed class AccountPage : ContentPage
 #endif
             formContent.Children.Add(googleButton);
             formContent.Children.Add(BuildAuthDivider("of"));
-            formContent.Children.Add(BuildField(loginEmailEntry));
-            formContent.Children.Add(BuildField(loginPasswordEntry));
-            formContent.Children.Add(loginButton);
-            formContent.Children.Add(BuildModeSwitchLink(
-                "Nog nie 'n rekening nie?",
-                "Skep rekening",
-                AuthPanelMode.SignUp));
-            _authPanelContentHost.Content = formContent;
-            return;
+            if (!isSignup)
+            {
+                formContent.Children.Add(BuildField(loginEmailEntry));
+                formContent.Children.Add(BuildField(loginPasswordEntry));
+                formContent.Children.Add(loginButton);
+                formContent.Children.Add(BuildModeSwitchLink(
+                    "Nog nie 'n rekening nie?",
+                    "Skep rekening",
+                    AuthPanelMode.SignUp));
+                _authPanelContentHost.Content = formContent;
+                return;
+            }
         }
 
         if (_authPanelMode == AuthPanelMode.SignUp)
@@ -751,7 +791,8 @@ public sealed class AccountPage : ContentPage
                         signupDisplayNameEntry.Text ?? string.Empty,
                         signupEmailEntry.Text ?? string.Empty,
                         string.Empty,
-                        signupPasswordEntry.Text ?? string.Empty);
+                        signupPasswordEntry.Text ?? string.Empty,
+                        marketingConsent: emailConsent.IsChecked);
                     await RefreshSessionAsync(result.Message);
                     await OpenPostAuthenticationDestinationAsync(isNewAccount: true);
                 }
@@ -766,6 +807,7 @@ public sealed class AccountPage : ContentPage
             formContent.Children.Add(BuildField(signupDisplayNameEntry));
             formContent.Children.Add(BuildField(signupEmailEntry));
             formContent.Children.Add(BuildField(signupPasswordEntry));
+            formContent.Children.Add(emailConsentRow);
             formContent.Children.Add(signupButton);
             formContent.Children.Add(BuildModeSwitchLink(
                 "Het jy reeds 'n rekening?",
@@ -946,14 +988,19 @@ public sealed class AccountPage : ContentPage
             return;
         }
 
-        var screenHeight = Height > 0
-            ? Height
-            : DeviceDisplay.MainDisplayInfo.Height / DeviceDisplay.MainDisplayInfo.Density;
-        var estimatedPanelHeight = _authPanelMode == AuthPanelMode.SignIn ? 470 : 620;
-        var topInset = Math.Max(24, Math.Floor((screenHeight - estimatedPanelHeight) / 2));
+        // Use the laid-out form and viewport, including keyboard/playback reductions.
+        // A fixed height estimate adds unnecessary overflow as signup fields change.
+        var viewportHeight = _accountScrollView?.Height ?? 0;
+        var panelHeight = _authPanelFrame?.Height ?? 0;
+        var panelMargin = _authPanelFrame?.Margin ?? Thickness.Zero;
+        var remainingHeight = viewportHeight - panelHeight - panelMargin.VerticalThickness;
+        var topInset = Math.Max(24, Math.Floor(remainingHeight / 2));
 
         _authPanelTopSpacer.IsVisible = true;
-        _authPanelTopSpacer.HeightRequest = topInset;
+        if (Math.Abs(_authPanelTopSpacer.HeightRequest - topInset) > 0.5)
+        {
+            _authPanelTopSpacer.HeightRequest = topInset;
+        }
     }
 
     private View BuildAuthPanelHeader(string text)
@@ -1297,7 +1344,7 @@ public sealed class AccountPage : ContentPage
 
     private async Task OpenPostAuthenticationDestinationAsync(bool isNewAccount = false)
     {
-        if (!_sessionState.Current.IsSignedIn)
+        if (!_sessionState.Current.IsSignedIn || _sessionState.Current.RequiresAvatarSelection)
         {
             return;
         }

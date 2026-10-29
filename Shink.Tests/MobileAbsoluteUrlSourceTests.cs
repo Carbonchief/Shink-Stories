@@ -1377,8 +1377,12 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "UpdateAuthPanelTopSpacer();");
         StringAssert.Contains(accountPage, "_signedOutState.Children.Add(_authPanelTopSpacer);");
         StringAssert.Contains(accountPage, "if (_authPanelMode == AuthPanelMode.Landing)");
-        StringAssert.Contains(accountPage, "var estimatedPanelHeight = _authPanelMode == AuthPanelMode.SignIn ? 470 : 620;");
-        StringAssert.Contains(accountPage, "Math.Floor((screenHeight - estimatedPanelHeight) / 2)");
+        StringAssert.Contains(accountPage, "var viewportHeight = _accountScrollView?.Height ?? 0;");
+        StringAssert.Contains(accountPage, "var panelHeight = _authPanelFrame?.Height ?? 0;");
+        StringAssert.Contains(accountPage, "Math.Floor(remainingHeight / 2)");
+        StringAssert.Contains(accountPage, "_authPanelFrame.SizeChanged += (_, _) => UpdateAuthPanelTopSpacer();");
+        StringAssert.Contains(accountPage, "_accountScrollView.SizeChanged += (_, _) => UpdateAuthPanelTopSpacer();");
+        StringAssert.Contains(accountPage, "nativeScrollView.Bounces = false;");
         StringAssert.Contains(accountPage, "_authPanelTopSpacer.IsVisible = true;");
     }
 
@@ -1488,7 +1492,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "WebAuthenticator.Default.AuthenticateAsync(");
         StringAssert.Contains(accountPage, "_apiClient.BuildGoogleSignInStartUri()");
         StringAssert.Contains(accountPage, "new Uri(MobileApiClient.GoogleCallbackUrl)");
-        StringAssert.Contains(accountPage, "CompleteGoogleSignInAsync(token)");
+        StringAssert.Contains(accountPage, "CompleteGoogleSignInAsync(token,");
+        StringAssert.Contains(accountPage, "marketingConsent: isSignup && emailConsent.IsChecked");
         StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"schinkstories://auth/google\";");
         StringAssert.Contains(apiClient, "private const string GoogleStartPath = \"/api/mobile/auth/google/start?callback=custom-scheme\";");
         Assert.IsFalse(apiClient.Contains("#if DEBUG", StringComparison.Ordinal));

@@ -35,6 +35,7 @@
     <Compile Include="..\Shink.Mobile\Games\CharacterGuessDifficulty.cs" Link="Mobile\CharacterGuessDifficulty.cs" />
     <Compile Include="..\Shink.Mobile\Games\CharacterGuessCatalog.cs" Link="Mobile\CharacterGuessCatalog.cs" />
     <Compile Include="..\Shink.Mobile\Models\MobileApiModels.cs" Link="Mobile\MobileApiModels.cs" />
+    <Compile Include="..\Shink.Mobile\Services\MobileAvatarOnboarding.cs" Link="Mobile\MobileAvatarOnboarding.cs" />
     <Compile Include="..\Shink.Mobile\Services\MobileCharacterGalleryCollection.cs" Link="Mobile\MobileCharacterGalleryCollection.cs" />
     <Compile Include="..\Shink.Mobile\Navigation\MobileNotificationNavigation.cs" Link="Mobile\MobileNotificationNavigation.cs" />
     <Compile Include="..\Shink.Mobile\Services\OfflineDownloadAccessPolicy.cs" Link="Mobile\OfflineDownloadAccessPolicy.cs" />

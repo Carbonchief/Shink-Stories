@@ -146,6 +146,7 @@ builder.Services.AddSingleton<IAudioAccessService, AudioAccessService>();
 builder.Services.AddSingleton<IVideoAccessService, VideoAccessService>();
 builder.Services.AddSingleton<IStoryMediaStorageService, CloudflareR2StoryMediaStorageService>();
 builder.Services.AddSingleton<ISubscriberAvatarStorageService, CloudflareR2SubscriberAvatarStorageService>();
+builder.Services.AddHttpClient<ISubscriberAvatarService, SupabaseSubscriberAvatarService>().WithSupabaseResponseCompression();
 builder.Services.AddSingleton<IResourceDocumentStorageService, CloudflareR2ResourceDocumentStorageService>();
 builder.Services.AddSingleton<IResourceDocumentPreviewService, ResourceDocumentPreviewService>();
 builder.Services.AddSingleton<WordPressPasswordVerifier>();
@@ -195,6 +196,7 @@ builder.Services.AddHttpClient<ISubscriptionNotificationEmailService, ResendSubs
 builder.Services.AddHttpClient<ISubscriptionPaymentRecoveryEmailService, ResendSubscriptionPaymentRecoveryEmailService>();
 builder.Services.AddHttpClient<ISchoolSeatNotificationEmailService, ResendSchoolSeatNotificationEmailService>();
 builder.Services.AddHttpClient<IGratisSubscriberEmailSequenceService, ResendGratisSubscriberEmailSequenceService>();
+builder.Services.AddScoped<MobileSignupWelcomeEmailService>();
 builder.Services.AddHttpClient<IAbandonedCartRecoveryService, SupabaseAbandonedCartRecoveryService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IEngagementTrackingService, SupabaseEngagementTrackingService>().WithSupabaseResponseCompression();
@@ -2427,6 +2429,8 @@ app.MapGet("/auth/callback", async (
     }
 
     var signedInEmail = exchangeResult.UserEmail;
+    var isNewSubscriber = await subscriptionLedgerService.GetSubscriberProfileAsync(
+        signedInEmail, httpContext.RequestAborted) is null;
     var profileStored = await subscriptionLedgerService.UpsertSubscriberProfileAsync(
         signedInEmail,
         exchangeResult.FirstName,
@@ -2458,7 +2462,7 @@ app.MapGet("/auth/callback", async (
         GetSafeAuthReturnUrl(requestedReturnUrl) ??
         await ResolvePostAuthRedirectPathAsync(subscriptionLedgerService, signedInEmail, httpContext.RequestAborted);
 
-    return Results.Redirect(redirectPath);
+    return Results.Redirect(isNewSubscriber ? ProfileAvatarCatalog.SelectionPath(redirectPath) : redirectPath);
 });
 
 app.MapGet("/api/mobile/auth/google/start", async (
@@ -2585,6 +2589,11 @@ app.MapGet("/auth/mobile/google/callback", async (
     }
 
     var signedInEmail = exchangeResult.UserEmail;
+    var requiresAvatarSelection = await subscriptionLedgerService.GetSubscriberProfileAsync(
+        signedInEmail, httpContext.RequestAborted) is null;
+    var isNewGratisAccount = !await subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+        signedInEmail, "gratis", httpContext.RequestAborted);
+
     var profileStored = await subscriptionLedgerService.UpsertSubscriberProfileAsync(
         signedInEmail,
         exchangeResult.FirstName,
@@ -2611,7 +2620,11 @@ app.MapGet("/auth/mobile/google/callback", async (
     var tokenProtector = dataProtectionProvider.CreateProtector(MobileGoogleAuthTokenProtectorPurpose);
     var mobileToken = tokenProtector.Protect(JsonSerializer.Serialize(new MobileGoogleAuthTokenPayload(
         ExpiresAtUtc: DateTimeOffset.UtcNow.AddMinutes(2),
-        Email: signedInEmail)));
+        Email: signedInEmail,
+        IsNewGratisAccount: isNewGratisAccount,
+        FirstName: exchangeResult.FirstName,
+        LastName: exchangeResult.LastName,
+        RequiresAvatarSelection: requiresAvatarSelection)));
 
     return Results.Redirect(BuildMobileGoogleAuthCallbackUrl(mobileToken, errorMessage: null, useCustomSchemeCallback));
 });
@@ -2687,6 +2700,8 @@ app.MapPost("/api/auth/login", async (
     }
 
     var signedInEmail = signInResult.UserEmail ?? request.Email!;
+    var isFirstSignIn = await subscriptionLedgerService.GetSubscriberProfileAsync(
+        signedInEmail, httpContext.RequestAborted) is null;
     var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService, subscriptionLedgerService, httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
     if (!signInCookieResult.IsSuccess)
     {
@@ -2699,7 +2714,7 @@ app.MapPost("/api/auth/login", async (
     return Results.Ok(new
     {
         message = "Welkom terug! Jy is nou ingeteken.",
-        redirectPath
+        redirectPath = isFirstSignIn ? ProfileAvatarCatalog.SelectionPath(redirectPath) : redirectPath
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
@@ -3130,7 +3145,7 @@ app.MapPost("/api/auth/signup", async (
         return Results.Ok(new
         {
             message = "Welkom! Jou rekening is geskep. Voltooi nou jou Paystack-betaling met die afslagkode.",
-            redirectPath = checkoutPath,
+            redirectPath = ProfileAvatarCatalog.SelectionPath(checkoutPath),
             codeApplied = false
         });
     }
@@ -3188,7 +3203,7 @@ app.MapPost("/api/auth/signup", async (
                         : gratisProvisioned
                             ? "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profielbesonderhede nou stoor nie."
                             : "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profiel- en gratis toegangbesonderhede nou voltooi nie.",
-        redirectPath,
+        redirectPath = ProfileAvatarCatalog.SelectionPath(redirectPath),
         codeApplied = discountCodeApplied
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
@@ -3699,7 +3714,8 @@ app.MapPost("/api/mobile/auth/google/complete", async (
     IAuthSessionService authSessionService,
     IAdminManagementService adminManagementService,
     ISubscriptionLedgerService subscriptionLedgerService,
-    IStoryFavoriteService storyFavoriteService) =>
+    IStoryFavoriteService storyFavoriteService,
+    MobileSignupWelcomeEmailService welcomeEmails) =>
 {
     if (!IsMobileAppRequest(httpContext))
     {
@@ -3748,12 +3764,16 @@ app.MapPost("/api/mobile/auth/google/complete", async (
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
+    await welcomeEmails.TryStartAsync(
+        payload.Email, request.MarketingConsent, payload.IsNewGratisAccount, payload.FirstName, payload.LastName,
+        httpContext.RequestAborted);
+
     var session = await BuildMobileSessionResponseAsync(
         httpContext,
         subscriptionLedgerService,
         storyFavoriteService);
 
-    return Results.Ok(new MobileGoogleAuthCompleteResponse("Welkom terug! Jy is nou ingeteken.", session));
+    return Results.Ok(new MobileGoogleAuthCompleteResponse("Welkom terug! Jy is nou ingeteken.", session, payload.RequiresAvatarSelection));
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
 app.MapPost("/api/mobile/auth/apple/complete", async (
@@ -3763,7 +3783,8 @@ app.MapPost("/api/mobile/auth/apple/complete", async (
     IAuthSessionService authSessionService,
     IAdminManagementService adminManagementService,
     ISubscriptionLedgerService subscriptionLedgerService,
-    IStoryFavoriteService storyFavoriteService) =>
+    IStoryFavoriteService storyFavoriteService,
+    MobileSignupWelcomeEmailService welcomeEmails) =>
 {
     if (!IsMobileAppRequest(httpContext))
     {
@@ -3794,6 +3815,9 @@ app.MapPost("/api/mobile/auth/apple/complete", async (
     }
 
     var signedInEmail = exchangeResult.UserEmail;
+    var isNewGratisAccount = !await subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+        signedInEmail, "gratis", httpContext.RequestAborted);
+
     var existingProfile = await subscriptionLedgerService.GetSubscriberProfileAsync(
         signedInEmail,
         httpContext.RequestAborted);
@@ -3837,12 +3861,16 @@ app.MapPost("/api/mobile/auth/apple/complete", async (
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
+    await welcomeEmails.TryStartAsync(
+        signedInEmail, request.MarketingConsent, isNewGratisAccount, firstName, lastName,
+        httpContext.RequestAborted);
+
     var session = await BuildMobileSessionResponseAsync(
         httpContext,
         subscriptionLedgerService,
         storyFavoriteService);
 
-    return Results.Ok(new MobileAppleAuthCompleteResponse("Welkom terug! Jy is nou ingeteken.", session));
+    return Results.Ok(new MobileAppleAuthCompleteResponse("Welkom terug! Jy is nou ingeteken.", session, existingProfile is null));
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
 app.MapPost("/api/mobile/profile", async (
@@ -3915,6 +3943,17 @@ app.MapPost("/api/mobile/profile", async (
 
     return Results.Ok(new MobileProfileUpdateResponse("Profiel opgedateer.", session));
 }).DisableAntiforgery();
+
+app.MapPost("/api/mobile/profile/avatar", async (
+    HttpContext httpContext,
+    MobileAvatarSelectionRequest request,
+    ISubscriberAvatarService avatarService) =>
+{
+    if (!IsMobileAppRequest(httpContext) || !IsLikelySameSiteRequest(httpContext))
+        return Results.Forbid();
+
+    return await ProfileAvatarEndpoints.SaveMobileAsync(httpContext, request, avatarService);
+}).RequireAuthorization().RequireRateLimiting("auth-submit").DisableAntiforgery();
 
 app.MapPost("/api/mobile/account/delete", async (
     HttpContext httpContext,
@@ -4634,6 +4673,7 @@ if (args.Any(argument => string.Equals(argument, "--retry-overdue-paystack", Str
     return;
 }
 
+app.MapProfileAvatarEndpoints();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
@@ -6853,6 +6893,7 @@ static async Task<AuthCookieSignInResult> SignInUserAsync(
     };
 
     await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal, authProperties);
+    httpContext.User = principal;
     return new AuthCookieSignInResult(true);
 }
 
@@ -8493,16 +8534,19 @@ sealed record WinkelAddressSuggestion(
     string? City,
     string? PostalCode);
 sealed record MobileFavoriteMutationRequest(bool IsFavorite, string? Source, string? PlaylistSlug);
-sealed record MobileGoogleAuthCompleteRequest(string? Token);
-sealed record MobileGoogleAuthCompleteResponse(string Message, MobileSessionResponse Session);
+sealed record MobileGoogleAuthCompleteRequest(string? Token, bool MarketingConsent = false);
+sealed record MobileGoogleAuthCompleteResponse(string Message, MobileSessionResponse Session, bool RequiresAvatarSelection = false);
 sealed record MobileAppleAuthCompleteRequest(
     string? IdentityToken,
     string? Nonce,
     string? FirstName,
     string? LastName,
-    string? DisplayName);
-sealed record MobileAppleAuthCompleteResponse(string Message, MobileSessionResponse Session);
-sealed record MobileGoogleAuthTokenPayload(DateTimeOffset ExpiresAtUtc, string Email);
+    string? DisplayName,
+    bool MarketingConsent = false);
+sealed record MobileAppleAuthCompleteResponse(string Message, MobileSessionResponse Session, bool RequiresAvatarSelection = false);
+sealed record MobileGoogleAuthTokenPayload(
+    DateTimeOffset ExpiresAtUtc, string Email, bool IsNewGratisAccount = false,
+    string? FirstName = null, string? LastName = null, bool RequiresAvatarSelection = false);
 sealed record MobileProfileUpdateRequest(string? FirstName, string? LastName, string? DisplayName, string? MobileNumber);
 sealed record MobileProfileUpdateResponse(string Message, MobileSessionResponse Session);
 sealed record MobileAccountDeletionRequest(string? Confirmation);
@@ -8520,7 +8564,8 @@ sealed record MobileSessionResponse(
     IReadOnlyList<string> FavoriteStorySlugs,
     string LoginUrl,
     string SignupUrl,
-    string PlansUrl);
+    string PlansUrl,
+    bool SupportsProfileAvatars = true);
 sealed record MobilePlansResponse(IReadOnlyList<MobilePlanResponse> Plans);
 sealed record MobilePlanResponse(
     string ProductId,

@@ -13,7 +13,9 @@ public sealed record MobileSession(
     IReadOnlyList<string> FavoriteStorySlugs,
     string LoginUrl,
     string SignupUrl,
-    string PlansUrl);
+    string PlansUrl,
+    bool RequiresAvatarSelection = false,
+    bool SupportsProfileAvatars = false);
 
 public sealed record MobilePlansResponse(IReadOnlyList<MobilePlan> Plans);
 
@@ -42,6 +44,8 @@ public sealed record MobileStoreEntitlementResponse(
     bool IsRetryable = false);
 
 public sealed record MobileProfileUpdateResponse(string Message, MobileSession Session);
+
+public sealed record MobileAvatarSelectionResponse(string Message, string AvatarId, string ProfileImageUrl);
 
 public sealed record MobileStoryPreview(
     string Title,
@@ -198,9 +202,9 @@ public sealed record MobileAboutResponse(IReadOnlyList<MobileContentBlock> Block
 
 public sealed record AuthResponse(string? Message, string? RedirectPath);
 
-public sealed record MobileGoogleAuthCompleteResponse(string Message, MobileSession Session);
+public sealed record MobileGoogleAuthCompleteResponse(string Message, MobileSession Session, bool RequiresAvatarSelection = false);
 
-public sealed record MobileAppleAuthCompleteResponse(string Message, MobileSession Session);
+public sealed record MobileAppleAuthCompleteResponse(string Message, MobileSession Session, bool RequiresAvatarSelection = false);
 
 public sealed record MobileNotificationPage(
     int Count,

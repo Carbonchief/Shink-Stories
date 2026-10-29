@@ -1,0 +1,84 @@
+@page "/profielprentjie"
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISubscriptionLedgerService SubscriptionLedgerService
+
+<PageTitle>Schink Stories | Kies jou profielprentjie</PageTitle>
+<HeadContent>
+    <meta name="robots" content="noindex, nofollow" />
+</HeadContent>
+
+<section class="avatar-page" aria-labelledby="avatar-heading">
+    <div class="avatar-content">
+        <h1 id="avatar-heading">Kies ’n prentjie vir jou profiel</h1>
+        @if (IsSignedIn)
+        {
+            <form method="post" action="/api/account/avatar" data-enhance="false">
+                <AntiforgeryToken />
+                <input type="hidden" name="returnUrl" value="@ContinuePath" />
+                <input type="hidden" name="mode" value="@(IsEditing ? "edit" : "onboarding")" />
+                <fieldset class="avatar-grid">
+                    <legend class="sr-only">Kies jou profielprentjie</legend>
+                    @foreach (var avatar in ProfileAvatarCatalog.All)
+                    {
+                        <label @key="avatar.Id" class="avatar-option" title="@avatar.Name">
+                            <input class="avatar-radio" type="radio" name="avatarId" value="@avatar.Id"
+                                   checked="@(SelectedAvatarId == avatar.Id)" required="@IsEditing" aria-label="@avatar.Name" />
+                            <img src="@avatar.ImageUrl" alt="" width="142" height="142" decoding="async" />
+                            <span class="avatar-selected" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+                        </label>
+                    }
+                </fieldset>
+                @if (!string.IsNullOrWhiteSpace(Error))
+                {
+                    <p class="avatar-error" role="alert">@(Error == "selection"
+                        ? "Kies asseblief ’n prentjie vir jou profiel."
+                        : "Ons kon nie jou prentjie stoor nie. Probeer asseblief weer.")</p>
+                }
+                <button type="submit" class="avatar-continue">@(IsEditing ? "Save" : "Begin luister")</button>
+            </form>
+        }
+        else
+        {
+            <p class="avatar-signin-message">Teken in om jou profielprentjie te kies.</p>
+            <a class="avatar-continue" href="@SignInPath">Teken in</a>
+        }
+    </div>
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+
+    [SupplyParameterFromQuery(Name = "selected")]
+    public string? Selected { get; set; }
+
+    [SupplyParameterFromQuery(Name = "mode")]
+    public string? Mode { get; set; }
+
+    private bool IsSignedIn { get; set; }
+    private string? SelectedAvatarId { get; set; }
+    private bool IsEditing => string.Equals(Mode, "edit", StringComparison.Ordinal);
+    private string ContinuePath => IsEditing ? ProfileAvatarCatalog.SafeReturnPath(ReturnUrl) : "/luister";
+    private string SignInPath => "/teken-in?returnUrl=" + Uri.EscapeDataString(ProfileAvatarCatalog.SelectionPath(ContinuePath, IsEditing));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        IsSignedIn = auth.User.Identity?.IsAuthenticated == true;
+        if (!IsSignedIn)
+        {
+            return;
+        }
+
+        var email = auth.User.FindFirst(ClaimTypes.Email)?.Value;
+        var profile = await SubscriptionLedgerService.GetSubscriberProfileAsync(email);
+        var currentImage = profile?.ProfileImageUrl ?? auth.User.FindFirst("profile_image_url")?.Value;
+        SelectedAvatarId = ProfileAvatarCatalog.Find(Selected)?.Id ??
+            ProfileAvatarCatalog.All.FirstOrDefault(avatar => avatar.ImageUrl == currentImage)?.Id;
+    }
+}

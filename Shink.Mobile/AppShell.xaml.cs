@@ -32,6 +32,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(AccountPage), typeof(AccountPage));
         Routing.RegisterRoute(nameof(PlansPage), typeof(PlansPage));
         Routing.RegisterRoute(nameof(ProfilePage), typeof(ProfilePage));
+        Routing.RegisterRoute(nameof(AvatarSelectionPage), typeof(AvatarSelectionPage));
         Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
         Routing.RegisterRoute(nameof(PlaylistStoriesPage), typeof(PlaylistStoriesPage));
         Routing.RegisterRoute(nameof(PlaylistDetailPage), typeof(PlaylistDetailPage));
@@ -98,7 +99,9 @@ public partial class AppShell : Shell
 
         var isSignedIn = _sessionState.Current.IsSignedIn;
         var hasCompletedOnboarding = Preferences.Default.Get(OnboardingCompletedPreferenceKey, false);
-        var shellState = isSignedIn ? "signed_in" : hasCompletedOnboarding ? "signed_out" : "onboarding";
+        var shellState = isSignedIn
+            ? _sessionState.Current.RequiresAvatarSelection ? "avatar_setup" : "signed_in"
+            : hasCompletedOnboarding ? "signed_out" : "onboarding";
         if (_renderedShellState == shellState)
         {
             return;
@@ -113,7 +116,10 @@ public partial class AppShell : Shell
                 // a later sign-out, including when upgrading to this version.
                 if (!hasCompletedOnboarding)
                     Preferences.Default.Set(OnboardingCompletedPreferenceKey, true);
-                BuildSignedInShell();
+                if (_sessionState.Current.RequiresAvatarSelection)
+                    BuildAvatarSetupShell();
+                else
+                    BuildSignedInShell();
             }
             else if (shellState == "onboarding")
             {
@@ -174,6 +180,17 @@ public partial class AppShell : Shell
                     page.ShowSignIn();
                 return page;
             })
+        });
+    }
+
+    private void BuildAvatarSetupShell()
+    {
+        Items.Clear();
+        Items.Add(new ShellContent
+        {
+            Title = "Profielprentjie",
+            Route = "AvatarSetup",
+            ContentTemplate = new DataTemplate(() => _services.GetRequiredService<AvatarSelectionPage>())
         });
     }
 

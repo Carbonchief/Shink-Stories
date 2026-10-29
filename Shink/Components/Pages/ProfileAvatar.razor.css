@@ -1,0 +1,174 @@
+.avatar-page {
+    min-height: calc(100svh - 100px);
+    padding: 88px 24px 62px;
+    background: #64b2a8 url('/branding/profile-avatars/background.png') center / 100% 100% no-repeat;
+    color: #173f4f;
+    font-family: "Poppins", sans-serif;
+}
+
+.avatar-content {
+    width: min(636px, 100%);
+    margin-inline: auto;
+    text-align: center;
+}
+
+.avatar-content h1 {
+    margin: 0 0 20px;
+    color: #173f4f;
+    font-family: inherit;
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 1.35;
+}
+
+.avatar-grid {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: 22px;
+    row-gap: 10px;
+}
+
+.avatar-option {
+    position: relative;
+    display: block;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: box-shadow 150ms ease, transform 150ms ease;
+}
+
+.avatar-radio {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.avatar-option img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+.avatar-option:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 14px rgb(23 63 79 / 18%);
+}
+
+.avatar-option:has(:checked) {
+    box-shadow: 0 0 0 4px #ffffff, 0 0 0 7px #00845c;
+}
+
+.avatar-option:has(:focus-visible) {
+    outline: 3px solid #173f4f;
+    outline-offset: 9px;
+}
+
+.avatar-selected {
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    display: none;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    background: #00845c;
+    color: #ffffff;
+    font-size: 14px;
+    pointer-events: none;
+}
+
+.avatar-option:has(:checked) .avatar-selected {
+    display: grid;
+}
+
+.avatar-continue {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: min(396px, 100%);
+    min-height: 60px;
+    margin: 30px auto 0;
+    padding: 12px 24px;
+    border: 0;
+    border-radius: 16px;
+    background: #00875d;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.5;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.avatar-continue:hover {
+    background: #006f4d;
+    color: #ffffff;
+}
+
+.avatar-continue:focus-visible {
+    outline: 3px solid #173f4f;
+    outline-offset: 4px;
+}
+
+.avatar-error {
+    margin: 20px 0 0;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: #fff3ec;
+    color: #8b2516;
+    font-size: 15px;
+}
+
+.avatar-signin-message {
+    margin-block: 24px;
+}
+
+@media (max-width: 600px) {
+    .avatar-page {
+        min-height: calc(100svh - 76px);
+        padding: 48px 22px 44px;
+    }
+
+    .avatar-content h1 {
+        max-width: 330px;
+        margin: 0 auto 26px;
+        font-size: 24px;
+    }
+
+    .avatar-grid {
+        gap: 18px 14px;
+    }
+
+    .avatar-selected {
+        width: 23px;
+        height: 23px;
+        font-size: 11px;
+    }
+
+    .avatar-continue {
+        min-height: 54px;
+        margin-top: 30px;
+        font-size: 20px;
+        border-radius: 13px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .avatar-option {
+        transition: none;
+    }
+}

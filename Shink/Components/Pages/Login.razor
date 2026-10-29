@@ -311,10 +311,14 @@
         return Task.FromResult("/luister");
     }
 
-    private string GetRedirectTarget(string? apiRedirectPath = null) =>
-        GetSafeReturnUrl(ReturnUrl)
-        ?? GetSafePostAuthPath(apiRedirectPath)
-        ?? "/luister";
+    private string GetRedirectTarget(string? apiRedirectPath = null)
+    {
+        var apiPath = GetSafePostAuthPath(apiRedirectPath);
+        var requestedPath = GetSafeReturnUrl(ReturnUrl);
+        return apiPath?.StartsWith(ProfileAvatarCatalog.PagePath + "?", StringComparison.Ordinal) == true
+            ? requestedPath is null ? apiPath : ProfileAvatarCatalog.SelectionPath(requestedPath)
+            : requestedPath ?? apiPath ?? "/luister";
+    }
 
     private async Task RedirectToTargetAsync(string target)
     {

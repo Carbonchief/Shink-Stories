@@ -16,8 +16,8 @@
 
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
-    <ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
-		<ApplicationVersion>37</ApplicationVersion>
+    <ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
+		<ApplicationVersion>39</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' == 'true'">24.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' != 'true'">21.0</SupportedOSPlatformVersion>
@@ -76,6 +76,17 @@
     <EnableBlankMauiSplashScreen>false</EnableBlankMauiSplashScreen>
   </PropertyGroup>
 
+  <!-- Local Ad Hoc installs are used to judge scrolling on the physical phone.
+       MAUI Debug otherwise interprets every assembly, including layout/scroll
+       callbacks. Keep Debug tooling for other profiles, but compile this device
+       install like Release so it reflects the shipped app's execution speed. -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-ios' and '$(RuntimeIdentifier)' == 'ios-arm64' and '$(CodesignProvision)' == 'Schink Stories Luan iPhone Ad Hoc'">
+    <UseInterpreter>false</UseInterpreter>
+    <MtouchInterpreter></MtouchInterpreter>
+    <Optimize>true</Optimize>
+    <MtouchUseLlvm>true</MtouchUseLlvm>
+  </PropertyGroup>
+
   <ItemGroup>
     <MauiIcon Include="Resources/AppIcon/schink_appicon.png"
               Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'" />
@@ -107,6 +118,10 @@
                       Color="#13AFC1"
                       BaseSize="320,140" />
     <MauiImage Include="Resources/Images/*" />
+    <MauiImage Include="../Shink/wwwroot/branding/profile-avatars/*.png"
+               Link="Resources/Images/profile_avatar_%(Filename)%(Extension)"
+               Resize="False" />
+    <Compile Include="../Shink/Shared/ProfileAvatarOptions.cs" Link="Shared/ProfileAvatarOptions.cs" />
     <MauiImage Update="Resources/Images/paywall_*.png" Resize="False" />
     <MauiImage Update="Resources/Images/schink_onboarding_*.jpg" Resize="False" />
     <MauiImage Include="Resources/Splash/schink_stories_full_splash.png"

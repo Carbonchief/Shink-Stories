@@ -103,6 +103,7 @@ public static class MauiProgram
         builder.Services.AddTransient<AccountPage>();
         builder.Services.AddTransient<PlansPage>();
         builder.Services.AddTransient<ProfilePage>();
+        builder.Services.AddTransient<AvatarSelectionPage>();
         builder.Services.AddTransient<SettingsPage>();
         builder.Services.AddTransient<PlaylistStoriesPage>();
         builder.Services.AddTransient<PlaylistDetailPage>();
