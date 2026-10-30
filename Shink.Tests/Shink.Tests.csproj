@@ -38,6 +38,8 @@
     <Compile Include="..\Shink.Mobile\Services\MobileAvatarOnboarding.cs" Link="Mobile\MobileAvatarOnboarding.cs" />
     <Compile Include="..\Shink.Mobile\Services\MobileCharacterGalleryCollection.cs" Link="Mobile\MobileCharacterGalleryCollection.cs" />
     <Compile Include="..\Shink.Mobile\Navigation\MobileNotificationNavigation.cs" Link="Mobile\MobileNotificationNavigation.cs" />
+    <Compile Include="..\Shink.Mobile\Navigation\MobilePushOpen.cs" Link="Mobile\MobilePushOpen.cs" />
+    <Compile Include="..\Shink.Mobile\Services\MobilePushInstallation.cs" Link="Mobile\MobilePushInstallation.cs" />
     <Compile Include="..\Shink.Mobile\Services\OfflineDownloadAccessPolicy.cs" Link="Mobile\OfflineDownloadAccessPolicy.cs" />
   </ItemGroup>
 

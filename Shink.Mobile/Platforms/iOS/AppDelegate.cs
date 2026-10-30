@@ -8,7 +8,22 @@ namespace Shink.Mobile;
 [Register("AppDelegate")]
 public class AppDelegate : MauiUIApplicationDelegate
 {
+    private readonly Platforms.iOS.MobilePushNotificationDelegate _pushDelegate = new();
     protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
+
+    public override bool FinishedLaunching(UIApplication application, NSDictionary? launchOptions)
+    {
+        UserNotifications.UNUserNotificationCenter.Current.Delegate = _pushDelegate;
+        return base.FinishedLaunching(application, launchOptions);
+    }
+
+    [Export("application:didRegisterForRemoteNotificationsWithDeviceToken:")]
+    public void RegisteredForRemoteNotifications(UIApplication application, NSData deviceToken) =>
+        MobilePushPlatform.ReceiveToken(Convert.ToHexStringLower(deviceToken.ToArray()));
+
+    [Export("application:didFailToRegisterForRemoteNotificationsWithError:")]
+    public void FailedToRegisterForRemoteNotifications(UIApplication application, NSError error) =>
+        MobilePushPlatform.RegistrationFailed();
 
     [Export("application:supportedInterfaceOrientationsForWindow:")]
     public UIInterfaceOrientationMask GetSupportedInterfaceOrientations(

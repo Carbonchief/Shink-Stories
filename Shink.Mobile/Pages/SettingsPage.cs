@@ -17,9 +17,11 @@ public sealed class SettingsPage : ContentPage
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly IOfflineStoryDownloadService _offlineDownloadService;
+    private readonly MobilePushService _push;
     private readonly VerticalStackLayout _content;
     private readonly NavigationGate _navigationGate = new();
     private Label? _downloadSummaryLabel;
+    private Label? _pushStatusLabel;
     private bool _isPageActive;
     private bool _isSessionStateSubscribed;
     private bool _isRefreshing;
@@ -28,11 +30,13 @@ public sealed class SettingsPage : ContentPage
         MobileApiClient apiClient,
         SessionState sessionState,
         IOfflineStoryDownloadService offlineDownloadService,
-        StoryPlaybackSession storyPlaybackSession)
+        StoryPlaybackSession storyPlaybackSession,
+        MobilePushService push)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _offlineDownloadService = offlineDownloadService;
+        _push = push;
 
         Title = "Instellings";
         BackgroundColor = PageBackgroundColor;
@@ -61,6 +65,9 @@ public sealed class SettingsPage : ContentPage
         base.OnAppearing();
         _isPageActive = true;
         SubscribeToSessionState();
+        _push.Changed -= OnPushChanged;
+        _push.Changed += OnPushChanged;
+        _push.Refresh();
         Render(_sessionState.Current);
 
         if (_isRefreshing)
@@ -88,6 +95,7 @@ public sealed class SettingsPage : ContentPage
     protected override void OnDisappearing()
     {
         _isPageActive = false;
+        _push.Changed -= OnPushChanged;
         UnsubscribeFromSessionState();
         base.OnDisappearing();
     }
@@ -146,6 +154,13 @@ public sealed class SettingsPage : ContentPage
             showProfile: true,
             applyMaterial: false));
         _content.Children.Add(BuildAccountSummary(session));
+
+        if (MobilePushPlatform.BuildEnabled)
+        {
+            _pushStatusLabel = new Label { Text = _push.Status, FontSize = 13, TextColor = MutedTextColor };
+            _content.Children.Add(BuildSection("Kennisgewings", BuildSettingsRow(
+                "♧", "Selfoonkennisgewings", _pushStatusLabel, ConfigurePushAsync, "settings-push-row")));
+        }
 
         _content.Children.Add(BuildSection(
             "Rekening",
@@ -295,6 +310,20 @@ public sealed class SettingsPage : ContentPage
         }
 
         return card;
+    }
+
+    private void OnPushChanged()
+    {
+        if (_isPageActive && _pushStatusLabel is not null) _pushStatusLabel.Text = _push.Status;
+    }
+
+    private async Task ConfigurePushAsync()
+    {
+        var choice = await DisplayActionSheetAsync("Selfoonkennisgewings", "Kanselleer", null,
+            "Skakel aan", "Skakel af", "Selfoon se instellings");
+        if (choice == "Selfoon se instellings") AppInfo.Current.ShowSettingsUI();
+        else if (choice is "Skakel aan" or "Skakel af")
+            await _push.SetEnabledAsync(choice == "Skakel aan");
     }
 
     private static View BuildAvatar(MobileSession session)

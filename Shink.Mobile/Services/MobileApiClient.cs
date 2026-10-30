@@ -85,6 +85,7 @@ public sealed class SessionState
     public void Update(MobileSession session, bool avatarSelectionCompleted = false)
     {
         session = MobileAvatarOnboarding.Merge(Current, session, avatarSelectionCompleted);
+        MobilePushInstallation.UpdateCurrentAccount(session.IsSignedIn ? session.Email : null);
         Interlocked.Increment(ref _updateVersion);
         Current = session;
         SaveCachedSession(session);
@@ -137,6 +138,7 @@ public sealed class SessionState
             LastName = sensitiveSession.LastName,
             MobileNumber = sensitiveSession.MobileNumber
         };
+        MobilePushInstallation.UpdateCurrentAccount(hydratedSession.IsSignedIn ? hydratedSession.Email : null);
         Current = hydratedSession;
         Changed?.Invoke(hydratedSession);
     }
@@ -900,10 +902,63 @@ public sealed class MobileApiClient
 
     public async Task SignOutAsync(CancellationToken cancellationToken = default)
     {
-        await PostAsync<object>("/api/auth/logout", new { }, cancellationToken);
-        await ClearPersistedAuthCookiesAsync();
-        await GetSessionAsync(cancellationToken);
-        _analytics.TrackEvent("mobile_auth_signed_out");
+        await MobilePushInstallation.OperationGate.WaitAsync(cancellationToken);
+        try
+        {
+            // Revoke before losing the authenticated session, and serialize against
+            // token refresh so it cannot re-register this account during logout.
+            await UnregisterPushDeviceCoreAsync(cancellationToken);
+            await PostAsync<object>("/api/auth/logout", new { }, cancellationToken);
+            await ClearPersistedAuthCookiesAsync();
+            await GetSessionAsync(cancellationToken);
+            MobilePushPlatform.ClearDeliveredNotifications();
+            _analytics.TrackEvent("mobile_auth_signed_out");
+        }
+        finally { MobilePushInstallation.OperationGate.Release(); }
+    }
+
+    public Task<MobilePushStatus?> GetPushStatusAsync(CancellationToken cancellationToken) =>
+        GetAsync<MobilePushStatus>("/api/mobile/push/status", cancellationToken);
+
+    public async Task RegisterPushDeviceAsync(string platform, string environment, string token, string expectedEmail, CancellationToken cancellationToken)
+    {
+        await MobilePushInstallation.OperationGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!MobilePushInstallation.Enabled || !_sessionState.Current.IsSignedIn
+                || !string.Equals(expectedEmail, _sessionState.Current.Email, StringComparison.OrdinalIgnoreCase)) return;
+            var identity = await MobilePushInstallation.GetIdentityAsync();
+            // Keep revocation possible if the server saves this request but the
+            // response is lost, including across app restarts and logout.
+            await MobilePushInstallation.MarkRegistrationAttemptAsync(identity);
+            var response = await PostAsync<MobilePushRegistration>("/api/mobile/push/register", new
+            {
+                identity.InstallationId, identity.InstallationSecret, platform, environment, token
+            }, cancellationToken, flushQueuedListens: false);
+            if (response is null || response.RegistrationId == Guid.Empty)
+                throw new InvalidOperationException("Toestelregistrasie het misluk.");
+            MobilePushInstallation.Save(response.RegistrationId, expectedEmail, token);
+            if (!MobilePushInstallation.Enabled || !_sessionState.Current.IsSignedIn
+                || !string.Equals(expectedEmail, _sessionState.Current.Email, StringComparison.OrdinalIgnoreCase))
+                await UnregisterPushDeviceCoreAsync(cancellationToken);
+        }
+        finally { MobilePushInstallation.OperationGate.Release(); }
+    }
+
+    public async Task UnregisterPushDeviceAsync(CancellationToken cancellationToken)
+    {
+        await MobilePushInstallation.OperationGate.WaitAsync(cancellationToken);
+        try { await UnregisterPushDeviceCoreAsync(cancellationToken); }
+        finally { MobilePushInstallation.OperationGate.Release(); }
+    }
+
+    private async Task UnregisterPushDeviceCoreAsync(CancellationToken cancellationToken)
+    {
+        var identity = await MobilePushInstallation.GetRevocationIdentityAsync();
+        if (identity is null) return;
+        MobilePushInstallation.MarkRevocationAttempt();
+        await PostAsync<object>("/api/mobile/push/unregister", identity, cancellationToken, flushQueuedListens: false);
+        MobilePushInstallation.ForgetRegistration();
     }
 
     public async Task<string> DeleteAccountAsync(CancellationToken cancellationToken = default)

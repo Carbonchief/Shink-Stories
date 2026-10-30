@@ -67,6 +67,9 @@ artifacts/
 downloads/
 
 # Local secrets / developer-only config
+/Shink.Mobile/Platforms/Android/google-services.json
+*.p8
+*firebase-adminsdk*.json
 /appsettings.json
 /appsettings.Development.json
 appsettings.Local.json

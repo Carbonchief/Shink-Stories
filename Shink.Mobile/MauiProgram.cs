@@ -78,6 +78,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<PlayerTransitionBackdropState>();
         builder.Services.AddSingleton<MobileAppLifecycleService>();
         builder.Services.AddSingleton<MobileApiClient>();
+        builder.Services.AddSingleton<MobilePushService>();
         builder.Services.AddSingleton<IMobileStoreBillingService, MobileStoreBillingService>();
         builder.Services.AddSingleton<MobileStoreRecoveryService>();
         builder.Services.AddSingleton<IOfflineStoryDownloadService, OfflineStoryDownloadService>();

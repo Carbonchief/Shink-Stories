@@ -11,6 +11,7 @@ public partial class AppShell : Shell
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly MobileAnalyticsService _analytics;
+    private readonly MobilePushService _push;
     private string? _renderedShellState;
     private bool _isInitializing;
     private bool _isRendering;
@@ -20,13 +21,15 @@ public partial class AppShell : Shell
         IServiceProvider services,
         MobileApiClient apiClient,
         SessionState sessionState,
-        MobileAnalyticsService analytics)
+        MobileAnalyticsService analytics,
+        MobilePushService push)
     {
         InitializeComponent();
         _services = services;
         _apiClient = apiClient;
         _sessionState = sessionState;
         _analytics = analytics;
+        _push = push;
 
         Items.Clear();
         Routing.RegisterRoute(nameof(AccountPage), typeof(AccountPage));
@@ -88,6 +91,7 @@ public partial class AppShell : Shell
         }
 
         RenderShellFromSessionState();
+        _push.OnShellReady();
     }
 
     private void RenderShellFromSessionState(bool openSignIn = false)

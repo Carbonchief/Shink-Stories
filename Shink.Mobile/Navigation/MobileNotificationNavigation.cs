@@ -23,6 +23,7 @@ public static class MobileNotificationNavigation
             "story_published" => ResolveStory(href),
             "character_unlock" => ResolveCharacter(href),
             "resource_document_published" => ResolveResourceWebsite(href),
+            "blog_published" => ResolveResourceWebsite(href),
             _ => new MobileNotificationNavigationTarget(MobileNotificationNavigationKind.None)
         };
     }

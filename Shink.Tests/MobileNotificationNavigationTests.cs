@@ -47,7 +47,7 @@ public sealed class MobileNotificationNavigationTests
     }
 
     [TestMethod]
-    public void ResourcePublished_IsTheOnlyWebsiteNavigation()
+    public void ResourcesAndBlogs_OpenWebsiteWhileUnknownTypesHaveNoDestination()
     {
         var resource = MobileNotificationNavigation.Resolve(
             "resource_document_published",
@@ -57,7 +57,8 @@ public sealed class MobileNotificationNavigationTests
 
         Assert.AreEqual(MobileNotificationNavigationKind.ResourceWebsite, resource.Kind);
         Assert.AreEqual("/resources?tipe=aktiwiteite", resource.Value);
-        Assert.AreEqual(MobileNotificationNavigationKind.None, blog.Kind);
+        Assert.AreEqual(MobileNotificationNavigationKind.ResourceWebsite, blog.Kind);
+        Assert.AreEqual("/blog/nuwe-blog", blog.Value);
         Assert.AreEqual(MobileNotificationNavigationKind.None, unknown.Kind);
     }
 }

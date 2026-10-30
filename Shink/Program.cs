@@ -169,6 +169,11 @@ builder.Services.Configure<SiteOptions>(builder.Configuration.GetSection(SiteOpt
 builder.Services.Configure<PayFastOptions>(builder.Configuration.GetSection(PayFastOptions.SectionName));
 builder.Services.Configure<PaystackOptions>(builder.Configuration.GetSection(PaystackOptions.SectionName));
 builder.Services.Configure<MobileStoreOptions>(builder.Configuration.GetSection(MobileStoreOptions.SectionName));
+builder.Services.Configure<MobilePushOptions>(builder.Configuration.GetSection(MobilePushOptions.SectionName));
+builder.Services.AddHttpClient<SupabaseMobilePushStore>(client => client.Timeout = TimeSpan.FromSeconds(10)).WithSupabaseResponseCompression();
+builder.Services.AddHttpClient("mobile-push-provider", client => client.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddSingleton<MobilePushSender>();
+builder.Services.AddHostedService<MobilePushWorker>();
 builder.Services.AddHttpClient("audio-origin", client =>
 {
     // Audio responses can be long-lived streams. Keep timeout above default 100 seconds.
@@ -3437,6 +3442,50 @@ app.MapPost("/api/oortjies/click", async (
 
     return Results.Ok(new { tracked });
 }).RequireRateLimiting("story-tracking").DisableAntiforgery();
+
+app.MapGet("/api/mobile/push/status", (IOptions<MobilePushOptions> options, HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false)) return Results.Unauthorized();
+    return Results.Ok(new { apnsEnabled = options.Value.Supports("apns"), fcmEnabled = options.Value.Supports("fcm") });
+});
+
+app.MapPost("/api/mobile/push/register", async (
+    MobilePushRegistrationRequest request, SupabaseMobilePushStore store,
+    IOptions<MobilePushOptions> options, HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false)) return Results.Unauthorized();
+    if (!IsMobileAppRequest(httpContext) || !IsLikelySameSiteRequest(httpContext)) return Results.Forbid();
+    if (!request.IsValid) return Results.BadRequest(new { message = "Ongeldige toestelregistrasie." });
+    if (!options.Value.Supports(request.Platform)) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    var email = httpContext.User.FindFirst(ClaimTypes.Email)?.Value ?? httpContext.User.Identity?.Name;
+    if (string.IsNullOrWhiteSpace(email)) return Results.Unauthorized();
+    try
+    {
+        var registrationId = await store.RegisterAsync(email, request, httpContext.RequestAborted);
+        return Results.Ok(new { registrationId });
+    }
+    catch (HttpRequestException)
+    {
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapPost("/api/mobile/push/unregister", async (
+    MobilePushRevocationRequest request, SupabaseMobilePushStore store, HttpContext httpContext) =>
+{
+    if (!IsMobileAppRequest(httpContext) || !IsLikelySameSiteRequest(httpContext)) return Results.Forbid();
+    if (!request.IsValid) return Results.BadRequest(new { message = "Ongeldige toestelregistrasie." });
+    try
+    {
+        // Capability-based revocation remains possible after the login cookie expires.
+        await store.UnregisterAsync(request, httpContext.RequestAborted);
+        return Results.Ok(new { unregistered = true });
+    }
+    catch (HttpRequestException)
+    {
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
 app.MapGet("/api/notifications", async (
     IUserNotificationService userNotificationService,

@@ -11,6 +11,8 @@ public sealed class KennisgewingsPage : ContentPage
     private static readonly Color PageBackgroundColor = Color.FromArgb("#FFF7E8");
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
+    private readonly MobilePushService _push;
+    private readonly Button _pushButton;
     private readonly MobileAnalyticsService _analytics;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
@@ -30,13 +32,15 @@ public sealed class KennisgewingsPage : ContentPage
         SessionState sessionState,
         MobileAnalyticsService analytics,
         PlaylistPlaybackState playlistPlaybackState,
-        PlayerTransitionBackdropState transitionBackdropState)
+        PlayerTransitionBackdropState transitionBackdropState,
+        MobilePushService push)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _analytics = analytics;
         _playlistPlaybackState = playlistPlaybackState;
         _transitionBackdropState = transitionBackdropState;
+        _push = push;
 
         Title = "Kennisgewings";
         BackgroundColor = PageBackgroundColor;
@@ -67,6 +71,25 @@ public sealed class KennisgewingsPage : ContentPage
             HorizontalTextAlignment = TextAlignment.Center
         };
         _list = new VerticalStackLayout { Spacing = 10 };
+        _pushButton = new Button
+        {
+            Text = "Skakel selfoonkennisgewings aan",
+            AutomationId = "notifications-enable-push",
+            BackgroundColor = Color.FromArgb("#123F3F"),
+            TextColor = Colors.White, CornerRadius = 16,
+            IsVisible = MobilePushPlatform.BuildEnabled && !MobilePushInstallation.IsRegistered
+        };
+        _pushButton.Clicked += async (_, _) =>
+        {
+            _pushButton.IsEnabled = false;
+            try
+            {
+                await _push.SetEnabledAsync(true);
+                if (!MobilePushInstallation.IsRegistered)
+                    await DisplayAlertAsync("Selfoonkennisgewings", _push.Status, "Reg so");
+            }
+            finally { _pushButton.IsEnabled = true; UpdatePushButton(); }
+        };
         _clearButton = new Button
         {
             Text = "Maak skoon",
@@ -130,12 +153,12 @@ public sealed class KennisgewingsPage : ContentPage
             Children =
             {
                 header,
-                _statusLabel,
+                new VerticalStackLayout { Spacing = 10, Children = { _statusLabel, _pushButton } },
                 notificationScrollView,
                 _loadMoreButton
             }
         };
-        Grid.SetRow(_statusLabel, 1);
+        Grid.SetRow((View)pageLayout.Children[1], 1);
         Grid.SetRow(notificationScrollView, 2);
         Grid.SetRow(_loadMoreButton, 3);
 
@@ -157,6 +180,8 @@ public sealed class KennisgewingsPage : ContentPage
         }
 
         _isPageActive = true;
+        _push.Changed += UpdatePushButton;
+        UpdatePushButton();
         _loadCancellation?.Cancel();
         _loadCancellation?.Dispose();
         _loadCancellation = new CancellationTokenSource();
@@ -183,9 +208,13 @@ public sealed class KennisgewingsPage : ContentPage
     protected override void OnDisappearing()
     {
         _isPageActive = false;
+        _push.Changed -= UpdatePushButton;
         _loadCancellation?.Cancel();
         base.OnDisappearing();
     }
+
+    private void UpdatePushButton() => _pushButton.IsVisible = MobilePushPlatform.BuildEnabled
+        && (!MobilePushInstallation.Enabled || !MobilePushInstallation.IsRegistered);
 
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
