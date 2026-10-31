@@ -17,6 +17,7 @@ public interface ISubscriptionLedgerService
         DateTimeOffset? nextRenewalAtUtc,
         CancellationToken cancellationToken = default);
     Task ProcessExpiredPaymentRecoveriesAsync(CancellationToken cancellationToken = default);
+    Task ProcessPendingPaystackCardUpdatesAsync(CancellationToken cancellationToken = default);
     Task<bool> HasActivePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
     Task<bool> HasActiveSubscriptionForTierAsync(string? email, string? tierCode, CancellationToken cancellationToken = default);
     Task<bool> HasBillablePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
@@ -84,7 +85,9 @@ public interface ISubscriptionLedgerService
         CancellationToken cancellationToken = default);
 }
 
-public sealed record SubscriptionPersistResult(bool IsSuccess, string? ErrorMessage = null, string? SubscriptionId = null);
+public sealed record SubscriptionPersistResult(
+    bool IsSuccess, string? ErrorMessage = null, string? SubscriptionId = null,
+    bool IsCardVerification = false, bool IsDeferred = false, string? PendingReason = null);
 public sealed record CurrentPaidSubscription(
     string SubscriptionId,
     string TierCode,

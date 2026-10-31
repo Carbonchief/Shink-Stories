@@ -11,7 +11,7 @@ using Shink.Services;
 namespace Shink.Tests;
 
 [TestClass]
-public class SupabaseSubscriptionLedgerSelfServiceTests
+public partial class SupabaseSubscriptionLedgerSelfServiceTests
 {
     [TestMethod]
     public async Task GetPaidSubscriptionAttentionAsync_FlagsActivePaidSubscriptionWithMissingRenewalDate()
@@ -6017,6 +6017,17 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         var webhookClaimCount = 0;
         var handler = new RecordingHandler(request =>
         {
+            if (request.RequestUri?.AbsolutePath == "/rest/v1/rpc/reserve_paystack_card_update_attempt" ||
+                request.Method == HttpMethod.Patch && request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_recoveries" &&
+                request.RequestUri.Query.Contains("select=recovery_id", StringComparison.Ordinal))
+            {
+                return JsonResponse("""[{"recovery_id":"33333333-3333-3333-3333-333333333333"}]""");
+            }
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse($$"""[{"recovery_id":"33333333-3333-3333-3333-333333333333","subscription_id":"{{subscriptionId}}","provider":"paystack","provider_payment_id":"{{subscriptionCode}}","authorization_retry_status":"failed"}]""");
+            }
+
             if (IsSupabaseGet(request, "/rest/v1/subscription_plan_changes"))
             {
                 return JsonResponse("[]");
@@ -6142,6 +6153,14 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 return JsonResponse("[]");
             }
 
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath.StartsWith("/transaction/verify/card-update-retry-", StringComparison.Ordinal) == true)
+            {
+                var retryReference = request.RequestUri.Segments.Last();
+                return JsonResponse(JsonSerializer.Serialize(new { status = true, data = new {
+                    id = 6430040999, status = "success", reference = retryReference, amount = 7900, currency = "ZAR", customer = new { email = "ouer@example.com" }
+                } }));
+            }
+
             if (request.Method == HttpMethod.Post &&
                 request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
             {
@@ -6160,7 +6179,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
             }
 
             if (request.Method == new HttpMethod("PATCH") &&
-                request.RequestUri?.AbsolutePath is "/rest/v1/subscriptions" or "/rest/v1/subscription_events")
+                request.RequestUri?.AbsolutePath is "/rest/v1/subscriptions" or "/rest/v1/subscription_events" or "/rest/v1/subscription_payment_recoveries")
             {
                 return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
@@ -6182,8 +6201,8 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
             }
             """;
 
-        var first = await service.RecordPaystackEventAsync(payload);
-        var duplicate = await service.RecordPaystackEventAsync(payload);
+        var first = await service.ProcessQueuedPaystackCardUpdateAsync(payload);
+        var duplicate = await service.ProcessQueuedPaystackCardUpdateAsync(payload);
 
         Assert.IsTrue(first.IsSuccess, first.ErrorMessage);
         Assert.IsTrue(duplicate.IsSuccess, duplicate.ErrorMessage);
@@ -6315,7 +6334,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var result = await CreateService(handler).RecordPaystackEventAsync(
+        var result = await CreateService(handler).ProcessQueuedPaystackCardUpdateAsync(
             $$"""
             {
               "event": "refund.processed",
@@ -7365,8 +7384,9 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     private static SupabaseSubscriptionLedgerService CreateService(
-        RecordingHandler handler,
-        ISubscriptionPaymentRecoveryEmailService? recoveryEmailService = null)
+        HttpMessageHandler handler,
+        ISubscriptionPaymentRecoveryEmailService? recoveryEmailService = null,
+        ISubscriptionNotificationEmailService? notificationEmailService = null)
     {
         var httpClient = new HttpClient(handler)
         {
@@ -7409,7 +7429,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 SecretKey = "secret-key"
             }),
             recoveryEmailService ?? new NoopSubscriptionPaymentRecoveryEmailService(),
-            new NoopSubscriptionNotificationEmailService(),
+            notificationEmailService ?? new NoopSubscriptionNotificationEmailService(),
             paystackService,
             payFastService,
             NullLogger<SupabaseSubscriptionLedgerService>.Instance);

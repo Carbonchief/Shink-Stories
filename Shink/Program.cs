@@ -228,6 +228,8 @@ if (builder.Configuration.GetValue("BackgroundJobs:Enabled", true))
 {
     builder.Services.AddHostedService<PaystackAuthorizationSubscriptionBillingWorker>();
     builder.Services.AddHostedService<SubscriptionPaymentRecoveryWorker>();
+    builder.Services.AddHostedService<PaystackCardUpdateWorker>();
+    builder.Services.AddHostedService<AdminOpsAlertDeliveryWorker>();
     builder.Services.AddHostedService<AbandonedCartRecoveryCancellationWorker>();
 }
 builder.Services.AddRateLimiter(options =>
@@ -2112,6 +2114,11 @@ app.MapGet("/betaal/paystack/callback", async (
     }
 
     var paidReference = verifyResult.Reference ?? resolvedReference;
+    if (persistResult.IsCardVerification)
+    {
+        return Results.Redirect("/intekening-en-betaling");
+    }
+
     await paystackCheckoutService.MarkCheckoutSessionStatusAsync(
         paidReference,
         "paid",
@@ -5854,6 +5861,11 @@ static async Task<IResult> HandlePaystackWebhookAsync(
     }
     else
     {
+        if (persistResult.IsDeferred || persistResult.IsCardVerification)
+        {
+            return Results.Ok();
+        }
+
         string? subscriptionRecoveryReference = null;
         if (!string.IsNullOrWhiteSpace(payload))
         {

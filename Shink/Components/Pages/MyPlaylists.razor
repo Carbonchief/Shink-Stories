@@ -58,17 +58,20 @@
                                         var story = FindStory(slug);
                                         var title = story?.Title ?? slug;
                                         <li @key="slug">
-                                            <span class="playlist-selected-title">
-                                                <span>@title</span>
-                                                @if (story is null)
-                                                {
-                                                    <small>Nie meer beskikbaar nie. Verwyder hierdie storie.</small>
-                                                }
-                                            </span>
-                                            <div class="playlist-order-actions">
-                                                <button type="button" class="playlist-icon-btn" disabled="@(position == 0)" @onclick="() => MoveStory(position, -1)" aria-label="@($"Skuif {title} op")"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i></button>
-                                                <button type="button" class="playlist-icon-btn" disabled="@(position == SelectedSlugs.Count - 1)" @onclick="() => MoveStory(position, 1)" aria-label="@($"Skuif {title} af")"><i class="fa-solid fa-arrow-down" aria-hidden="true"></i></button>
-                                                <button type="button" class="playlist-icon-btn" @onclick="() => RemoveStory(slug)" aria-label="@($"Verwyder {title}")"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                                            <div class="playlist-selected-story">
+                                                <img src="@(story?.ThumbnailPath ?? "/branding/schink-placeholder.png")" alt="" width="52" height="42" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';" />
+                                                <span class="playlist-selected-title">
+                                                    <span>@title</span>
+                                                    @if (story is null)
+                                                    {
+                                                        <small>Nie meer beskikbaar nie. Verwyder hierdie storie.</small>
+                                                    }
+                                                </span>
+                                                <div class="playlist-order-actions">
+                                                    <button type="button" class="playlist-icon-btn" disabled="@(position == 0)" @onclick="() => MoveStory(position, -1)" aria-label="@($"Skuif {title} op")"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i></button>
+                                                    <button type="button" class="playlist-icon-btn" disabled="@(position == SelectedSlugs.Count - 1)" @onclick="() => MoveStory(position, 1)" aria-label="@($"Skuif {title} af")"><i class="fa-solid fa-arrow-down" aria-hidden="true"></i></button>
+                                                    <button type="button" class="playlist-icon-btn" @onclick="() => RemoveStory(slug)" aria-label="@($"Verwyder {title}")"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                                                </div>
                                             </div>
                                         </li>
                                     }

@@ -9,16 +9,18 @@ using Microsoft.Extensions.Options;
 
 namespace Shink.Services;
 
-public sealed class ResendSubscriptionNotificationEmailService(
+public sealed partial class ResendSubscriptionNotificationEmailService(
     HttpClient httpClient,
     IOptions<ResendOptions> resendOptions,
-    ILogger<ResendSubscriptionNotificationEmailService> logger) : ISubscriptionNotificationEmailService
+    ILogger<ResendSubscriptionNotificationEmailService> logger,
+    IOptions<SupabaseOptions> supabaseOptions) : ISubscriptionNotificationEmailService
 {
     private static readonly CultureInfo AfrikaansCulture = CultureInfo.GetCultureInfo("af-ZA");
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly ResendOptions _options = resendOptions.Value;
     private readonly ILogger<ResendSubscriptionNotificationEmailService> _logger = logger;
+    private readonly SupabaseOptions _supabaseOptions = supabaseOptions.Value;
 
     public async Task SendSubscriptionConfirmationAsync(
         SubscriptionConfirmationEmailRequest request,
@@ -108,6 +110,13 @@ public sealed class ResendSubscriptionNotificationEmailService(
         AdminOpsAlertEmailRequest request,
         CancellationToken cancellationToken = default)
     {
+        var alert = BuildAdminOpsAlert(request);
+        if (alert is null) return;
+        await SendAdminOpsAlertOnceAsync(alert.Value.Key, alert.Value.TemplateId, alert.Value.Variables, cancellationToken);
+    }
+
+    private (string Key, string TemplateId, IReadOnlyDictionary<string, object?> Variables)? BuildAdminOpsAlert(AdminOpsAlertEmailRequest request)
+    {
         var templateId = _options.Templates.AdminOps.AlertTemplateId;
         if (string.IsNullOrWhiteSpace(_options.ApiKey) ||
             string.IsNullOrWhiteSpace(_options.FromEmail) ||
@@ -115,7 +124,7 @@ public sealed class ResendSubscriptionNotificationEmailService(
             string.IsNullOrWhiteSpace(templateId))
         {
             _logger.LogWarning("Admin ops alert skipped: Resend is not configured.");
-            return;
+            return null;
         }
 
         var title = string.IsNullOrWhiteSpace(request.Title) ? "Operasionele waarskuwing" : request.Title.Trim();
@@ -140,13 +149,7 @@ public sealed class ResendSubscriptionNotificationEmailService(
             ["ACTION_URL"] = string.IsNullOrWhiteSpace(request.ActionUrl) ? ResolveAdminUrl() : request.ActionUrl.Trim()
         };
 
-        await SendTemplateEmailAsync(
-            to: _options.ToEmail,
-            templateId,
-            variables,
-            idempotencyKey: $"admin-ops-alert/{HashKey(request.AlertKey)}",
-            logContext: "admin ops alert",
-            cancellationToken);
+        return ($"admin-ops-alert/{HashKey(request.AlertKey)}", templateId, variables);
     }
 
     private bool IsCustomerTemplateConfigured(string templateId, string recipientEmail, string logContext)

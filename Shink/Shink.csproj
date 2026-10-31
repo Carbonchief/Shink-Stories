@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Shink.Tests" />
     <Compile Remove="artifacts\**\*.cs" />
     <Compile Remove=".artifacts\**\*.cs" />
     <Compile Remove="bin\**\*.cs" />

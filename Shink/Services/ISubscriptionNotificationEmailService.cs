@@ -13,6 +13,11 @@ public interface ISubscriptionNotificationEmailService
     Task SendAdminOpsAlertAsync(
         AdminOpsAlertEmailRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<bool> QueueAdminOpsAlertAsync(AdminOpsAlertEmailRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromResult(false);
+
+    Task ProcessPendingAdminOpsAlertsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 
 public sealed record SubscriptionConfirmationEmailRequest(
