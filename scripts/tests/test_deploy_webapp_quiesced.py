@@ -575,8 +575,7 @@ w.transaction(Path(sys.argv[2]), root, App())
         source = workflow.read_text()
         self.assertIn("if: always() && steps.publish_check.outputs.should_publish == 'true'", source)
         self.assertIn('python3 scripts/deploy_webapp.py --recover "$RUNNER_TEMP/schink-deployment-job.json"', source)
-        self.assertIn("'scripts/webapp_deployment_worker.py'", source)
-        self.assertIn("'scripts/deploy_webapp.py'", source)
+        self.assertIn('scripts/plan_webapp_publish.cjs', source)
         self.assertIn('cancel-in-progress: false', source)
 
     def test_unchanged_dependencies_are_not_rewritten_or_backed_up(self):

@@ -12,6 +12,11 @@ on:
       - main
 
   workflow_dispatch:
+    inputs:
+      preflight_only:
+        description: Validate the release and credentials without migrating or deploying
+        type: boolean
+        default: true
 
   schedule:
     # 00:00 UTC = 02:00 South Africa time
@@ -39,6 +44,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Verify deployment planning
+        run: node --test scripts/tests/test_plan_webapp_publish.cjs
+
+      - name: Verify deployment safety
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -64,71 +75,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Verify deployment planning
+        run: node --test scripts/tests/test_plan_webapp_publish.cjs
+
+      - name: Verify deployment safety
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+
       - name: Check whether publish is needed
         id: publish_check
         uses: actions/github-script@v8
         with:
           script: |
-            const relevantPrefixes = [
-              'Shink/',
-              'Directory.Build.props',
-              'Directory.Build.targets',
-              'global.json',
-              'Shink/Shink.csproj',
-              '.github/workflows/master_schink.yml',
-              'scripts/deploy-webapp-quiesced.sh',
-              'scripts/deploy_webapp.py',
-              'scripts/webapp_deployment_worker.py',
-            ];
-
-            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'master_schink.yml',
-              branch: context.ref.replace('refs/heads/', ''),
-              status: 'completed',
-              per_page: 100,
-            });
-
-            const latestPublishRun = runs
-              .filter((run) => ['schedule', 'workflow_dispatch'].includes(run.event) && run.conclusion === 'success')
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-
-            if (!latestPublishRun) {
-              core.setOutput('should_publish', 'true');
-              core.setOutput('migration_files', '');
-              core.setOutput('reason', 'no previous successful publish run');
-              return;
-            }
-
-            if (latestPublishRun.head_sha === context.sha) {
-              core.setOutput('should_publish', 'false');
-              core.setOutput('migration_files', '');
-              core.setOutput('reason', 'same commit already published');
-              return;
-            }
-
-            const compare = await github.rest.repos.compareCommits({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              base: latestPublishRun.head_sha,
-              head: context.sha,
-            });
-
-            const changedFiles = compare.data.files?.map((file) => file.filename) ?? [];
-            const hasRelevantChanges = changedFiles.some((file) =>
-              relevantPrefixes.some((prefix) => file === prefix || file.startsWith(prefix))
-            );
-            const migrationFiles = changedFiles
-              .filter((file) => file.startsWith('Shink/Database/migrations/') && file.endsWith('.sql'))
-              .sort();
-
-            core.setOutput('should_publish', hasRelevantChanges ? 'true' : 'false');
-            core.setOutput('migration_files', migrationFiles.join('\n'));
-            core.setOutput(
-              'reason',
-              hasRelevantChanges ? 'relevant files changed since last publish' : 'no relevant files changed since last publish'
-            );
+            const { createPublishPlan } = require(`${process.env.GITHUB_WORKSPACE}/scripts/plan_webapp_publish.cjs`);
+            const plan = await createPublishPlan(github, context);
+            core.setOutput('should_publish', plan.shouldPublish ? 'true' : 'false');
+            core.setOutput('migration_files', plan.migrationFiles.join('\n'));
+            core.setOutput('reason', plan.reason);
+            core.info(`Azure deployment baseline: ${plan.baselineSha} (run ${plan.baselineRunId})`);
+            core.info(`Pending migration candidates: ${plan.migrationFiles.join(', ') || 'none'}`);
 
       - name: Stop when publish is not needed
         if: steps.publish_check.outputs.should_publish != 'true'
@@ -155,7 +119,7 @@ jobs:
         if: steps.publish_check.outputs.should_publish == 'true' && steps.publish_check.outputs.migration_files != ''
         uses: supabase/setup-cli@v2
         with:
-          version: latest
+          version: 2.107.0
           github-token: ${{ github.token }}
 
       - name: Validate Supabase secrets
@@ -174,22 +138,41 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase --workdir ${{ env.SUPABASE_WORKDIR }} link --project-ref ${{ env.SUPABASE_PROJECT_REF }}
 
-      - name: Run Supabase migrations
+      - name: Login to Azure
+        if: steps.publish_check.outputs.should_publish == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_382E49E8F4F44C09B8B1643442569987 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_B343151D44E14C93ABB87BAEB6C36BA8 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_527F5D2CBC94404AB0EB40F3F327EF21 }}
+
+      - name: Verify Azure deployment prerequisites
+        if: steps.publish_check.outputs.should_publish == 'true'
+        run: |
+          site_state="$(az webapp show --resource-group "$AZURE_WEBAPP_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query state -o tsv)"
+          scm_stopped="$(az webapp show --resource-group "$AZURE_WEBAPP_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query scmSiteAlsoStopped -o tsv)"
+          test "$site_state" = Running
+          test "$scm_stopped" = false
+
+      - name: Check and apply Supabase migrations
         if: steps.publish_check.outputs.should_publish == 'true' && steps.publish_check.outputs.migration_files != ''
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           MIGRATION_FILES: ${{ steps.publish_check.outputs.migration_files }}
           GITHUB_SHA: ${{ github.sha }}
+          PREFLIGHT_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}
         run: |
           set -euo pipefail
 
-          supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked \
-            "create schema if not exists supabase_migrations;
-            create table if not exists supabase_migrations.shink_action_migrations (
-              file_name text primary key,
-              github_sha text not null,
-              applied_at timestamptz not null default now()
-            );"
+          if [ "$PREFLIGHT_ONLY" != true ]; then
+            supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked \
+              "create schema if not exists supabase_migrations;
+              create table if not exists supabase_migrations.shink_action_migrations (
+                file_name text primary key,
+                github_sha text not null,
+                applied_at timestamptz not null default now()
+              );"
+          fi
 
           while IFS= read -r migration_file; do
             if [ -z "$migration_file" ]; then
@@ -230,6 +213,11 @@ jobs:
                 ;;
             esac
 
+            if [ "$PREFLIGHT_ONLY" = true ]; then
+              echo "Pending Supabase migration (preflight only): $migration_name"
+              continue
+            fi
+
             echo "Applying Supabase migration: $migration_name"
             supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked --file "$migration_path"
             supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked \
@@ -237,24 +225,12 @@ jobs:
           done <<< "$MIGRATION_FILES"
 
       - name: Verify account deletion cleanup
-        if: steps.publish_check.outputs.should_publish == 'true' && contains(steps.publish_check.outputs.migration_files, 'account_deletion')
+        if: steps.publish_check.outputs.should_publish == 'true' && contains(steps.publish_check.outputs.migration_files, 'account_deletion') && !(github.event_name == 'workflow_dispatch' && inputs.preflight_only)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked \
             --file "$GITHUB_WORKSPACE/Shink/Database/tests/account_personal_data_deletion.sql"
-
-      - name: Login to Azure
-        if: steps.publish_check.outputs.should_publish == 'true'
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_382E49E8F4F44C09B8B1643442569987 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_B343151D44E14C93ABB87BAEB6C36BA8 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_527F5D2CBC94404AB0EB40F3F327EF21 }}
-
-      - name: Verify deployment failure handling
-        if: steps.publish_check.outputs.should_publish == 'true'
-        run: python3 -m unittest discover -s scripts/tests -p 'test_deploy_webapp_quiesced.py' -v
 
       - name: Package verified publish output
         if: steps.publish_check.outputs.should_publish == 'true'
@@ -262,12 +238,12 @@ jobs:
         run: zip -q -r "$GITHUB_WORKSPACE/webapp.zip" .
 
       - name: Stage, validate, and activate with automatic rollback
-        if: steps.publish_check.outputs.should_publish == 'true'
+        if: steps.publish_check.outputs.should_publish == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.preflight_only)
         timeout-minutes: 25
         run: bash scripts/deploy-webapp-quiesced.sh "$AZURE_WEBAPP_RESOURCE_GROUP" "$AZURE_WEBAPP_NAME" "$GITHUB_WORKSPACE/webapp.zip" --state-file "$RUNNER_TEMP/schink-deployment-job.json"
 
       - name: Recover interrupted activation
-        if: always() && steps.publish_check.outputs.should_publish == 'true'
+        if: always() && steps.publish_check.outputs.should_publish == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.preflight_only)
         timeout-minutes: 15
         run: python3 scripts/deploy_webapp.py --recover "$RUNNER_TEMP/schink-deployment-job.json"
 
