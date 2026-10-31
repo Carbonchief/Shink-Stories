@@ -63,6 +63,11 @@ jobs:
       - name: Build
         run: dotnet build ${{ env.PROJECT_PATH }} -c Release --no-restore -m -p:RunAnalyzers=false
 
+      - name: Verify application tests
+        run: |
+          dotnet test Shink.Tests/Shink.Tests.csproj -p:RunAnalyzers=false --logger 'console;verbosity=minimal'
+          dotnet test Shink.Mobile.Audio.Tests/Shink.Mobile.Audio.Tests.csproj -p:RunAnalyzers=false --logger 'console;verbosity=minimal'
+
   publish:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -110,6 +115,12 @@ jobs:
       - name: Restore
         if: steps.publish_check.outputs.should_publish == 'true'
         run: dotnet restore ${{ env.PROJECT_PATH }} -m
+
+      - name: Verify application tests
+        if: steps.publish_check.outputs.should_publish == 'true'
+        run: |
+          dotnet test Shink.Tests/Shink.Tests.csproj -p:RunAnalyzers=false --logger 'console;verbosity=minimal'
+          dotnet test Shink.Mobile.Audio.Tests/Shink.Mobile.Audio.Tests.csproj -p:RunAnalyzers=false --logger 'console;verbosity=minimal'
 
       - name: Publish
         if: steps.publish_check.outputs.should_publish == 'true'

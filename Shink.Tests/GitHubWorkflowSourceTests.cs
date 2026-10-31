@@ -45,7 +45,8 @@ public class GitHubWorkflowSourceTests
 
         var workflowPath = FindRepositoryFile(".github", "workflows", "master_schink.yml");
         var workflow = File.ReadAllText(workflowPath).Replace("\r\n", "\n");
-        var start = workflow.IndexOf("      - name: Run Supabase migrations\n", StringComparison.Ordinal);
+        var start = workflow.IndexOf("      - name: Check and apply Supabase migrations\n", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, start, "The migration workflow step must exist before extracting its shell script.");
         var scriptStart = workflow.IndexOf("        run: |\n", start, StringComparison.Ordinal) + "        run: |\n".Length;
         var scriptEnd = workflow.IndexOf("\n      - name:", scriptStart, StringComparison.Ordinal);
         var script = string.Join('\n', workflow[scriptStart..scriptEnd].Split('\n')
@@ -87,6 +88,7 @@ public class GitHubWorkflowSourceTests
             startInfo.Environment["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "/usr/bin:/bin";
             startInfo.Environment["GITHUB_WORKSPACE"] = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(workflowPath)!, "..", ".."));
             startInfo.Environment["GITHUB_SHA"] = "test-sha";
+            startInfo.Environment["PREFLIGHT_ONLY"] = "false";
             startInfo.Environment["MIGRATION_FILES"] = "Shink/Database/migrations/20261007053828_subscriber_playlists.sql";
             startInfo.Environment["HISTORY_RESULT"] = historyResult;
             startInfo.Environment["HISTORY_EXIT_CODE"] = historyExitCode.ToString();

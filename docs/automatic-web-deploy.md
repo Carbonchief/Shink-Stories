@@ -39,7 +39,7 @@ release path and GitHub credentials without deploying early:
 gh workflow run master_schink.yml --ref main -f preflight_only=true
 ```
 
-Preflight tests deployment planning and rollback, publishes and verifies the
+Preflight tests deployment planning and rollback, runs both .NET test projects, publishes and verifies the
 application package, links Supabase and reads migration history, authenticates
 to Azure and checks the app prerequisites, and checks current public health.
 It does not apply migrations, create migration-history tables, stage an Azure
