@@ -2098,6 +2098,13 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return new AccountClosureResult(false, "Kon nie jou rekening vind nie. Probeer asseblief weer teken in.");
         }
 
+        // Failed or expired local access does not mean provider billing stopped.
+        // Clean up those subscriptions too, including an already closed account.
+        if (!await StopPaystackBillingBeforeAccountClosureAsync(context, cancellationToken))
+        {
+            return new AccountClosureResult(false, "Kon nie al jou herhalende betalings stop nie. Probeer asseblief weer of kontak ons.");
+        }
+
         if (context.DisabledAt is not null)
         {
             return new AccountClosureResult(true);
@@ -2127,6 +2134,69 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         return new AccountClosureResult(true);
+    }
+
+    private async Task<bool> StopPaystackBillingBeforeAccountClosureAsync(
+        SelfServiceSubscriptionContext context,
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(context.BaseUri,
+            "rest/v1/subscriptions?select=subscription_id,tier_code,provider,source_system,provider_payment_id,provider_transaction_id,provider_email_token,status,cancelled_at,recurring_billing_mode" +
+            $"&subscriber_id=eq.{Uri.EscapeDataString(context.SubscriberId)}&provider=eq.paystack&tier_code=neq.gratis&cancelled_at=is.null&limit=1000");
+        using var request = CreateRequest(HttpMethod.Get, uri, context.ApiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return false;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var subscriptions = await JsonSerializer.DeserializeAsync<List<SelfServiceSubscriptionRow>>(stream, cancellationToken: cancellationToken);
+        if (subscriptions is null || subscriptions.Count >= 1000)
+        {
+            return false;
+        }
+
+        foreach (var subscription in subscriptions)
+        {
+            if (string.IsNullOrWhiteSpace(subscription.SubscriptionId))
+            {
+                return false;
+            }
+
+            var subscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                subscription.Provider, subscription.SourceSystem,
+                subscription.ProviderPaymentId, subscription.ProviderTransactionId);
+            var emailToken = subscription.ProviderEmailToken;
+            if (subscriptionCode is not null)
+            {
+                var live = await _paystackCheckoutService.GetSubscriptionAsync(subscriptionCode, cancellationToken);
+                if (!live.IsSuccess || !string.Equals(live.SubscriptionCode, subscriptionCode, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                emailToken = live.EmailToken ?? emailToken;
+                if (live.Status is not ("non-renewing" or "cancelled" or "completed"))
+                {
+                    var stopped = await _paystackCheckoutService.DisableSubscriptionAsync(subscriptionCode, emailToken, cancellationToken);
+                    if (!stopped.IsSuccess)
+                    {
+                        return false;
+                    }
+                    emailToken = stopped.EmailToken ?? emailToken;
+                }
+            }
+
+            if (!await MarkSelfServiceSubscriptionCancelledNowAsync(
+                    context.BaseUri, context.ApiKey, subscription.SubscriptionId,
+                    DateTimeOffset.UtcNow, emailToken, cancellationToken))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public async Task<AccountDataDeletionResult> DeleteAccountDataAsync(
@@ -2711,7 +2781,15 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return;
         }
 
-        if (!string.Equals(subscriptionContext.Status, "active", StringComparison.OrdinalIgnoreCase))
+        var subscriptionStopped = subscriptionContext.CancelledAt is not null ||
+            !string.Equals(subscriptionContext.Status, "active", StringComparison.OrdinalIgnoreCase);
+        var accountEnabled = subscriptionStopped ? false :
+            await IsSubscriberEnabledForRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriberId, cancellationToken);
+        if (accountEnabled is null)
+        {
+            return; // Keep the pending retry until account status can be confirmed.
+        }
+        if (!accountEnabled.Value)
         {
             await ResolvePaymentRecoveryAsync(
                 baseUri,
@@ -4495,7 +4573,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
             if (subscriptionId is null && ShouldActivatePaystackSubscription(eventType, eventStatus))
             {
-                var upsertResult = await UpsertActivePaystackSubscriptionAsync(baseUri, apiKey, data, nowUtc, cancellationToken);
+                var upsertResult = await UpsertActivePaystackSubscriptionAsync(baseUri, apiKey, data, nowUtc, cancellationToken,
+                    preserveExistingAuthorization: !string.Equals(eventType, "charge.success", StringComparison.OrdinalIgnoreCase));
                 if (!upsertResult.IsSuccess)
                 {
                     await InsertPaymentWebhookFailureAsync(
@@ -4847,6 +4926,17 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     subscriptionContext.SubscriptionId, subscriptionCode);
             }
             return PaystackCardUpdateRefundRetryResult.NotApplicable;
+        }
+
+        var accountEnabled = await IsSubscriberEnabledForRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriberId, cancellationToken);
+        if (accountEnabled is null)
+        {
+            return PaystackCardUpdateRefundRetryResult.Failed(
+                "Could not confirm the subscription owner's account status.", subscriptionContext.SubscriptionId, subscriptionCode);
+        }
+        if (!accountEnabled.Value)
+        {
+            return new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode);
         }
 
         if (!string.Equals(
@@ -5361,7 +5451,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string apiKey,
         JsonElement data,
         DateTimeOffset nowUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool preserveExistingAuthorization = false)
     {
         var email = TryReadNestedString(data, "customer", "email");
         var providerPaymentId = ResolvePaystackProviderPaymentId(data);
@@ -5574,7 +5665,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                         billingAmountZar,
                         plan.BillingPeriodMonths,
                         "paystack_payload",
-                        cancellationToken);
+                        cancellationToken,
+                        preserveExistingProviderToken: preserveExistingAuthorization);
                     if (canonicalized)
                     {
                         return new PaystackUpsertResult(
@@ -5617,7 +5709,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             discountPaymentCount: discountTerms?.DiscountPaymentCount,
             discountPaymentsUsed: isDiscountedAuthorizationCheckout ? 1 : 0,
             undiscountedBillingAmountZar: isDiscountedAuthorizationCheckout ? plan.Amount : null,
-            authorizationReusable: isDiscountedAuthorizationCheckout ? true : null);
+            authorizationReusable: isDiscountedAuthorizationCheckout ? true : null,
+            preserveExistingProviderToken: preserveExistingAuthorization && ownershipContext is not null);
 
         if (subscriptionId is null)
         {
@@ -6063,7 +6156,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         int? discountPaymentCount = null,
         int discountPaymentsUsed = 0,
         decimal? undiscountedBillingAmountZar = null,
-        bool? authorizationReusable = null)
+        bool? authorizationReusable = null,
+        bool preserveExistingProviderToken = false)
     {
         var payload = new
         {
@@ -6091,11 +6185,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             authorization_reusable = authorizationReusable
         };
 
-        var uri = new Uri(baseUri, "rest/v1/subscriptions?on_conflict=provider,provider_payment_id&select=subscription_id");
+        var uri = preserveExistingProviderToken
+            ? new Uri(baseUri, $"rest/v1/subscriptions?provider=eq.{Uri.EscapeDataString(provider)}&provider_payment_id=eq.{Uri.EscapeDataString(providerPaymentId)}&subscriber_id=eq.{Uri.EscapeDataString(subscriberId)}&select=subscription_id")
+            : new Uri(baseUri, "rest/v1/subscriptions?on_conflict=provider,provider_payment_id&select=subscription_id");
         // Store ownership is immutable: an insert racing an existing purchase must
         // never overwrite its subscriber. Existing rows are updated under an owner filter.
         var isStore = provider is "apple" or "google_play";
-        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload,
+        // Invoice/subscription snapshots may still contain the card that expired.
+        // Omit the column entirely so a concurrent verified card update also wins.
+        object requestPayload = preserveExistingProviderToken
+            ? JsonSerializer.SerializeToElement(payload).EnumerateObject()
+                .Where(property => property.Name is not ("provider_token" or "authorization_reusable" or "cancelled_at"))
+                .ToDictionary(property => property.Name, property => property.Value.Clone())
+            : payload;
+        using var request = CreateJsonRequest(preserveExistingProviderToken ? HttpMethod.Patch : HttpMethod.Post, uri, apiKey, requestPayload,
+            preserveExistingProviderToken ? "return=representation" :
             isStore ? "resolution=ignore-duplicates,return=representation" : "resolution=merge-duplicates,return=representation");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -7018,7 +7122,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         decimal billingAmountZar,
         int billingPeriodMonths,
         string billingAmountSource,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool preserveExistingProviderToken = false)
     {
         var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
         var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}");
@@ -7037,6 +7142,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         if (!string.IsNullOrWhiteSpace(providerTransactionId))
         {
             payload["provider_transaction_id"] = providerTransactionId;
+        }
+        if (preserveExistingProviderToken)
+        {
+            payload.Remove("provider_token");
+            payload.Remove("cancelled_at");
         }
 
         using var request = CreateJsonRequest(
@@ -7226,6 +7336,22 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var rows = await JsonSerializer.DeserializeAsync<List<PaymentRecoverySubscriberRow>>(stream, cancellationToken: cancellationToken)
             ?? [];
         return rows.FirstOrDefault();
+    }
+
+    private async Task<bool?> IsSubscriberEnabledForRecoveryAsync(
+        Uri baseUri, string apiKey, string subscriberId, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(baseUri, $"rest/v1/subscribers?subscriber_id=eq.{Uri.EscapeDataString(subscriberId)}&select=disabled_at&limit=1");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<SelfServiceSubscriberRow>>(stream, cancellationToken: cancellationToken);
+        return rows is { Count: 1 } ? rows[0].DisabledAt is null : null;
     }
 
     private async Task<PaymentRecoveryRow?> GetActivePaymentRecoveryAsync(

@@ -1900,6 +1900,11 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
                 return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
 
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse("[]");
+            }
+
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
@@ -4690,7 +4695,7 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
                 return JsonResponse($$"""[{ "subscriber_id": "{{payerSubscriberId}}" }]""");
             }
 
-            if (request.Method == HttpMethod.Post &&
+            if (request.Method == HttpMethod.Patch &&
                 request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
             {
                 return JsonResponse($$"""[{ "subscription_id": "{{subscriptionId}}" }]""");
@@ -4743,7 +4748,7 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.AreEqual(subscriptionId, result.SubscriptionId);
         Assert.IsNull(handler.SubscriberCreatePayload, "An existing Paystack subscription must not reassign ownership from the webhook customer email.");
 
-        var subscriptionPayload = handler.SubscriptionCreatePayloads.Single(payload =>
+        var subscriptionPayload = handler.SubscriptionPatchPayloads.Single(payload =>
             payload.Contains($"\"provider_payment_id\":\"{subscriptionCode}\"", StringComparison.Ordinal));
         StringAssert.Contains(subscriptionPayload, $"\"subscriber_id\":\"{accessSubscriberId}\"");
         Assert.IsFalse(
@@ -6734,7 +6739,7 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
             if (request.Method == new HttpMethod("PATCH") &&
                 request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
             {
-                return new HttpResponseMessage(HttpStatusCode.NoContent);
+                return JsonResponse($$"""[{ "subscription_id": "{{subscriptionId}}" }]""");
             }
 
             if (request.Method == HttpMethod.Post &&
@@ -6771,7 +6776,8 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
 
         Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
         Assert.AreEqual(subscriptionId, result.SubscriptionId);
-        var subscriptionUpsert = handler.SubscriptionCreatePayloads.Single();
+        var subscriptionUpsert = handler.SubscriptionPatchPayloads.Single(payload =>
+            payload.Contains($"\"provider_payment_id\":\"{subscriptionCode}\"", StringComparison.Ordinal));
         Assert.IsTrue(SubscriptionPatchHasNextRenewalAt(subscriptionUpsert, nextPaymentDate),
             "The subscription.create webhook following an upgrade must retain the provider's renewal date, including carried paid time.");
         StringAssert.Contains(subscriptionUpsert, $"\"provider_payment_id\":\"{subscriptionCode}\"");

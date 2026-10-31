@@ -139,6 +139,9 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
         public bool Reusable { get; set; } = true;
         public bool ProviderCardMatches { get; set; } = true;
         public bool ProviderUnavailable { get; set; }
+        public bool AccountClosed { get; set; }
+        public bool AccountLookupUnavailable { get; set; }
+        public bool ExposeScheduledRetry { get; set; }
         public int ProviderRequestCount { get; private set; }
         public string? PaymentStatus { get; set; }
         public int VerifiedAmount { get; set; } = 7900;
@@ -212,10 +215,20 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
             }
             if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
                 return JsonResponse($$"""[{"subscription_id":"{{SubscriptionId}}","subscriber_id":"11111111-1111-1111-1111-111111111111","provider":"paystack","provider_payment_id":"SUB_cardupdate","provider_token":"{{(StoredCardMatches ? "AUTH_updated_card" : "AUTH_old_card")}}","tier_code":"all_stories_monthly","status":"active","billing_amount_zar":{{JsonSerializer.Serialize(BillingAmount)}},"billing_period_months":1}]""");
-            if (IsSupabaseGet(request, "/rest/v1/subscribers")) return JsonResponse("""[{"email":"ouer@example.com"}]""");
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                if (AccountLookupUnavailable && request.RequestUri.Query.Contains("disabled_at", StringComparison.Ordinal))
+                    return new(HttpStatusCode.ServiceUnavailable);
+                return JsonResponse($$"""[{"subscriber_id":"11111111-1111-1111-1111-111111111111","email":"ouer@example.com","disabled_at":{{(AccountClosed ? "\"2026-10-30T10:00:00Z\"" : "null")}}}]""");
+            }
             if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                if (ExposeScheduledRetry)
+                    return HasRecovery && request.RequestUri.Query.Contains("authorization_retry_status=eq.pending", StringComparison.Ordinal)
+                        ? RecoveryResponse() : JsonResponse("[]");
                 return HasRecovery && !request.RequestUri.Query.Contains("authorization_retry_status=eq.pending", StringComparison.Ordinal)
                     ? RecoveryResponse() : JsonResponse("[]");
+            }
             if (request.Method == HttpMethod.Patch && path == "/rest/v1/subscription_payment_recoveries")
             {
                 var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
@@ -232,6 +245,8 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
                     }
                     HasRecovery = false;
                 }
+                if (patch.RootElement.TryGetProperty("resolution", out var resolution) && resolution.GetString() == "cancelled")
+                    HasRecovery = false;
                 if (patch.RootElement.TryGetProperty("authorization_retry_reference", out var reference)) _retryReference = reference.GetString();
                 if (patch.RootElement.TryGetProperty("authorization_retry_status", out var status)) RecoveryStatus = status.GetString()!;
                 return request.RequestUri.Query.Contains("select=recovery_id", StringComparison.Ordinal) ? RecoveryResponse() : new(HttpStatusCode.NoContent);
@@ -290,7 +305,8 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
         private HttpResponseMessage RecoveryResponse() => JsonResponse(JsonSerializer.Serialize(new[] { new {
             recovery_id = "33333333-3333-3333-3333-333333333333", subscription_id = SubscriptionId, provider = "paystack", provider_payment_id = "SUB_cardupdate",
             first_failed_at = "2026-10-25T10:00:00Z", grace_ends_at = "2026-10-30T10:00:00Z", emails_scheduled_at = "2026-10-27T10:00:00Z",
-            authorization_retry_status = RecoveryStatus, authorization_retry_reference = CurrentRetryReference
+            authorization_retry_status = RecoveryStatus, authorization_retry_reference = CurrentRetryReference,
+            authorization_retry_due_at = "2026-10-27T10:00:00Z"
         } }));
     }
 }
