@@ -32,9 +32,34 @@ class Kudu:
             data = json.dumps(data).encode()
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(self.url + path, data=data, method=method, headers=headers)
-        with urllib.request.urlopen(request, timeout=120) as response:
-            body = response.read()
-            return json.loads(body) if body else None
+        # SCM can time out while the application remains healthy. Reads can be
+        # retried safely; command replies must be reconciled with the saved job
+        # instead of launching a second activation after a lost reply.
+        attempts = 3 if method == "GET" else 1
+        for attempt in range(1, attempts + 1):
+            try:
+                with urllib.request.urlopen(request, timeout=120) as response:
+                    body = response.read()
+                    return json.loads(body) if body else None
+            except urllib.error.HTTPError as error:
+                if method != "GET" or error.code not in {408, 429, 500, 502, 503, 504}:
+                    raise
+                reason = "HTTP " + str(error.code)
+                error.close()
+                if attempt == attempts:
+                    print("Kudu GET " + path + ": " + reason + "; retries exhausted", flush=True)
+                    raise
+            except (OSError, urllib.error.URLError) as error:
+                if method != "GET":
+                    raise
+                reason = type(error).__name__
+                if attempt == attempts:
+                    raise OSError("Kudu GET " + path + " failed after " + str(attempts) +
+                                  " attempts (" + reason + ")") from error
+            delay = 5 * 2 ** (attempt - 1)
+            print("Kudu GET " + path + ": " + reason + "; retrying in " + str(delay) +
+                  "s (attempt " + str(attempt + 1) + "/" + str(attempts) + ")", flush=True)
+            time.sleep(delay)
 
     def put(self, job, name, data):
         return self.request("PUT", "/api/vfs/data/schink-deployments/" + job + "/" + name, data)

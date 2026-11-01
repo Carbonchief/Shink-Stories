@@ -71,6 +71,16 @@ job. This covers resetting failed recovery state and deleting authorization file
 An authorization file already consumed by the worker returns a harmless HTTP 404;
 other HTTP cleanup failures are reported without logging credentials.
 
+On 1 November 2026 the initial `GET /api/deployments` timed out after 120 seconds,
+before a deployment job was staged. The previous application stayed running.
+The coordinator now retries transient Kudu read failures up to three times,
+with 5- and 10-second backoffs. Timeouts, connection failures and HTTP
+408/429/500/502/503/504 responses qualify; authorization and other permanent
+errors still fail immediately. Retry and exhaustion messages identify the
+request without logging authorization. Upload, command and cleanup requests
+are not replayed; a lost worker-launch reply still uses the existing saved-job
+reconciliation path.
+
 The short-lived ARM token is passed in an authenticated SCM staging file, removed
 as soon as the worker reads it, and is never placed in command arguments or logs.
 Unchanged dependencies are not rewritten or backed up. Identical releases require

@@ -542,6 +542,21 @@ w.transaction(Path(sys.argv[2]), root, App())
             coordinator.deploy(ExistingDeployment(), site, self.package, self.base / 'locator.json')
         self.assertEqual(self.before, tree(self.root))
 
+    def test_status_read_timeout_is_bounded_before_staging_or_stopping(self):
+        kudu = coordinator.Kudu('https://example.scm', 'fixture-token')
+        locator = self.base / 'locator.json'
+        site = {'state': 'Running', 'scmSiteAlsoStopped': False}
+        with patch.object(coordinator.urllib.request, 'urlopen', side_effect=TimeoutError('Read timed out')) as urlopen, \
+                patch.object(coordinator.time, 'sleep') as sleep:
+            with self.assertRaisesRegex(OSError, 'GET /api/deployments failed after 3 attempts'):
+                coordinator.deploy(kudu, site, self.package, locator)
+        self.assertEqual(3, urlopen.call_count)
+        self.assertEqual([5, 10], [call.args[0] for call in sleep.call_args_list])
+        self.assertTrue(all(call.args[0].get_method() == 'GET' for call in urlopen.call_args_list))
+        self.assertFalse(locator.exists())
+        self.assertEqual([], self.app.events)
+        self.assertEqual(self.before, tree(self.root))
+
     def test_polling_timeout_never_launches_or_starts_another_copy(self):
         class Pending:
             def state(self, job): return {'phase': 'activating'}
@@ -615,6 +630,78 @@ w.transaction(Path(sys.argv[2]), root, App())
         self.assertEqual(self.before, tree(self.root))
         self.assertEqual('Running', self.app.state())
         self.assertEqual(('health', 'old'), self.app.events[-1])
+
+
+class KuduRequestTests(unittest.TestCase):
+    def setUp(self):
+        self.kudu = coordinator.Kudu('https://example.scm', 'fixture-token')
+
+    def test_retries_response_read_timeout_then_returns_deployments(self):
+        with patch.object(coordinator.urllib.request, 'urlopen') as urlopen, \
+                patch.object(coordinator.time, 'sleep') as sleep:
+            response = urlopen.return_value.__enter__.return_value
+            response.read.side_effect = [TimeoutError('The read operation timed out'), b'[]']
+            self.assertEqual([], self.kudu.request('GET', '/api/deployments'))
+        self.assertEqual(2, urlopen.call_count)
+        self.assertEqual(2, urlopen.return_value.__exit__.call_count)
+        sleep.assert_called_once_with(5)
+
+    def test_retries_connection_error_then_returns_status(self):
+        with patch.object(coordinator.urllib.request, 'urlopen') as urlopen, \
+                patch.object(coordinator.time, 'sleep') as sleep:
+            response = urlopen.return_value
+            response.__enter__.return_value.read.return_value = b'{"phase":"succeeded"}'
+            urlopen.side_effect = [urllib.error.URLError('Connection reset'), response]
+            self.assertEqual({'phase': 'succeeded'}, self.kudu.state('a' * 32))
+        self.assertEqual(2, urlopen.call_count)
+        sleep.assert_called_once_with(5)
+
+    def test_retries_transient_http_errors(self):
+        for status in [408, 429, 500, 502, 503, 504]:
+            with self.subTest(status=status), patch.object(coordinator.urllib.request, 'urlopen') as urlopen, \
+                    patch.object(coordinator.time, 'sleep') as sleep:
+                response = urlopen.return_value
+                response.__enter__.return_value.read.return_value = b'[]'
+                error = urllib.error.HTTPError('https://example.scm', status, 'Temporary error', {}, None)
+                urlopen.side_effect = [error, response]
+                self.assertEqual([], self.kudu.request('GET', '/api/deployments'))
+                self.assertEqual(2, urlopen.call_count)
+                sleep.assert_called_once_with(5)
+
+    def test_http_retries_are_bounded(self):
+        with patch.object(coordinator.urllib.request, 'urlopen') as urlopen, \
+                patch.object(coordinator.time, 'sleep') as sleep:
+            urlopen.side_effect = urllib.error.HTTPError('https://example.scm', 503, 'Unavailable', {}, None)
+            with self.assertRaises(urllib.error.HTTPError):
+                self.kudu.request('GET', '/api/deployments')
+        self.assertEqual(3, urlopen.call_count)
+        self.assertEqual([5, 10], [call.args[0] for call in sleep.call_args_list])
+
+    def test_permanent_http_errors_are_not_retried(self):
+        for status in [400, 401, 403, 404, 409, 412]:
+            with self.subTest(status=status), patch.object(coordinator.urllib.request, 'urlopen') as urlopen, \
+                    patch.object(coordinator.time, 'sleep') as sleep:
+                error = urllib.error.HTTPError('https://example.scm', status, 'Rejected', {}, None)
+                self.addCleanup(error.close)
+                urlopen.side_effect = error
+                with self.assertRaises(urllib.error.HTTPError):
+                    self.kudu.request('GET', '/api/deployments')
+                self.assertEqual(1, urlopen.call_count)
+                sleep.assert_not_called()
+
+    def test_uploads_commands_and_cleanup_are_never_replayed(self):
+        for method in ['PUT', 'POST', 'DELETE']:
+            for error in [TimeoutError('Reply lost'),
+                          urllib.error.HTTPError('https://example.scm', 503, 'Unavailable', {}, None)]:
+                if isinstance(error, urllib.error.HTTPError):
+                    self.addCleanup(error.close)
+                with self.subTest(method=method, error=type(error).__name__), \
+                        patch.object(coordinator.urllib.request, 'urlopen', side_effect=error) as urlopen, \
+                        patch.object(coordinator.time, 'sleep') as sleep:
+                    with self.assertRaises(type(error)):
+                        self.kudu.request(method, '/api/command' if method == 'POST' else '/api/vfs/data/job/file')
+                    self.assertEqual(1, urlopen.call_count)
+                    sleep.assert_not_called()
 
 
 class KuduHttpTests(unittest.TestCase):
