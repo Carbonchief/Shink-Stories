@@ -1,0 +1,30 @@
+<aside class="winkel-summary" aria-labelledby="winkel-opsomming">
+    <h2 id="winkel-opsomming">Jou bestelling</h2>
+    @if (ShowItems)
+    {
+        <div class="winkel-summary-items">
+            @foreach (var product in Products)
+            {
+                <div @key="product.Slug" class="winkel-summary-item" data-store-summary-item="@product.Slug" hidden>
+                    <span>@product.Name <small>× <span data-store-item-count>0</span></small></span><strong data-store-line-total>R 0.00</strong>
+                </div>
+            }
+        </div>
+    }
+    <dl class="winkel-totals">
+        <div><dt>Subtotaal <span>(<span data-store-count>0</span> items)</span></dt><dd data-store-subtotal>R 0.00</dd></div>
+        <div><dt>PUDO-aflewering</dt><dd data-store-delivery>R 0.00</dd></div>
+        <div class="winkel-total"><dt>Totaal</dt><dd data-store-total>R 0.00</dd></div>
+    </dl>
+    <p class="winkel-delivery-note" data-store-delivery-message>Aflewering word een keer per bestelling bereken.</p>
+    @if (!ShowItems)
+    {
+        <a class="winkel-submit" href="/winkel/afreken" data-store-checkout-link>Gaan na betaalpunt <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+    }
+    <p class="winkel-secure-note"><i class="fa-solid fa-lock" aria-hidden="true"></i> Veilige betaling met Paystack</p>
+</aside>
+
+@code {
+    [Parameter] public IReadOnlyList<StoreProduct> Products { get; set; } = [];
+    [Parameter] public bool ShowItems { get; set; }
+}

@@ -214,6 +214,7 @@
                 <AuthorizeView>
                     <Authorized Context="authState">
                         <div class="nav-controls">
+                            <a class="winkel-header-cart" href="/winkel/mandjie" data-store-cart-link aria-label="Jou mandjie"><i class="fa-solid fa-basket-shopping" aria-hidden="true"></i><span class="winkel-cart-count" data-store-count>0</span></a>
                             <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
                                 <button type="button"
                                         class="site-search-toggle"
@@ -386,6 +387,7 @@
                     </Authorized>
                     <NotAuthorized>
                         <div class="guest-controls">
+                            <a class="winkel-header-cart" href="/winkel/mandjie" data-store-cart-link aria-label="Jou mandjie"><i class="fa-solid fa-basket-shopping" aria-hidden="true"></i><span class="winkel-cart-count" data-store-count>0</span></a>
                             <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
                                 <button type="button"
                                         class="site-search-toggle"
@@ -788,7 +790,8 @@
         get
         {
             var relativePath = GetCurrentRelativePathWithoutQuery();
-            return string.Equals(relativePath, "winkel", StringComparison.OrdinalIgnoreCase);
+            return string.Equals(relativePath, "winkel", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.StartsWith("winkel/", StringComparison.OrdinalIgnoreCase);
         }
     }
 

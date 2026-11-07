@@ -35,6 +35,7 @@ public interface ISubscriptionLedgerService
         string? targetPlanSlug,
         CancellationToken cancellationToken = default);
     Task<SubscriptionCardUpdateLinkResult> CreatePaystackCardUpdateLinkAsync(string? email, CancellationToken cancellationToken = default);
+    Task<SubscriptionCardUpdateLinkResult> CreatePaystackCheckoutRecoveryLinkAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionRepairResult> TryRepairPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionFreeTierTransferResult> TransferPaidSubscriptionToGratisAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionCancelResult> CancelPaidSubscriptionAsync(
@@ -117,7 +118,10 @@ public sealed record SubscriptionCheckoutAssessment(
     string? CurrentProvider = null,
     string? CurrentTierCode = null,
     DateTimeOffset? CurrentAccessEndsAtUtc = null,
-    bool CanAutomaticallyCancelCurrentProvider = false);
+    bool CanAutomaticallyCancelCurrentProvider = false)
+{
+    internal string? PaystackRecoverySubscriptionCode { get; init; }
+}
 public static class SubscriptionCheckoutTransitionKinds
 {
     public const string NewCheckout = "new-checkout";
@@ -126,8 +130,13 @@ public static class SubscriptionCheckoutTransitionKinds
     public const string PayFastConversion = "payfast-conversion";
     public const string ProviderConversion = "provider-conversion";
     public const string LegacyPaystack = "legacy-paystack";
+    public const string PaystackRecoveryRequired = "paystack-recovery-required";
+    public const string BillingVerificationRequired = "billing-verification-required";
     public const string BillingStatusUncertain = "billing-status-uncertain";
     public const string AccountClosed = "account-closed";
+
+    public static bool BlocksCheckout(string? transitionKind) =>
+        transitionKind?.Trim().ToLowerInvariant() is PaystackRecoveryRequired or BillingVerificationRequired or AccountClosed;
 }
 public sealed record SubscriptionCardUpdateLinkResult(bool IsSuccess, string? Link = null, string? ErrorMessage = null);
 public sealed record SubscriptionRepairResult(

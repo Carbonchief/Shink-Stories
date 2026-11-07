@@ -55,6 +55,8 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
         Assert.IsTrue(
             paidCheckIndex >= 0 && providerCheckoutIndex > paidCheckIndex,
             "The subscription assessment must run before any payment provider can start a new checkout.");
+        AssertCallOrder(routeBlock, "BlocksCheckout(", "            bevestigOorgang,",
+            "A confirmation query value must not bypass the billing block.");
     }
 
     [TestMethod]
@@ -73,6 +75,8 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
         StringAssert.Contains(postBlock, "ChangePaidSubscriptionPlanAsync(");
         StringAssert.Contains(postBlock, ".RequireRateLimiting(\"auth-submit\")");
         Assert.DoesNotContain("DisableAntiforgery", postBlock);
+        AssertCallOrder(postBlock, "BlocksCheckout(", "ChangePaidSubscriptionPlanAsync(",
+            "The billing block must apply again when a plan change is submitted.");
     }
 
     [TestMethod]
@@ -413,6 +417,8 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
             "TryRedirectRecoveredPaystackSubscriptionAsync(",
             "InitializeCheckoutForEmailAsync(",
             "The abandoned-cart retry route must poll Paystack before initializing a fresh Paystack checkout.");
+        AssertCallOrder(abandonedRecoveryRouteBlock, "BlocksCheckout(", "ChangePaidSubscriptionPlanAsync(",
+            "A reminder link must respect the same billing block before replacing a subscription.");
 
         var repairRouteBlock = ExtractBlock(
             program,
@@ -422,8 +428,9 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
         AssertCallOrder(
             repairRouteBlock,
             "TryRedirectRecoveredPaystackSubscriptionAsync(",
-            "InitializeCheckoutAsync(",
-            "The subscription repair route must poll Paystack before initializing a fresh Paystack checkout.");
+            "/betaal/{Uri.EscapeDataString(plan.Slug)}",
+            "The subscription repair route must poll Paystack before redirecting to the guarded checkout.");
+        Assert.DoesNotContain("InitializeCheckoutAsync(", repairRouteBlock);
     }
 
     private static void AssertCallOrder(string source, string firstCall, string secondCall, string message)

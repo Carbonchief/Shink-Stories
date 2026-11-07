@@ -384,9 +384,10 @@ public sealed class PaystackCheckoutService(
         {
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
-            var status = root.TryGetProperty("status", out var statusNode) &&
+            var status = root.ValueKind == JsonValueKind.Object &&
+                         root.TryGetProperty("status", out var statusNode) &&
                          statusNode.ValueKind == JsonValueKind.True;
-            var link = root.TryGetProperty("data", out var dataNode)
+            var link = status && root.TryGetProperty("data", out var dataNode)
                 ? TryReadString(dataNode, "link")
                 : null;
 
@@ -1560,9 +1561,10 @@ public sealed class PaystackCheckoutService(
         {
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
-            var status = root.TryGetProperty("status", out var statusNode) &&
+            var status = root.ValueKind == JsonValueKind.Object &&
+                         root.TryGetProperty("status", out var statusNode) &&
                          statusNode.ValueKind == JsonValueKind.True;
-            var dataNode = root.TryGetProperty("data", out var parsedData) &&
+            var dataNode = status && root.TryGetProperty("data", out var parsedData) &&
                            parsedData.ValueKind == JsonValueKind.Object
                 ? parsedData
                 : default;
@@ -1576,7 +1578,7 @@ public sealed class PaystackCheckoutService(
 
             return new PaystackSubscriptionLookupResult(
                 true,
-                SubscriptionCode: TryReadString(dataNode, "subscription_code") ?? subscriptionCode.Trim(),
+                SubscriptionCode: TryReadString(dataNode, "subscription_code"),
                 Status: TryReadString(dataNode, "status"),
                 NextPaymentDate: ParseDateTimeOffset(TryReadString(dataNode, "next_payment_date")),
                 AuthorizationCode: TryReadNestedString(dataNode, "authorization", "authorization_code")

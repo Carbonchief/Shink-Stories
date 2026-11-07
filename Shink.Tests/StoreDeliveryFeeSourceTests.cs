@@ -52,10 +52,11 @@ public class StoreDeliveryFeeSourceTests
     [TestMethod]
     public void WinkelPageExplainsPudoLockerDeliveryCost()
     {
-        var winkel = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Winkel.razor"));
+        var winkel = File.ReadAllText(GetRepoPath("Shink", "Components", "Store", "StoreCheckout.razor"));
+        var rules = File.ReadAllText(GetRepoPath("Shink", "Components", "Content", "StoreCheckoutRules.cs"));
 
         StringAssert.Contains(winkel, "Ons gebruik PUDO lockers vir aflewering");
-        StringAssert.Contains(winkel, "private const decimal DeliveryFeeZar = 80m;");
+        StringAssert.Contains(rules, "const decimal DeliveryFeeZar = 80m;");
         StringAssert.Contains(winkel, "insluitend PUDO locker aflewering");
     }
 

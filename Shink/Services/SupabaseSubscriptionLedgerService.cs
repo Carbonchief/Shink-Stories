@@ -170,7 +170,13 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? targetTierCode,
         CancellationToken cancellationToken = default)
     {
-        var context = await TryResolveSelfServiceContextAsync(email, cancellationToken);
+        var checkout = await ReadSubscriptionCheckoutAsync(email, cancellationToken);
+        if (checkout is null)
+        {
+            return new SubscriptionCheckoutAssessment(SubscriptionCheckoutTransitionKinds.BillingVerificationRequired);
+        }
+
+        var (context, subscriptions) = checkout;
         if (context is null)
         {
             return new SubscriptionCheckoutAssessment(SubscriptionCheckoutTransitionKinds.NewCheckout);
@@ -182,29 +188,38 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         var nowUtc = DateTimeOffset.UtcNow;
-        var subscriptions = await FetchSelfServicePaidSubscriptionsAsync(
-            context.BaseUri,
-            context.ApiKey,
-            context.SubscriberId,
-            cancellationToken);
         var billablePaidSubscriptions = subscriptions
             .Where(subscription => IsCurrentlyBillableSelfServiceSubscription(subscription, nowUtc))
             .ToArray();
+        var current = billablePaidSubscriptions
+            .Where(subscription => IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc))
+            .Select(subscription => new
+            {
+                Subscription = subscription,
+                Plan = PaymentPlanCatalog.FindByTierCode(subscription.TierCode)
+            })
+            .Where(candidate => candidate.Plan is not null)
+            .OrderByDescending(candidate => ResolvePaidPlanAccessRank(candidate.Plan!))
+            .ThenByDescending(candidate => candidate.Subscription.NextRenewalAt ?? DateTimeOffset.MaxValue)
+            .FirstOrDefault();
+
+        // The existing plan-change flow stops the current Paystack agreement before creating its replacement.
+        var planChangeSubscriptionCode = current is not null && !string.IsNullOrWhiteSpace(current.Subscription.ProviderToken)
+            ? PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                current.Subscription.Provider,
+                current.Subscription.SourceSystem,
+                current.Subscription.ProviderPaymentId,
+                current.Subscription.ProviderTransactionId)
+            : null;
+        var paystackBlock = await GetPaystackCheckoutBlockAsync(
+            context, subscriptions, planChangeSubscriptionCode, nowUtc, cancellationToken);
+        if (paystackBlock is not null)
+        {
+            return paystackBlock;
+        }
 
         if (billablePaidSubscriptions.Length > 0)
         {
-            var current = billablePaidSubscriptions
-                .Where(subscription => IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc))
-                .Select(subscription => new
-                {
-                    Subscription = subscription,
-                    Plan = PaymentPlanCatalog.FindByTierCode(subscription.TierCode)
-                })
-                .Where(candidate => candidate.Plan is not null)
-                .OrderByDescending(candidate => ResolvePaidPlanAccessRank(candidate.Plan!))
-                .ThenByDescending(candidate => candidate.Subscription.NextRenewalAt ?? DateTimeOffset.MaxValue)
-                .FirstOrDefault();
-
             if (current is null)
             {
                 var latest = billablePaidSubscriptions[0];
@@ -218,13 +233,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             var provider = current.Subscription.Provider;
             if (string.Equals(provider, "paystack", StringComparison.OrdinalIgnoreCase))
             {
-                var subscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
-                    current.Subscription.Provider,
-                    current.Subscription.SourceSystem,
-                    current.Subscription.ProviderPaymentId,
-                    current.Subscription.ProviderTransactionId);
-                if (!string.IsNullOrWhiteSpace(subscriptionCode) &&
-                    !string.IsNullOrWhiteSpace(current.Subscription.ProviderToken))
+                if (planChangeSubscriptionCode is not null)
                 {
                     return new SubscriptionCheckoutAssessment(
                         SubscriptionCheckoutTransitionKinds.PlanChange,
@@ -796,13 +805,15 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var oldSubscriptionDisabledByThisAttempt = false;
         if (!IsPlanChangeAtOrBeyond(planChangeAttempt.Status, "old_subscription_disabled"))
         {
-            var providerAlreadyStopped = currentSubscription.CancelledAt is not null;
-            if (!providerAlreadyStopped)
+            // Compensation can re-enable Paystack after a local cancellation was scheduled.
+            var liveSubscription = await _paystackCheckoutService.GetSubscriptionAsync(
+                paystackSubscriptionCode,
+                cancellationToken);
+            var liveSubscriptionMatches = liveSubscription.IsSuccess &&
+                string.Equals(liveSubscription.SubscriptionCode, paystackSubscriptionCode, StringComparison.OrdinalIgnoreCase);
+            var providerAlreadyStopped = liveSubscriptionMatches && IsNonRenewingPaystackStatus(liveSubscription.Status);
+            if (liveSubscriptionMatches)
             {
-                var liveSubscription = await _paystackCheckoutService.GetSubscriptionAsync(
-                    paystackSubscriptionCode,
-                    cancellationToken);
-                providerAlreadyStopped = liveSubscription.IsSuccess && IsNonRenewingPaystackStatus(liveSubscription.Status);
                 providerEmailToken = liveSubscription.EmailToken ?? providerEmailToken;
             }
 
@@ -3196,23 +3207,23 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
     private async Task<SelfServiceSubscriptionContext?> TryResolveSelfServiceContextAsync(
         string? email,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireSuccessfulLookup = false)
     {
         if (string.IsNullOrWhiteSpace(email))
         {
             return null;
         }
 
-        if (!TryBuildSupabaseBaseUri(out var baseUri))
-        {
-            _logger.LogWarning("Supabase self-service account action skipped: URL is not configured.");
-            return null;
-        }
-
         var apiKey = ResolveApiKey();
-        if (string.IsNullOrWhiteSpace(apiKey))
+        if (!TryBuildSupabaseBaseUri(out var baseUri) || string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase self-service account action skipped: SecretKey is not configured.");
+            if (requireSuccessfulLookup)
+            {
+                throw new HttpRequestException("Subscription database is not configured.");
+            }
+
+            _logger.LogWarning("Supabase self-service account action skipped: URL or key is not configured.");
             return null;
         }
 
@@ -3226,6 +3237,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
+            if (requireSuccessfulLookup)
+            {
+                response.EnsureSuccessStatusCode();
+            }
+
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogWarning(
                 "Supabase self-service subscriber lookup failed. email={Email} Status={StatusCode} Body={Body}",
@@ -3236,9 +3252,13 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var subscribers = await JsonSerializer.DeserializeAsync<List<SelfServiceSubscriberRow>>(stream, cancellationToken: cancellationToken)
-            ?? [];
-        var subscriber = subscribers.FirstOrDefault();
+        var subscribers = await JsonSerializer.DeserializeAsync<List<SelfServiceSubscriberRow>>(stream, cancellationToken: cancellationToken);
+        var subscriber = subscribers?.FirstOrDefault();
+        if (requireSuccessfulLookup &&
+            (subscribers is null || (subscribers.Count > 0 && string.IsNullOrWhiteSpace(subscriber?.SubscriberId))))
+        {
+            throw new JsonException("Invalid subscription account response.");
+        }
         if (subscriber is null || string.IsNullOrWhiteSpace(subscriber.SubscriberId))
         {
             return null;

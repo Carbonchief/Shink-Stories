@@ -1,0 +1,21 @@
+<nav class="winkel-navigation" aria-label="Winkelnavigasie">
+    <a class="winkel-home-link" href="/winkel"><i class="fa-solid fa-store" aria-hidden="true"></i> Schink se winkel</a>
+    <a class="winkel-cart-link" href="/winkel/mandjie" data-store-cart-link>
+        <i class="fa-solid fa-basket-shopping" aria-hidden="true"></i>
+        Mandjie <span class="winkel-cart-count" data-store-count>0</span>
+    </a>
+</nav>
+<div hidden data-store-catalog>
+    @foreach (var product in Products)
+    {
+        <span @key="product.Slug" data-store-product="@product.Slug" data-name="@product.Name"
+              data-price="@StoreCheckoutRules.ToCents(product.UnitPriceZar)"
+              data-free-delivery="@(product.WaivesDeliveryFee ? "true" : "false")"></span>
+    }
+</div>
+<div class="winkel-notice" data-store-notice role="status" aria-live="polite" hidden></div>
+<noscript><p class="winkel-notice">Skakel JavaScript aan om produkte by jou mandjie te voeg en af te reken.</p></noscript>
+
+@code {
+    [Parameter] public IReadOnlyList<StoreProduct> Products { get; set; } = [];
+}

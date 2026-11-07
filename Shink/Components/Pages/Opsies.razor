@@ -167,6 +167,10 @@
                 <h2 id="upgrade-warning-title">@UpgradeWarningTitle</h2>
                 <p>@UpgradeWarningMessage</p>
                 <p class="opsies-plan-change-guidance">@UpgradeWarningGuidance</p>
+                @if (IsPaystackRecoveryRequired && PaystackRecoveryError is not null)
+                {
+                    <p role="alert">@PaystackRecoveryError</p>
+                }
             </div>
             <div class="opsies-plan-change-actions">
                 @if (CanContinueUpgrade)
@@ -174,11 +178,28 @@
                     <a class="opsies-plan-change-primary"
                        href="@ConfirmedUpgradeCheckoutHref"
                        data-enhance-nav="false">@UpgradeContinueButtonText</a>
+                    <a class="opsies-plan-change-secondary" href="#plan-opsies">Kies 'n ander plan</a>
                 }
-                <a class="opsies-plan-change-secondary" href="#plan-opsies">Kies 'n ander plan</a>
-                @if (!CanContinueUpgrade)
+                else if (IsPaystackRecoveryRequired)
                 {
-                    <a class="opsies-plan-change-primary" href="/#kontak-ons">Kontak ons om die rekening te heropen</a>
+                    @if (IsUserAuthenticated)
+                    {
+                        <button type="button"
+                                class="opsies-plan-change-primary"
+                                disabled="@IsOpeningPaystackRecovery"
+                                @onclick="OpenPaystackRecoveryAsync">
+                            @(IsOpeningPaystackRecovery ? "Maak Paystack oop..." : "Werk kaartbesonderhede by")
+                        </button>
+                    }
+                    else
+                    {
+                        <a class="opsies-plan-change-primary" href="@PaystackRecoverySignInHref">Teken in om jou betaalmetode by te werk</a>
+                    }
+                    <a class="opsies-plan-change-secondary" href="/#kontak-ons">Kontak ons vir hulp</a>
+                }
+                else
+                {
+                    <a class="opsies-plan-change-primary" href="/#kontak-ons">@BlockedUpgradeContactText</a>
                 }
             </div>
         </section>
@@ -599,6 +620,8 @@
     public bool CanAutomaticallyCancelCurrentProvider { get; set; }
 
     private bool IsUserAuthenticated { get; set; }
+    private bool IsOpeningPaystackRecovery { get; set; }
+    private string? PaystackRecoveryError { get; set; }
     private bool IsYearlyAllStoriesPlan { get; set; }
     private string? SafeStoryReturnPath { get; set; }
     private StoryItem? RequestedStory { get; set; }
@@ -644,10 +667,17 @@
     private string? PaymentSuccessAutoRedirectPath => IsPaymentSuccess
         ? GetSafeReturnUrl(ReturnUrl) ?? "/luister"
         : null;
-    private bool CanContinueUpgrade => !string.Equals(
+    private bool CanContinueUpgrade => !SubscriptionCheckoutTransitionKinds.BlocksCheckout(UpgradeTransitionKind);
+    private bool IsPaystackRecoveryRequired => string.Equals(
         UpgradeTransitionKind,
-        SubscriptionCheckoutTransitionKinds.AccountClosed,
+        SubscriptionCheckoutTransitionKinds.PaystackRecoveryRequired,
         StringComparison.OrdinalIgnoreCase);
+    private string PaystackRecoverySignInHref =>
+        $"/teken-in?returnUrl={Uri.EscapeDataString(new Uri(NavigationManager.Uri).PathAndQuery)}";
+    private string BlockedUpgradeContactText => string.Equals(
+        UpgradeTransitionKind, SubscriptionCheckoutTransitionKinds.AccountClosed, StringComparison.OrdinalIgnoreCase)
+        ? "Kontak ons om die rekening te heropen"
+        : "Kontak ons vir hulp";
     private bool IsPayFastPaymentProviderSwitch =>
         string.Equals(
             UpgradeTransitionKind,
@@ -662,6 +692,8 @@
         SubscriptionCheckoutTransitionKinds.PayFastConversion => "Jou ou PayFast-intekening word eers ná suksesvolle aktivering gekanselleer.",
         SubscriptionCheckoutTransitionKinds.ProviderConversion => "Jou bestaande intekening word deur 'n ander betaalverskaffer bestuur.",
         SubscriptionCheckoutTransitionKinds.LegacyPaystack => "Ons kan nie jou ou Paystack-intekening outomaties verander nie.",
+        SubscriptionCheckoutTransitionKinds.PaystackRecoveryRequired => "Bestuur eers jou bestaande Paystack-intekening.",
+        SubscriptionCheckoutTransitionKinds.BillingVerificationRequired => "Ons kon nie jou bestaande betalingstatus bevestig nie.",
         SubscriptionCheckoutTransitionKinds.BillingStatusUncertain => "Ons kon nie bevestig dat jou vorige betaling reeds gestop het nie.",
         SubscriptionCheckoutTransitionKinds.AccountClosed => "Hierdie rekening is tans gesluit.",
         "discount-code-not-carried" => "Hierdie afslagkode kan nie na 'n bestaande intekening oorgedra word nie.",
@@ -683,6 +715,10 @@
             $"Jy kan met {PlanChangeTargetName} voortgaan, maar jou huidige {FriendlyCurrentProviderName}-intekening moet steeds by daardie verskaffer bestuur of gekanselleer word.",
         SubscriptionCheckoutTransitionKinds.LegacyPaystack =>
             $"Jy kan 'n nuwe betaling vir {PlanChangeTargetName} begin, maar ons het nie al die ou intekeningbesonderhede om die vorige Paystack-heffing outomaties te stop nie.",
+        SubscriptionCheckoutTransitionKinds.PaystackRecoveryRequired =>
+            "Jou bestaande Paystack-intekening kan steeds hernu. Werk jou kaartbesonderhede vir daardie intekening by.",
+        SubscriptionCheckoutTransitionKinds.BillingVerificationRequired =>
+            "Ons hou die nuwe betaling terug terwyl ons nie seker is of jou vorige intekening steeds kan hernu nie.",
         SubscriptionCheckoutTransitionKinds.BillingStatusUncertain =>
             $"Jy kan met {PlanChangeTargetName} voortgaan, maar die vorige intekening kan dalk steeds by {FriendlyCurrentProviderName} aktief wees en jou weer hef.",
         SubscriptionCheckoutTransitionKinds.AccountClosed =>
@@ -699,6 +735,8 @@
             : "Kanselleer die ou PayFast-intekening direk ná die nuwe plan aktief word. Niks verander as jy nie die nuwe betaling voltooi nie.",
         SubscriptionCheckoutTransitionKinds.ProviderConversion => "Om dubbele heffings te vermy, kanselleer die ou intekening by die huidige verskaffer.",
         SubscriptionCheckoutTransitionKinds.LegacyPaystack => "Kontak ons eers as jy onseker is of die ou Paystack-intekening nog geld aftrek.",
+        SubscriptionCheckoutTransitionKinds.PaystackRecoveryRequired => "Jy kan jou bestaande intekening op die veilige Paystack-blad bestuur.",
+        SubscriptionCheckoutTransitionKinds.BillingVerificationRequired => "Probeer later weer of kontak ons sodat ons jou kan help.",
         SubscriptionCheckoutTransitionKinds.BillingStatusUncertain => "Kontroleer jou bankstaat of kontak ons eers om 'n dubbele heffing te vermy.",
         SubscriptionCheckoutTransitionKinds.AccountClosed => "Kontak ons om die rekening te heropen; daarna kan jy enige plan kies.",
         "discount-code-not-carried" => "Niks word gehef totdat die planverandering suksesvol verwerk is nie.",
@@ -785,6 +823,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        PaystackRecoveryError = null;
         SafeStoryReturnPath = GetSafeReturnUrl(ReturnUrl);
         RequestedStory = await ResolveRequestedStoryAsync(SafeStoryReturnPath);
         RequiredAccess = ResolveRequiredAccess(SafeStoryReturnPath, RequestedStory);
@@ -809,7 +848,8 @@
             StoryAccessPolicy.StoryCornerMonthlyTierCode,
             StringComparison.OrdinalIgnoreCase);
 
-        if (string.IsNullOrWhiteSpace(SafeStoryReturnPath))
+        if (string.IsNullOrWhiteSpace(SafeStoryReturnPath) ||
+            (string.Equals(PaymentStatus, "opgradeer-waarskuwing", StringComparison.OrdinalIgnoreCase) && !CanContinueUpgrade))
         {
             return;
         }
@@ -824,6 +864,40 @@
         if (hasAccessToRequestedStory)
         {
             NavigationManager.NavigateTo(SafeStoryReturnPath, forceLoad: true);
+        }
+    }
+
+    private async Task OpenPaystackRecoveryAsync()
+    {
+        if (IsOpeningPaystackRecovery)
+        {
+            return;
+        }
+
+        IsOpeningPaystackRecovery = true;
+        PaystackRecoveryError = null;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var email = authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name;
+            if (authState.User.Identity?.IsAuthenticated != true || string.IsNullOrWhiteSpace(email))
+            {
+                NavigationManager.NavigateTo(PaystackRecoverySignInHref, forceLoad: true);
+                return;
+            }
+
+            var result = await SubscriptionLedgerService.CreatePaystackCheckoutRecoveryLinkAsync(email);
+            if (result.IsSuccess && result.Link is not null)
+            {
+                NavigationManager.NavigateTo(result.Link, forceLoad: true);
+                return;
+            }
+
+            PaystackRecoveryError = result.ErrorMessage;
+        }
+        finally
+        {
+            IsOpeningPaystackRecovery = false;
         }
     }
 

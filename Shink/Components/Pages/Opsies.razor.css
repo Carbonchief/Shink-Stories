@@ -143,7 +143,13 @@
 
 .opsies-plan-change-primary {
     background: #a74a1f;
+    border: 0;
     color: #ffffff;
+}
+
+.opsies-plan-change-primary:disabled {
+    cursor: wait;
+    opacity: 0.65;
 }
 
 .opsies-plan-change-secondary {

@@ -1,0 +1,23 @@
+<section class="winkel-receipt">
+    <p class="winkel-section-kicker">Bestelling @Order.OrderReference</p>
+    <h1>@(IsPaid ? "Dankie! Jou maatjies is bestel." : "Ons wag nog vir bevestiging van jou betaling.")</h1>
+    <p>@(IsPaid ? "Jou betaling is ontvang. Hou hierdie verwysing vir enige navrae oor jou bestelling." : "Jou bestelling is aangeteken. Dit is eers betaal wanneer Paystack die betaling bevestig.")</p>
+    <dl class="winkel-totals">
+        @foreach (var item in Order.Items)
+        {
+            <div @key="item.ProductSlug" data-store-purchased="@item.ProductSlug" data-quantity="@item.Quantity"><dt>@item.ProductName × @item.Quantity</dt><dd>@StoreCheckoutRules.FormatZar(item.LineTotalZar)</dd></div>
+        }
+        @if (Order.DeliveryFeeWaived) { <div><dt>PUDO-aflewering</dt><dd>Ingesluit</dd></div> }
+        <div class="winkel-total"><dt>Totaal</dt><dd>@StoreCheckoutRules.FormatZar(Order.TotalPriceZar)</dd></div>
+    </dl>
+    <div class="winkel-receipt-actions">
+        @if (!IsPaid) { <a class="winkel-submit" href="@($"/winkel?betaling=verwerk&verwysing={Uri.EscapeDataString(Order.OrderReference)}")">Kyk weer na betaalstatus</a> }
+        <a class="winkel-secondary" href="/winkel">Gaan weer winkel toe</a>
+        <a class="winkel-text-link" href="/#kontak-ons">Hulp met my bestelling</a>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public StoreOrderRecord Order { get; set; } = default!;
+    private bool IsPaid => string.Equals(Order.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase);
+}

@@ -1,384 +1,73 @@
 @page "/winkel"
+@page "/winkel/mandjie"
+@page "/winkel/afreken"
+@page "/winkel/produk/{ProductSlug}"
+@using Shink.Components.Store
 
-@using System.Text.Json
-@using Microsoft.AspNetCore.Components
-@using Shink.Components.Content
-@inject NavigationManager NavigationManager
-@inject IStoreProductCatalogService StoreProductCatalogService
-
-<PageTitle>Schink Stories | Winkel</PageTitle>
+<PageTitle>@PageHeading | Schink Stories</PageTitle>
 <HeadContent>
-    <link rel="canonical" href="@WinkelCanonicalUrl" />
+    <link rel="canonical" href="@CanonicalUrl" />
+    <meta name="description" content="@MetaDescription" />
+    @if (View is "cart" or "checkout" || HasPaymentStatus || (View == "product" && Product is null))
+    {
+        <meta name="robots" content="noindex, follow" />
+    }
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Schink Stories | Winkel" />
-    <meta property="og:description" content="@WinkelMetaDescription" />
-    <meta property="og:url" content="@WinkelCanonicalUrl" />
-    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/winkel/storie-tjommie-panda.png").ToString()" />
-    <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/winkel/storie-tjommie-panda.png").ToString()" />
-    <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="896" />
-    <meta property="og:image:height" content="1120" />
-    <meta property="og:image:alt" content="Voorbeeld van 'n kind wat 'n StorieTjommie vashou" />
+    <meta property="og:title" content="@($"{PageHeading} | Schink Stories")" />
+    <meta property="og:description" content="@MetaDescription" />
+    <meta property="og:url" content="@CanonicalUrl" />
+    <meta property="og:image" content="@ImageUrl" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Schink Stories | Winkel" />
-    <meta name="twitter:description" content="@WinkelMetaDescription" />
-    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/winkel/storie-tjommie-panda.png").ToString()" />
-    <meta name="twitter:image:alt" content="Voorbeeld van 'n kind wat 'n StorieTjommie vashou" />
-    <JsonLdScript Json="@WinkelJsonLd" />
+    <meta name="twitter:title" content="@($"{PageHeading} | Schink Stories")" />
+    <meta name="twitter:description" content="@MetaDescription" />
+    <meta name="twitter:image" content="@ImageUrl" />
+    <JsonLdScript Json="@StoreJsonLd" />
 </HeadContent>
 
-<section class="winkel-page">
-    <div class="winkel-page-logo">
-        <img src="/branding/Schink_Stories_Logo_turqoise.png"
-             alt="Schink Stories"
-             width="983"
-             height="428"
-             loading="eager"
-             decoding="async" />
-    </div>
-
-    @if (HasPaymentMessage)
+<section class="winkel-page" data-store data-store-view="@View" data-store-delivery-cents="@StoreCheckoutRules.ToCents(StoreCheckoutRules.DeliveryFeeZar)"
+         data-store-max-per-product="@StoreCheckoutRules.MaxPerProduct" data-store-max-items="@StoreCheckoutRules.MaxItems"
+         data-store-completed-reference="@(IsVerifiedPaid ? VerifiedOrder!.OrderReference : null)"
+         data-store-completed-checkout-id="@(IsVerifiedPaid ? CompletedCheckoutId : null)">
+    <StoreShell Products="Products" />
+    @if (VerifiedOrder is not null && (IsVerifiedPaid || PaymentStatus is "verwerk" or "sukses"))
     {
-        <p class="@($"winkel-payment-status {PaymentBannerClass}")" role="status" aria-live="polite">
-            @PaymentBannerText
-        </p>
-    }
-
-    @if (HasProducts)
-    {
-        <form id="winkel-order-form" class="winkel-shopping-form" method="post" action="/winkel/koop/paystack">
-            <section class="winkel-products" aria-labelledby="winkel-produkte">
-                <div class="winkel-products-header">
-                    <p class="winkel-section-kicker">Ons verkoop tans</p>
-                    <h2 id="winkel-produkte">Kies jou StorieTjommies</h2>
-                    <p>
-                        Gebruik die plus en minus by elke produk om jou hoeveelheid te kies. Alles word saam in een veilige Paystack betaling bestel.
-                    </p>
-                </div>
-
-                <div class="winkel-grid">
-                    @foreach (var product in Products)
-                    {
-                        var defaultQuantity = GetDefaultQuantity(product);
-
-                        <article class="@($"winkel-product {product.ThemeClass}")">
-                            <div class="winkel-product-media">
-                                <img src="@product.ImagePath"
-                                     alt="@product.AltText"
-                                     width="1080"
-                                     height="1080"
-                                     loading="lazy"
-                                     decoding="async"
-                                     onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
-                            </div>
-
-                            <div class="winkel-product-body">
-                                <p class="winkel-product-type">StorieTjommie</p>
-                                <h3>@product.Name</h3>
-                                <p class="winkel-product-price">R @product.UnitPriceDisplay elk</p>
-                                <p class="winkel-product-description">@GetProductBlurb(product)</p>
-                                <div class="winkel-product-quantity" data-winkel-quantity>
-                                    <button type="button"
-                                            class="winkel-quantity-button"
-                                            data-winkel-quantity-decrement
-                                            aria-label="@($"Verminder {product.Name} hoeveelheid")">-</button>
-                                    <label>
-                                        <span class="sr-only">@($"Hoeveelheid vir {product.Name}")</span>
-                                        <input type="number"
-                                               name="@($"qty-{product.Slug}")"
-                                               value="@defaultQuantity"
-                                               min="0"
-                                               max="10"
-                                               step="1"
-                                               inputmode="numeric"
-                                               autocomplete="off"
-                                               data-winkel-quantity-input />
-                                    </label>
-                                    <button type="button"
-                                            class="winkel-quantity-button"
-                                            data-winkel-quantity-increment
-                                            aria-label="@($"Vermeerder {product.Name} hoeveelheid")">+</button>
-                                </div>
-                            </div>
-                        </article>
-                    }
-                </div>
-            </section>
-
-            <section class="winkel-order-section" aria-labelledby="winkel-bestel">
-                <div class="winkel-order-copy">
-                    <p class="winkel-section-kicker">Maklik om te bestel</p>
-                    <h2 id="winkel-bestel">Bou jou bestelling en betaal alles saam.</h2>
-                    <p>
-                        Kies hoeveel van elke karakter jy wil hê by die produkte hierbo. Jy kan soveel verskillende StorieTjommies kies as wat jy nodig het,
-                        en Paystack hanteer dit as een enkele betaling.
-                    </p>
-
-                    <ul class="winkel-order-notes">
-                        <li>Laat 'n produk op <strong>0</strong> as jy daardie een nie wil bestel nie.</li>
-                        <li>Gebruik jou beste e-posadres en selfoonnommer.</li>
-                        <li>Ons gebruik PUDO lockers vir aflewering, met 'n standaard koste van <strong>@DeliveryFeeText</strong> per bestelling. Kwalifiserende promosieprodukte sluit aflewering in.</li>
-                        <li>Gebruik die PUDO locker of afleweringsadres waar jy die pakket wil ontvang.</li>
-                    </ul>
-
-                    <aside class="winkel-order-panel">
-                        <p class="winkel-order-panel-kicker">Vinnig opgesom</p>
-                        <h3>Wat gebeur na betaling?</h3>
-                        <ol class="winkel-order-list">
-                            <li>Jy kies jou kombinasie van StorieTjommies en hoeveel van elkeen jy wil hê.</li>
-                            <li>Die PUDO locker aflewering word, waar van toepassing, as 'n aparte lyn by jou bestelling gevoeg.</li>
-                            <li>Paystack hanteer die produkte en enige toepaslike aflewering saam as een veilige betaling.</li>
-                        </ol>
-                        <p class="winkel-order-panel-price">@PriceSummaryText</p>
-                    </aside>
-                </div>
-
-                <div class="winkel-order-form-shell" id="winkel-bestelvorm">
-                    <div class="winkel-order-form">
-                        <div class="winkel-form-grid">
-                            <label class="winkel-field">
-                                <span>Volle naam</span>
-                                <input type="text" name="naam" maxlength="120" autocomplete="name" required />
-                            </label>
-
-                            <label class="winkel-field">
-                                <span>E-posadres</span>
-                                <input type="email" name="epos" maxlength="254" autocomplete="email" required />
-                            </label>
-
-                            <label class="winkel-field">
-                                <span>Selfoonnommer</span>
-                                <input type="tel" name="selfoon" maxlength="40" autocomplete="tel" required />
-                            </label>
-
-                            <label class="winkel-field">
-                                <span>Poskode</span>
-                                <input type="text" name="poskode" maxlength="20" autocomplete="postal-code" data-winkel-address-postal-code required />
-                            </label>
-
-                            <label class="winkel-field winkel-field-full">
-                                <span>Adres lyn 1</span>
-                                <input id="winkel-address-line-1"
-                                       type="text"
-                                       name="adresLyn1"
-                                       maxlength="250"
-                                       autocomplete="address-line1"
-                                       aria-autocomplete="list"
-                                       aria-controls="winkel-address-suggestions"
-                                       aria-expanded="false"
-                                       data-winkel-address-input
-                                       required />
-                                <div id="winkel-address-suggestions"
-                                     class="winkel-address-suggestions"
-                                     data-winkel-address-suggestions
-                                     role="listbox"
-                                     hidden></div>
-                            </label>
-
-                            <label class="winkel-field winkel-field-full">
-                                <span>Adres lyn 2 <em>(opsioneel)</em></span>
-                                <input type="text" name="adresLyn2" maxlength="250" autocomplete="address-line2" />
-                            </label>
-
-                            <label class="winkel-field">
-                                <span>Voorstad <em>(opsioneel)</em></span>
-                                <input type="text" name="voorstad" maxlength="120" autocomplete="address-level3" data-winkel-address-suburb />
-                            </label>
-
-                            <label class="winkel-field">
-                                <span>Stad / Dorp</span>
-                                <input type="text" name="stad" maxlength="120" autocomplete="address-level2" data-winkel-address-city required />
-                            </label>
-
-                            <label class="winkel-field winkel-field-full">
-                                <span>Notas <em>(opsioneel)</em></span>
-                                <textarea name="notas" rows="4" maxlength="2000"></textarea>
-                            </label>
-                        </div>
-
-                        <div class="winkel-form-actions">
-                            <button class="winkel-submit" type="submit">Betaal hele bestelling met Paystack</button>
-                            <p class="winkel-form-fineprint">
-                                Jy word na Paystack gestuur om die hele bestelling, insluitend PUDO locker aflewering waar dit van toepassing is, veilig in een betaling te voltooi.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </form>
-
-        <section class="winkel-story-block" aria-labelledby="winkel-storieblok-title">
-            <div class="winkel-story-media">
-                <img src="/branding/winkel/storie-tjommie-lama-lifestyle.png"
-                     alt="Kind wat 'n StorieTjommie vashou"
-                     width="766"
-                     height="1024"
-                     loading="lazy"
-                     decoding="async" />
-            </div>
-
-            <div class="winkel-story-copy">
-                <p class="winkel-section-kicker">Vir storietyd en knuffeltyd</p>
-                <h2 id="winkel-storieblok-title">Bekende karakters, nou ook buite die stories.</h2>
-                <p>
-                    Hierdie StorieTjommies bring Schink se wêreld 'n bietjie nader aan huis toe.
-                    Hulle werk mooi vir rustige bedtyd, lekker speeltyd en daardie ekstra spesiale geskenk.
-                </p>
-                <p>
-                    Jy kan nou een karakter kies of sommer 'n hele kombinasie saam in jou mandjie sit,
-                    dan word alles in een bestelling en een betaling hanteer.
-                </p>
-            </div>
-        </section>
+        <StoreReceipt Order="VerifiedOrder" />
     }
     else
     {
-        <section class="winkel-products" aria-labelledby="winkel-produkte">
-            <div class="winkel-products-header">
-                <p class="winkel-section-kicker">Ons verkoop tans</p>
-                <h2 id="winkel-produkte">Kies jou StorieTjommies</h2>
-                <p>Ons werk tans aan nuwe produkte. Kyk asseblief weer oor 'n rukkie.</p>
+        @if (!string.IsNullOrWhiteSpace(PaymentMessage))
+        {
+            <div class="winkel-payment-status @(PaymentStatus == "misluk" ? "is-error" : "is-processing")" role="status">
+                <p>@PaymentMessage</p>
+                @if (!string.IsNullOrWhiteSpace(OrderReference))
+                {
+                    <p>Bestelverwysing: @OrderReference[..Math.Min(OrderReference.Length, 80)]</p>
+                }
+                <a href="/winkel/afreken">Terug na betaalpunt</a>
             </div>
-        </section>
+        }
+        @if (View == "cart")
+        {
+            <StoreBasket Products="Products" />
+        }
+        else if (View == "checkout")
+        {
+            <StoreCheckout Products="Products" />
+        }
+        else if (View == "product")
+        {
+            @if (Product is not null)
+            {
+                <StoreProductDetail Product="Product" />
+            }
+            else
+            {
+                <div class="winkel-empty"><h1>Hierdie maatjie is nie tans beskikbaar nie.</h1><p>Ontdek die ander StorieTjommies in ons winkel.</p><a class="winkel-submit" href="/winkel">Gaan winkel toe</a></div>
+            }
+        }
+        else
+        {
+            <StoreCatalog Products="Products" />
+        }
     }
 </section>
-
-@code {
-    [SupplyParameterFromQuery(Name = "betaling")]
-    public string? PaymentStatus { get; set; }
-
-    [SupplyParameterFromQuery(Name = "produk")]
-    public string? ProductSlugFromQuery { get; set; }
-
-    [SupplyParameterFromQuery(Name = "verwysing")]
-    public string? OrderReferenceFromQuery { get; set; }
-
-    [SupplyParameterFromQuery(Name = "boodskap")]
-    public string? MessageFromQuery { get; set; }
-
-    private IReadOnlyList<StoreProduct> Products { get; set; } = Array.Empty<StoreProduct>();
-
-    private string WinkelCanonicalUrl => NavigationManager.ToAbsoluteUri("/winkel").ToString();
-    private const decimal DeliveryFeeZar = 80m;
-    private bool HasProducts => Products.Count > 0;
-    private string DeliveryFeeText => FormatZar(DeliveryFeeZar);
-    private string PriceSummaryText => BuildPriceSummaryText();
-    private string WinkelMetaDescription => HasProducts
-        ? "Koop StorieTjommies en betaal alles saam in een veilige Paystack betaling."
-        : "Schink Stories se winkel word tans opgedateer met nuwe StorieTjommie produkte.";
-
-    private bool HasPaymentMessage => !string.IsNullOrWhiteSpace(PaymentBannerText);
-
-    private string PaymentBannerClass => (PaymentStatus ?? string.Empty).Trim().ToLowerInvariant() switch
-    {
-        "sukses" => "is-success",
-        "gekanselleer" => "is-cancelled",
-        "misluk" => "is-error",
-        _ => "is-processing"
-    };
-
-    private string PaymentBannerText
-    {
-        get
-        {
-            if (!string.IsNullOrWhiteSpace(MessageFromQuery))
-            {
-                return MessageFromQuery.Trim();
-            }
-
-            var referenceSuffix = string.IsNullOrWhiteSpace(OrderReferenceFromQuery)
-                ? string.Empty
-                : $" Verwysing: {OrderReferenceFromQuery.Trim()}.";
-
-            return (PaymentStatus ?? string.Empty).Trim().ToLowerInvariant() switch
-            {
-                "sukses" => $"Dankie! Jou betaling is ontvang en jou bestelling is by ons.{referenceSuffix}",
-                "gekanselleer" => "Die betaling is gekanselleer. Jy kan enige tyd weer probeer.",
-                "misluk" => "Ons kon nie die betaling voltooi nie. Probeer asseblief weer.",
-                "verwerk" => "Ons verwerk nog jou betaling. Kyk weer oor 'n oomblik.",
-                _ => string.Empty
-            };
-        }
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        var products = await StoreProductCatalogService.GetEnabledProductsAsync();
-        Products = products
-            .OrderBy(product => product.SortOrder)
-            .ThenBy(product => product.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
-
-    private int GetDefaultQuantity(StoreProduct product) =>
-        string.Equals(product.Slug, ProductSlugFromQuery, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-
-    private static string GetProductBlurb(StoreProduct product) =>
-        string.IsNullOrWhiteSpace(product.Description)
-            ? "Gereed vir storietyd, slaaptyd en elke klein knuffel tussenin."
-            : product.Description.Trim();
-
-    private string BuildPriceSummaryText()
-    {
-        if (!HasProducts)
-        {
-            return "Pryse word opgedateer";
-        }
-
-        var distinctPrices = Products
-            .Select(product => decimal.Round(product.UnitPriceZar, 2, MidpointRounding.AwayFromZero))
-            .Distinct()
-            .OrderBy(price => price)
-            .ToArray();
-
-        if (distinctPrices.Length == 1)
-        {
-            return $"{FormatZar(distinctPrices[0])} per StorieTjommie + {DeliveryFeeText} PUDO locker aflewering";
-        }
-
-        return $"Vanaf {FormatZar(distinctPrices[0])} per StorieTjommie + {DeliveryFeeText} PUDO locker aflewering";
-    }
-
-    private static string FormatZar(decimal value) =>
-        $"R {value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}";
-
-    private MarkupString WinkelJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
-    {
-        ["@context"] = "https://schema.org",
-        ["@type"] = "CollectionPage",
-        ["name"] = "Schink Stories | Winkel",
-        ["description"] = WinkelMetaDescription,
-        ["url"] = WinkelCanonicalUrl,
-        ["inLanguage"] = "af-ZA",
-        ["isPartOf"] = new Dictionary<string, object?>
-        {
-            ["@type"] = "WebSite",
-            ["name"] = "Schink Stories",
-            ["url"] = NavigationManager.ToAbsoluteUri("/").ToString()
-        },
-        ["primaryImageOfPage"] = NavigationManager.ToAbsoluteUri("/branding/winkel/storie-tjommie-panda.png").ToString(),
-        ["mainEntity"] = new Dictionary<string, object?>
-        {
-            ["@type"] = "ItemList",
-            ["itemListElement"] = Products.Select((product, index) => new Dictionary<string, object?>
-            {
-                ["@type"] = "ListItem",
-                ["position"] = index + 1,
-                ["item"] = new Dictionary<string, object?>
-                {
-                    ["@type"] = "Product",
-                    ["name"] = product.Name,
-                    ["image"] = NavigationManager.ToAbsoluteUri(product.ImagePath).ToString(),
-                    ["category"] = "StorieTjommie",
-                    ["offers"] = new Dictionary<string, object?>
-                    {
-                        ["@type"] = "Offer",
-                        ["price"] = product.UnitPriceDisplay,
-                        ["priceCurrency"] = "ZAR",
-                        ["availability"] = "https://schema.org/InStock"
-                    }
-                }
-            }).ToArray()
-        }
-    }));
-}

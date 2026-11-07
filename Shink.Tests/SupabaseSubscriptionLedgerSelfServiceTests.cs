@@ -1604,6 +1604,11 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
                     """);
             }
 
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/subscription/SUB_storycorner")
+            {
+                return JsonResponse("""{ "status": true, "data": { "subscription_code": "SUB_storycorner", "status": "non-renewing" } }""");
+            }
+
             if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
             {
                 return JsonResponse("""{ "status": true, "data": { "id": 7000000010, "status": "success", "reference": "plan-change-scheduled" } }""");
@@ -2291,6 +2296,16 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
     {
         var handler = new RecordingHandler(request =>
         {
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/subscription/SUB_current")
+            {
+                return JsonResponse("""{ "status": true, "data": { "subscription_code": "SUB_current", "status": "active" } }""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_pauses"))
+            {
+                return JsonResponse("[]");
+            }
+
             if (IsSupabaseGet(request, "/rest/v1/subscribers"))
             {
                 return JsonResponse(
@@ -5814,6 +5829,11 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
         var eventClaimCalls = 0;
         var handler = new RecordingHandler(request =>
         {
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/subscription/SUB_storycorner")
+            {
+                return JsonResponse("""{ "status": true, "data": { "subscription_code": "SUB_storycorner", "status": "non-renewing" } }""");
+            }
+
             if (IsSupabaseGet(request, "/rest/v1/subscription_plan_changes"))
             {
                 return JsonResponse(

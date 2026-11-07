@@ -1,0 +1,31 @@
+<nav class="winkel-breadcrumb" aria-label="Broodkrummels"><a href="/winkel">Winkel</a><span aria-hidden="true">/</span><span>@Product.Name</span></nav>
+<section class="winkel-product-detail">
+    <div class="winkel-detail-media"><img src="@Product.ImagePath" alt="@Product.AltText" width="1080" height="1080" decoding="async" fetchpriority="high" onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';" /></div>
+    <div class="winkel-detail-copy">
+        <p class="winkel-section-kicker">StorieTjommie</p>
+        <h1>@Product.Name</h1>
+        <p class="winkel-detail-price">@StoreCheckoutRules.FormatZar(Product.UnitPriceZar)</p>
+        <p>@(string.IsNullOrWhiteSpace(Product.Description) ? "Gereed vir storietyd, slaaptyd en elke klein knuffel tussenin." : Product.Description)</p>
+        @if (Product.WaivesDeliveryFee)
+        {
+            <p class="winkel-delivery-badge">Hierdie maatjie sluit aflewering vir jou hele bestelling in.</p>
+        }
+        else
+        {
+            <p class="winkel-delivery-note">@StoreCheckoutRules.FormatZar(StoreCheckoutRules.DeliveryFeeZar) PUDO-aflewering per bestelling. Kwalifiserende promosieprodukte sluit aflewering in.</p>
+        }
+        <div class="winkel-detail-actions">
+            <label class="winkel-field"><span>Hoeveelheid</span><input type="number" value="1" min="1" max="10" step="1" inputmode="numeric" data-store-add-quantity /></label>
+            <button class="winkel-submit" type="button" data-store-add="@Product.Slug" disabled><i class="fa-solid fa-basket-shopping" aria-hidden="true"></i> Voeg by mandjie</button>
+        </div>
+        <p class="winkel-in-cart" data-store-in-cart="@Product.Slug" hidden></p>
+        <a class="winkel-text-link" href="/winkel/mandjie">Gaan na jou mandjie <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+        <details class="winkel-detail-info" open><summary>Aflewering en bestelling</summary><p>Ons gebruik PUDO lockers vir aflewering. Vul jou locker of afleweringsadres by die betaalpunt in. Jy sien die volledige bedrag voor jy betaal.</p></details>
+        <details class="winkel-detail-info"><summary>Hulp met jou bestelling</summary><p>Besoek <a href="/#kontak-ons">Kontak ons</a> as jy hulp nodig het. Hou jou bestelverwysing byderhand nadat jy betaal het.</p><p>Lees ons <a href="/terme-en-voorwaardes">terme en voorwaardes</a> vir meer inligting.</p></details>
+    </div>
+</section>
+<StoreBenefits />
+
+@code {
+    [Parameter, EditorRequired] public StoreProduct Product { get; set; } = default!;
+}

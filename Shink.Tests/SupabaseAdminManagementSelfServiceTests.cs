@@ -128,7 +128,9 @@ public partial class SupabaseAdminManagementSelfServiceTests
     }
 
     [TestMethod]
-    public async Task ResendSubscriberRecoveryEmailAsync_SendsImmediatePaystackRecoveryEmailWithoutSchedulingSequence()
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task ResendSubscriberRecoveryEmailAsync_UsesManagementLinkOrGuardedCheckout(bool managementLinkAvailable)
     {
         var subscriberId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var subscriptionId = Guid.Parse("22222222-2222-2222-2222-222222222222");
@@ -136,6 +138,9 @@ public partial class SupabaseAdminManagementSelfServiceTests
         var recoveryEmailService = new TrackingSubscriptionPaymentRecoveryEmailService();
         var handler = new RecordingHandler(request =>
         {
+            Assert.AreNotEqual("/transaction/initialize", request.RequestUri?.AbsolutePath,
+                "An email must not create a new checkout ahead of the customer's billing check.");
+
             if (IsSupabaseGet(request, "/rest/v1/admin_users"))
             {
                 return JsonResponse("""[{ "email": "admin@example.com" }]""");
@@ -210,6 +215,11 @@ public partial class SupabaseAdminManagementSelfServiceTests
             if (request.Method == HttpMethod.Get &&
                 request.RequestUri?.AbsolutePath == "/subscription/SUB_recovery/manage/link")
             {
+                if (!managementLinkAvailable)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+                }
+
                 return JsonResponse(
                     """
                     {
@@ -238,8 +248,13 @@ public partial class SupabaseAdminManagementSelfServiceTests
         Assert.AreEqual(0, recoveryEmailService.ScheduledRequests.Count);
         Assert.AreEqual(1, recoveryEmailService.ImmediateRequests.Count);
         Assert.AreEqual("ouer@example.com", recoveryEmailService.ImmediateRequests[0].Email);
-        Assert.AreEqual("https://paystack.example/manage/SUB_recovery", recoveryEmailService.ImmediateRequests[0].RecoveryUrl);
-        Assert.AreEqual("Werk kaartbesonderhede by", recoveryEmailService.ImmediateRequests[0].RecoveryActionLabel);
+        Assert.AreEqual(
+            managementLinkAvailable
+                ? "https://paystack.example/manage/SUB_recovery"
+                : "https://www.schink.co.za/betaal/schink-stories-maandeliks?provider=paystack",
+            recoveryEmailService.ImmediateRequests[0].RecoveryUrl);
+        Assert.AreEqual(managementLinkAvailable ? "Werk kaartbesonderhede by" : "Bestuur jou intekening",
+            recoveryEmailService.ImmediateRequests[0].RecoveryActionLabel);
         StringAssert.Contains(handler.AuditPayload!, "\"action_key\":\"recovery.email_sent\"");
         StringAssert.Contains(handler.AuditPayload!, recoveryId.ToString("D"));
     }
@@ -1051,6 +1066,7 @@ public partial class SupabaseAdminManagementSelfServiceTests
             Options.Create(new PaystackOptions
             {
                 SecretKey = "paystack-secret",
+                PublicBaseUrl = "https://www.schink.co.za",
                 InitializeUrl = "https://api.paystack.co/transaction/initialize",
                 VerifyUrl = "https://api.paystack.co/transaction/verify",
                 ChargeAuthorizationUrl = "https://api.paystack.co/transaction/charge_authorization"

@@ -83,6 +83,25 @@ public sealed partial class SupabaseSubscriptionLedgerService
         }
 
         var nowUtc = DateTimeOffset.UtcNow;
+        var normalizedSelectedTierCode = NormalizeDiscountTierCode(selectedTierCode);
+        DiscountCodeSelectionResolution? resolution = null;
+        if (string.Equals(normalizedSelectedTierCode, StoryAccessPolicy.AllStoriesYearlyTierCode, StringComparison.Ordinal))
+        {
+            resolution = await ResolveDiscountCodeSelectionAsync(
+                normalizedCode,
+                normalizedSelectedTierCode,
+                normalizedEmail,
+                nowUtc,
+                cancellationToken);
+            if (!resolution.IsSuccess || resolution.Code is null || resolution.Mapping is null)
+            {
+                return new SubscriptionCodeApplicationResult(false, resolution.ErrorMessage ?? "Kode kon nie toegepas word nie.");
+            }
+
+            // Redeem the voucher's stored tier so the atomic RPC retains its existing checks.
+            normalizedSelectedTierCode = resolution.Mapping.TierCode;
+        }
+
         var paystackPauseCandidates = await FetchActivePaystackPaidPauseCandidatesAsync(
             baseUri,
             apiKey,
@@ -96,7 +115,7 @@ public sealed partial class SupabaseSubscriptionLedgerService
                 apiKey,
                 normalizedEmail,
                 normalizedCode,
-                NormalizeDiscountTierCode(selectedTierCode),
+                normalizedSelectedTierCode,
                 cancellationToken);
             if (directRedemption is null)
             {
@@ -114,9 +133,9 @@ public sealed partial class SupabaseSubscriptionLedgerService
                 AccessEndsAtUtc: directRedemption.AccessExpiresAt);
         }
 
-        var resolution = await ResolveDiscountCodeSelectionAsync(
+        resolution ??= await ResolveDiscountCodeSelectionAsync(
             normalizedCode,
-            NormalizeDiscountTierCode(selectedTierCode),
+            normalizedSelectedTierCode,
             normalizedEmail,
             nowUtc,
             cancellationToken);
@@ -175,7 +194,7 @@ public sealed partial class SupabaseSubscriptionLedgerService
             apiKey,
             normalizedEmail,
             normalizedCode,
-            NormalizeDiscountTierCode(selectedTierCode),
+            resolution.Mapping.TierCode,
             cancellationToken);
         if (redemption is null)
         {
@@ -315,7 +334,7 @@ public sealed partial class SupabaseSubscriptionLedgerService
             }
         }
 
-        var resolvedMapping = ResolveSelectedTierMapping(mappings, selectedTierCode);
+        var resolvedMapping = ResolveSelectedTierMapping(code, mappings, selectedTierCode);
         if (resolvedMapping is null)
         {
             return new DiscountCodeSelectionResolution(
@@ -345,13 +364,31 @@ public sealed partial class SupabaseSubscriptionLedgerService
     }
 
     private static DiscountCodeTierMappingRow? ResolveSelectedTierMapping(
+        DiscountCodeRow code,
         IReadOnlyList<DiscountCodeTierMappingRow> mappings,
         string? selectedTierCode)
     {
         if (!string.IsNullOrWhiteSpace(selectedTierCode))
         {
-            return mappings.FirstOrDefault(mapping =>
+            var exactMapping = mappings.FirstOrDefault(mapping =>
                 string.Equals(mapping.TierCode, selectedTierCode, StringComparison.OrdinalIgnoreCase));
+            if (exactMapping is not null)
+            {
+                return exactMapping;
+            }
+
+            if (string.Equals(selectedTierCode, StoryAccessPolicy.AllStoriesYearlyTierCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(NormalizeStoredDiscountKind(code.DiscountKind), SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal) &&
+                code.BypassPayment)
+            {
+                // Imported one-year vouchers use the monthly tier for the same all-stories access.
+                return mappings.FirstOrDefault(mapping =>
+                    string.Equals(mapping.TierCode, StoryAccessPolicy.AllStoriesMonthlyTierCode, StringComparison.OrdinalIgnoreCase) &&
+                    (mapping.ExpirationNumber, mapping.ExpirationPeriod?.ToLowerInvariant()) is
+                        (1, "year" or "years") or (12, "month" or "months"));
+            }
+
+            return null;
         }
 
         var nonGratisMappings = mappings

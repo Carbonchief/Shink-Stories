@@ -196,6 +196,7 @@ builder.Services.AddHttpClient<MobileStoreEntitlementService>();
 builder.Services.AddHttpClient<StoreSubscriptionReconciliationService>().WithSupabaseResponseCompression();
 builder.Services.AddHostedService<StoreSubscriptionReconciliationWorker>();
 builder.Services.AddHttpClient<IStoreOrderService, SupabaseStoreOrderService>().WithSupabaseResponseCompression();
+builder.Services.AddSingleton<StoreReceiptAccess>();
 builder.Services.AddHttpClient<IStoreOrderNotificationService, ResendStoreOrderNotificationService>();
 builder.Services.AddHttpClient<ISubscriptionNotificationEmailService, ResendSubscriptionNotificationEmailService>();
 builder.Services.AddHttpClient<ISubscriptionPaymentRecoveryEmailService, ResendSubscriptionPaymentRecoveryEmailService>();
@@ -925,6 +926,7 @@ app.MapGet("/betaalherinneringe/gaan", async (
     IAbandonedCartRecoveryService abandonedCartRecoveryService,
     ISubscriptionLedgerService subscriptionLedgerService,
     IStoreOrderService storeOrderService,
+    StoreReceiptAccess receiptAccess,
     PaystackCheckoutService paystackCheckoutService,
     PayFastCheckoutService payFastCheckoutService,
     HttpContext httpContext,
@@ -979,10 +981,20 @@ app.MapGet("/betaalherinneringe/gaan", async (
             return Results.Redirect(duplicateRedirectPath);
         }
 
+        var checkoutAssessment = await subscriptionLedgerService.AssessSubscriptionCheckoutAsync(
+            recovery.CustomerEmail,
+            plan.TierCode,
+            httpContext.RequestAborted);
+        if (SubscriptionCheckoutTransitionKinds.BlocksCheckout(checkoutAssessment.TransitionKind))
+        {
+            return Results.Redirect(BuildUpgradeWarningRedirectPath(
+                checkoutAssessment, plan, recovery.Provider, discountCode: null, returnUrl: null));
+        }
+
         var hasActivePaidSubscription = await subscriptionLedgerService.HasBillablePaidSubscriptionAsync(
             recovery.CustomerEmail,
             httpContext.RequestAborted);
-        if (hasActivePaidSubscription)
+        if (hasActivePaidSubscription || checkoutAssessment.TransitionKind == SubscriptionCheckoutTransitionKinds.PlanChange)
         {
             var planChangeResult = await subscriptionLedgerService.ChangePaidSubscriptionPlanAsync(
                 recovery.CustomerEmail,
@@ -1101,6 +1113,8 @@ app.MapGet("/betaalherinneringe/gaan", async (
             return Results.Redirect("/winkel");
         }
 
+        receiptAccess.Grant(httpContext, order.OrderReference);
+
         if (string.Equals(order.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
         {
             await abandonedCartRecoveryService.ResolveByCheckoutReferenceAsync(
@@ -1139,6 +1153,8 @@ app.MapGet("/betaalherinneringe/gaan", async (
         {
             return Results.Redirect(BuildStorePageRedirectPath("misluk", order.ProductSlug, order.OrderReference, createResult.ErrorMessage));
         }
+
+        receiptAccess.Grant(httpContext, createResult.Order.OrderReference);
 
         var callbackPath = QueryHelpers.AddQueryString("/winkel/paystack/callback", new Dictionary<string, string?>
         {
@@ -1280,22 +1296,6 @@ app.MapPost("/rekening/herstel-intekening", async (
         return recoveredRedirect;
     }
 
-    var checkoutResult = await paystackCheckoutService.InitializeCheckoutAsync(
-        plan,
-        httpContext,
-        returnUrl: "/luister",
-        httpContext.RequestAborted);
-    if (checkoutResult.IsSuccess && !string.IsNullOrWhiteSpace(checkoutResult.AuthorizationUrl))
-    {
-        return Results.Redirect(checkoutResult.AuthorizationUrl);
-    }
-
-    logger.LogWarning(
-        "Subscription repair Paystack checkout fallback failed. email={Email} plan={PlanSlug} retry_error={RetryError} checkout_error={CheckoutError}",
-        signedInEmail,
-        plan.Slug,
-        repairResult.ErrorMessage,
-        checkoutResult.ErrorMessage);
     return Results.Redirect($"/betaal/{Uri.EscapeDataString(plan.Slug)}?provider=paystack&returnUrl={Uri.EscapeDataString("/luister")}");
 })
 .RequireRateLimiting("auth-submit")
@@ -1396,6 +1396,12 @@ app.MapGet("/betaal/{planSlug}", async (
         signedInEmail,
         plan.TierCode,
         httpContext.RequestAborted);
+    if (SubscriptionCheckoutTransitionKinds.BlocksCheckout(checkoutAssessment.TransitionKind))
+    {
+        return Results.Redirect(BuildUpgradeWarningRedirectPath(
+            checkoutAssessment, plan, selectedProvider, discountCode, safeReturnUrl));
+    }
+
     var hasActiveTierSubscription = await subscriptionLedgerService.HasBillableSubscriptionForTierAsync(
         signedInEmail,
         plan.TierCode,
@@ -1433,19 +1439,6 @@ app.MapGet("/betaal/{planSlug}", async (
         }
         var duplicateRedirectPath = QueryHelpers.AddQueryString("/opsies", duplicateRedirectQuery);
         return Results.Redirect(duplicateRedirectPath);
-    }
-
-    if (string.Equals(
-            checkoutAssessment.TransitionKind,
-            SubscriptionCheckoutTransitionKinds.AccountClosed,
-            StringComparison.OrdinalIgnoreCase))
-    {
-        return Results.Redirect(BuildUpgradeWarningRedirectPath(
-            checkoutAssessment,
-            plan,
-            selectedProvider,
-            discountCode,
-            safeReturnUrl));
     }
 
     if (string.Equals(
@@ -1734,6 +1727,12 @@ app.MapPost("/betaal/{planSlug}/verander", async (
         signedInEmail,
         plan.TierCode,
         httpContext.RequestAborted);
+    if (SubscriptionCheckoutTransitionKinds.BlocksCheckout(checkoutAssessment.TransitionKind))
+    {
+        return Results.Redirect(BuildUpgradeWarningRedirectPath(
+            checkoutAssessment, plan, selectedProvider, discountCode, safeReturnUrl));
+    }
+
     if (!string.Equals(
             checkoutAssessment.TransitionKind,
             SubscriptionCheckoutTransitionKinds.PlanChange,
@@ -1774,6 +1773,8 @@ app.MapPost("/betaal/{planSlug}/verander", async (
 
 app.MapPost("/winkel/koop/paystack", async (
     HttpContext httpContext,
+    IAntiforgery antiforgery,
+    StoreReceiptAccess receiptAccess,
     PaystackCheckoutService paystackCheckoutService,
     IStoreOrderService storeOrderService,
     IStoreProductCatalogService storeProductCatalogService,
@@ -1786,6 +1787,19 @@ app.MapPost("/winkel/koop/paystack", async (
         return Results.Redirect(BuildStorePageRedirectPath(
             paymentStatus: "misluk",
             message: "Gebruik asseblief die bestelvorm op die winkelblad."));
+    }
+
+    try
+    {
+        await antiforgery.ValidateRequestAsync(httpContext);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.Redirect(QueryHelpers.AddQueryString("/winkel/afreken", new Dictionary<string, string?>
+        {
+            ["betaling"] = "misluk",
+            ["boodskap"] = "Jou betaalvorm het verval. Gaan jou bestelling na en probeer weer."
+        }));
     }
 
     var form = await httpContext.Request.ReadFormAsync(httpContext.RequestAborted);
@@ -1820,6 +1834,8 @@ app.MapPost("/winkel/koop/paystack", async (
     {
         ["verwysing"] = createResult.Order.OrderReference
     });
+
+    receiptAccess.Grant(httpContext, createResult.Order.OrderReference, form["checkoutCartId"]);
 
     var checkoutResult = await paystackCheckoutService.InitializeStoreCheckoutAsync(
         new StorePaystackCheckoutRequest(
@@ -1981,6 +1997,7 @@ app.MapGet("/winkel/paystack/callback", async (
         if (existingOrder is not null &&
             string.Equals(existingOrder.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
         {
+            // Only an already authorized browser may read a receipt when verification is unavailable.
             return Results.Redirect(BuildStorePageRedirectPath(
                 paymentStatus: "sukses",
                 productSlug: existingOrder.ProductSlug,
@@ -5601,9 +5618,21 @@ static bool TryBuildStoreCheckoutDraft(
         return false;
     }
 
+    if (StoreCheckoutRules.HasUnavailableProducts(form, availableProducts))
+    {
+        errorMessage = "'n Produk in jou mandjie is nie meer beskikbaar nie. Gaan jou mandjie na en probeer weer.";
+        return false;
+    }
+
+    if (form["terme"] != "aanvaar")
+    {
+        errorMessage = "Aanvaar asseblief die terme en voorwaardes voordat jy betaal.";
+        return false;
+    }
+
     var items = new List<StoreOrderItemDraft>();
     var deliveryFeeWaived = false;
-    foreach (var product in availableProducts)
+    foreach (var product in availableProducts.Where(product => product.IsEnabled))
     {
         var fieldName = $"qty-{product.Slug}";
         var rawQuantity = form[fieldName].ToString();
@@ -5695,6 +5724,11 @@ static bool TryBuildStoreCheckoutDraft(
     var summaryUnitPriceZar = items.Count == 1 ? items[0].UnitPriceZar : 0m;
     var orderReference = BuildStoreOrderReference(summarySlug);
     var totalPriceZar = checkoutItems.Sum(item => item.LineTotalZar);
+    if (!StoreCheckoutRules.MatchesDisplayedTotal(form["cartTotalCents"], totalPriceZar))
+    {
+        errorMessage = "Die prys of aflewering van jou bestelling het verander. Gaan die nuwe totaal in jou mandjie na en probeer weer.";
+        return false;
+    }
     amountInCents = decimal.ToInt32(decimal.Round(totalPriceZar * 100m, 0, MidpointRounding.AwayFromZero));
     draft = new StoreOrderDraft(
         OrderReference: orderReference,
@@ -5984,7 +6018,8 @@ static string BuildStorePageRedirectPath(
         query["boodskap"] = normalizedMessage;
     }
 
-    return QueryHelpers.AddQueryString("/winkel", query);
+    var path = query["betaling"] is "misluk" or "gekanselleer" ? "/winkel/afreken" : "/winkel";
+    return QueryHelpers.AddQueryString(path, query);
 }
 
 static string BuildSubscriptionPaymentRedirectPath(

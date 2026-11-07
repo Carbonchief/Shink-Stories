@@ -888,7 +888,6 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         var recoveryAction = await ResolveSubscriptionRecoveryActionAsync(
-            subscriber.Email,
             subscription,
             cancellationToken);
         if (recoveryAction is null)
@@ -964,7 +963,6 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         var recoveryAction = await ResolveSubscriptionRecoveryActionAsync(
-            subscriber.Email,
             failedSubscription,
             cancellationToken);
         if (recoveryAction is null)
@@ -1055,7 +1053,6 @@ public sealed partial class SupabaseAdminManagementService(
     }
 
     private async Task<SubscriptionRecoveryAction?> ResolveSubscriptionRecoveryActionAsync(
-        string subscriberEmail,
         SubscriptionRow subscription,
         CancellationToken cancellationToken)
     {
@@ -1088,27 +1085,14 @@ public sealed partial class SupabaseAdminManagementService(
             return null;
         }
 
-        var checkout = await _paystackCheckoutService.InitializeCheckoutForEmailAsync(
-            plan,
-            subscriberEmail,
-            cancellationToken);
-        if (checkout.IsSuccess && !string.IsNullOrWhiteSpace(checkout.AuthorizationUrl))
-        {
-            return new SubscriptionRecoveryAction(
-                checkout.AuthorizationUrl,
-                "Teken weer in",
-                "Paystack sal 'n nuwe intekening vir jou huidige plan begin.",
-                "paystack_resubscribe_checkout",
-                planName);
-        }
-
+        // Check the existing agreement when the customer opens the link and signs in.
         var checkoutPageUrl = _paystackCheckoutService.BuildCheckoutPageUrl(plan);
         return string.IsNullOrWhiteSpace(checkoutPageUrl)
             ? null
             : new SubscriptionRecoveryAction(
                 checkoutPageUrl,
-                "Teken weer in",
-                "Gebruik die Paystack betaalblad om jou intekening weer te begin.",
+                "Bestuur jou intekening",
+                "Teken in om jou bestaande intekening na te gaan en jou betaling te herstel.",
                 "paystack_resubscribe_page",
                 planName);
     }

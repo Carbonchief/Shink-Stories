@@ -1,0 +1,30 @@
+<div class="winkel-page-heading"><p class="winkel-section-kicker">Alles op een plek</p><h1>Jou mandjie</h1><p>Maak seker jou gunstelinge is almal hier voor jy afreken.</p></div>
+<div class="winkel-cart-loading" data-store-loading role="status">Ons maak jou mandjie oop…</div>
+<div class="winkel-empty" data-store-empty hidden><i class="fa-solid fa-basket-shopping" aria-hidden="true"></i><h2>Jou mandjie wag vir 'n maatjie.</h2><p>Ontmoet die StorieTjommies en kies jou gunsteling.</p><a class="winkel-submit" href="/winkel">Gaan winkel toe</a></div>
+<div class="winkel-cart-layout" data-store-filled hidden>
+    <div class="winkel-cart-products">
+        <div class="winkel-cart-topline"><h2>Jou maatjies</h2><button type="button" class="winkel-text-button" data-store-clear>Maak mandjie leeg</button></div>
+        @foreach (var product in Products)
+        {
+            <article @key="product.Slug" class="winkel-cart-item" data-store-cart-item="@product.Slug" hidden>
+                <a href="@($"/winkel/produk/{Uri.EscapeDataString(product.Slug)}")"><img src="@product.ImagePath" alt="@product.AltText" width="140" height="140" loading="lazy" onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';" /></a>
+                <div class="winkel-cart-item-copy"><a class="winkel-cart-item-name" href="@($"/winkel/produk/{Uri.EscapeDataString(product.Slug)}")">@product.Name</a><p>@StoreCheckoutRules.FormatZar(product.UnitPriceZar) elk</p>
+                    @if (product.WaivesDeliveryFee) { <small class="winkel-delivery-badge">Aflewering ingesluit</small> }
+                    <button type="button" class="winkel-text-button" data-store-remove="@product.Slug">Verwyder</button>
+                </div>
+                <div class="winkel-cart-item-controls"><div class="winkel-product-quantity">
+                    <button type="button" class="winkel-quantity-button" data-store-decrement="@product.Slug" aria-label="@($"Verminder {product.Name} se hoeveelheid")">−</button>
+                    <label><span class="sr-only">Hoeveelheid vir @product.Name</span><input type="number" value="0" min="1" max="10" step="1" inputmode="numeric" data-store-quantity="@product.Slug" /></label>
+                    <button type="button" class="winkel-quantity-button" data-store-increment="@product.Slug" aria-label="@($"Vermeerder {product.Name} se hoeveelheid")">+</button>
+                </div><strong data-store-line-total>R 0.00</strong></div>
+            </article>
+        }
+        <a class="winkel-text-link" href="/winkel"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Hou aan inkopies doen</a>
+        <p class="winkel-limit-note">Tot 10 van elke produk en 20 items per bestelling.</p>
+    </div>
+    <StoreOrderSummary Products="Products" />
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<StoreProduct> Products { get; set; } = [];
+}

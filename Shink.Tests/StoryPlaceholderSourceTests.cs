@@ -34,8 +34,7 @@ public sealed class StoryPlaceholderSourceTests
             "GratisStory.razor",
             "MyStories.razor",
             "Blog.razor",
-            "BlogPost.razor",
-            "Winkel.razor"
+            "BlogPost.razor"
         };
 
         StringAssert.Contains(catalog, "public const string PlaceholderImagePath = \"/branding/schink-placeholder.png\";");
@@ -47,6 +46,12 @@ public sealed class StoryPlaceholderSourceTests
         {
             var source = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", page));
             StringAssert.Contains(source, "/branding/schink-placeholder.png", page);
+        }
+
+        foreach (var component in new[] { "StoreProductCard.razor", "StoreProductDetail.razor", "StoreBasket.razor" })
+        {
+            var source = File.ReadAllText(GetRepoPath("Shink", "Components", "Store", component));
+            StringAssert.Contains(source, "/branding/schink-placeholder.png", component);
         }
     }
 
