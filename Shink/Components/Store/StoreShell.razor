@@ -1,15 +1,24 @@
 <nav class="winkel-navigation" aria-label="Winkelnavigasie">
-    <a class="winkel-home-link" href="/winkel"><i class="fa-solid fa-store" aria-hidden="true"></i> Schink se winkel</a>
-    <a class="winkel-cart-link" href="/winkel/mandjie" data-store-cart-link>
-        <i class="fa-solid fa-basket-shopping" aria-hidden="true"></i>
-        Mandjie <span class="winkel-cart-count" data-store-count>0</span>
-    </a>
+    <a class="winkel-home-link" href="/winkel"><i class="fa-solid fa-store" aria-hidden="true"></i> Die Storietyd-winkel</a>
+    <div class="winkel-navigation-links">
+        <a class="winkel-listen-link" href="/luister">Kom luister saam <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
+        <span class="winkel-currency">ZAR</span>
+        <a class="winkel-cart-link" href="/winkel/mandjie" data-store-cart-link>
+            <i class="fa-solid fa-basket-shopping" aria-hidden="true"></i>
+            Mandjie <span class="winkel-cart-count" data-store-count>0</span>
+        </a>
+    </div>
 </nav>
+<a class="winkel-floating-cart" href="/winkel/mandjie" data-store-cart-link aria-label="Mandjie met 0 items" title="Bekyk jou mandjie">
+    <i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>
+    <span class="winkel-floating-cart-count" data-store-count aria-hidden="true">0</span>
+</a>
 <div hidden data-store-catalog>
     @foreach (var product in Products)
     {
         <span @key="product.Slug" data-store-product="@product.Slug" data-name="@product.Name"
               data-price="@StoreCheckoutRules.ToCents(product.UnitPriceZar)"
+              data-image="@product.ImagePath" data-alt="@product.AltText" data-description="@product.Description" data-collection-label="@product.CollectionName"
               data-free-delivery="@(product.WaivesDeliveryFee ? "true" : "false")"></span>
     }
 </div>

@@ -33,7 +33,7 @@ public sealed class SupabaseAuthService(
 
         if (!TryBuildTokenEndpoint(out var tokenEndpoint))
         {
-            return SupabaseSignInResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
+            return SupabaseSignInResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.", "auth_not_configured");
         }
 
         var signInResult = await ExecuteAuthRequestAsync(
@@ -926,7 +926,7 @@ public sealed class SupabaseAuthService(
         catch (HttpRequestException exception)
         {
             _logger.LogWarning(exception, "Supabase {RequestActionName} request failed.", requestActionName);
-            return SupabaseSignInResult.Failure("Kon nie nou met Supabase koppel nie. Probeer asseblief weer.");
+            return SupabaseSignInResult.Failure("Kon nie nou met Supabase koppel nie. Probeer asseblief weer.", "auth_unavailable");
         }
 
         using (response)
@@ -940,8 +940,9 @@ public sealed class SupabaseAuthService(
             }
 
             var errorMessage = ReadErrorMessage(responseBody) ?? failureFallbackMessage;
-            _logger.LogInformation("Supabase {RequestActionName} rejected: {StatusCode} {Message}", requestActionName, (int)response.StatusCode, errorMessage);
-            return SupabaseSignInResult.Failure(errorMessage);
+            var reason = AuthRequestDiagnosticsMiddleware.ProviderFailureReason(response.StatusCode, responseBody);
+            _logger.LogInformation("Supabase {RequestActionName} rejected: StatusCode={StatusCode} Reason={Reason}", requestActionName, (int)response.StatusCode, reason);
+            return SupabaseSignInResult.Failure(errorMessage, reason);
         }
     }
 

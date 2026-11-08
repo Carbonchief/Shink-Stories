@@ -25,7 +25,8 @@
             <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn store-admin-icon-btn"
                        Variant="Variant.Outlined"
                        Color="Color.Primary"
-                       OnClick="BeginCreateProduct"
+                       OnClick="BeginCreateProductAsync"
+                       Disabled="@(IsLoading || IsSaving)"
                        aria-label='@T("Nuwe produk", "New product")'
                        title='@T("Nuwe produk", "New product")'>
                 <i class="fa-solid fa-plus" aria-hidden="true"></i>
@@ -35,8 +36,8 @@
             <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn store-admin-icon-btn"
                        Variant="Variant.Outlined"
                        Color="Color.Primary"
-                       OnClick="ReloadAsync"
-                       Disabled="@IsLoading"
+                       OnClick="RefreshProductsAsync"
+                       Disabled="@(IsLoading || IsSaving)"
                        aria-label='@T("Herlaai", "Refresh")'
                        title='@T("Herlaai", "Refresh")'>
                 <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
@@ -81,7 +82,8 @@
                         var productImageFallbackUrl = ResolveStoreProductFallbackImageUrl(product.Slug);
                         <button type="button"
                                 class="store-admin-list-item @(isSelected ? "is-selected" : null)"
-                                @onclick="() => SelectProduct(product)">
+                                disabled="@IsSaving"
+                                @onclick="() => SelectProductAsync(product)">
                             <img class="store-admin-list-image"
                                  src="@productImageUrl"
                                  data-fallback-src="@productImageFallbackUrl"
@@ -93,6 +95,7 @@
                             <span class="store-admin-list-copy">
                                 <span class="store-admin-list-title">@product.Name</span>
                                 <span class="store-admin-list-meta">@product.Slug</span>
+                                <span class="store-admin-list-meta">@T(StoreProductCollections.GetOrDefault(product.CollectionSlug).Name, StoreProductCollections.GetOrDefault(product.CollectionSlug).EnglishName)</span>
                                 <span class="store-admin-list-price">R @product.UnitPriceZar.ToString("0.00", CultureInfo.InvariantCulture)</span>
                             </span>
 
@@ -167,6 +170,17 @@
                         <label class="store-admin-field">
                             <span>@T("Prys (ZAR)", "Price (ZAR)")</span>
                             <input type="number" min="0.01" max="999999.99" step="0.01" @bind="Editor.UnitPriceZar" />
+                        </label>
+
+                        <label class="store-admin-field">
+                            <span id="store-admin-collection-label">@T("Versameling", "Collection")</span>
+                            <select @bind="Editor.CollectionSlug" aria-labelledby="store-admin-collection-label" required>
+                                <option value="" disabled>@T("Kies 'n versameling", "Choose a collection")</option>
+                                @foreach (var collection in StoreProductCollections.All)
+                                {
+                                    <option value="@collection.Slug">@T(collection.Name, collection.EnglishName)</option>
+                                }
+                            </select>
                         </label>
 
                         <label class="store-admin-field">
@@ -338,16 +352,48 @@
         }
     }
 
-    private void BeginCreateProduct()
+    private async Task RefreshProductsAsync()
     {
+        if (IsLoading || IsSaving || !await ConfirmDiscardChangesAsync())
+        {
+            return;
+        }
+
+        if (Editor is not null && (Editor.StoreProductId is null || Editor.StoreProductId == Guid.Empty))
+        {
+            Editor = null;
+            EditorStateSignature = null;
+        }
+
+        await ReloadAsync();
+    }
+
+    private async Task BeginCreateProductAsync()
+    {
+        if (IsLoading || IsSaving || !await ConfirmDiscardChangesAsync())
+        {
+            return;
+        }
+
         ErrorMessage = null;
         StatusMessage = null;
         Editor = StoreProductEditorModel.CreateEmpty();
         EditorStateSignature = BuildEditorStateSignature(Editor);
     }
 
-    private void SelectProduct(AdminStoreProductRecord product)
+    private async Task SelectProductAsync(AdminStoreProductRecord product)
     {
+        if (IsLoading || IsSaving ||
+            (Editor is not null && Editor.StoreProductId == product.StoreProductId && Editor.Slug == product.Slug))
+        {
+            return;
+        }
+
+        if (!await ConfirmDiscardChangesAsync())
+        {
+            return;
+        }
+
         ErrorMessage = null;
         StatusMessage = null;
         Editor = StoreProductEditorModel.FromRecord(product);
@@ -356,15 +402,12 @@
 
     private async Task CancelEditAsync()
     {
-        if (Editor is null)
+        if (Editor is null || IsSaving)
         {
             return;
         }
 
-        if (IsEditorDirty() &&
-            !await ConfirmAsync(
-                "Jy het ongestoorde veranderinge. Is jy seker jy wil dit weggooi?",
-                "You have unsaved changes. Are you sure you want to discard them?"))
+        if (!await ConfirmDiscardChangesAsync())
         {
             return;
         }
@@ -417,6 +460,11 @@
         {
             return;
         }
+        if (StoreProductCollections.Find(Editor.CollectionSlug) is null)
+        {
+            ErrorMessage = T("Kies 'n geldige produkversameling.", "Choose a valid product collection.");
+            return;
+        }
 
         ErrorMessage = null;
         StatusMessage = null;
@@ -455,7 +503,8 @@
                 UnitPriceZar: Editor.UnitPriceZar,
                 SortOrder: Editor.SortOrder,
                 IsEnabled: Editor.IsEnabled,
-                WaivesDeliveryFee: Editor.WaivesDeliveryFee);
+                WaivesDeliveryFee: Editor.WaivesDeliveryFee,
+                CollectionSlug: Editor.CollectionSlug);
 
             var result = await AdminManagementService.SaveStoreProductAsync(SignedInEmail, request);
             if (!result.IsSuccess)
@@ -573,6 +622,13 @@
         }
     }
 
+    private Task<bool> ConfirmDiscardChangesAsync() =>
+        IsEditorDirty()
+            ? ConfirmAsync(
+                "Jy het ongestoorde veranderinge. Is jy seker jy wil dit weggooi?",
+                "You have unsaved changes. Are you sure you want to discard them?")
+            : Task.FromResult(true);
+
     private bool IsEditorDirty() =>
         Editor is not null &&
         !string.IsNullOrEmpty(EditorStateSignature) &&
@@ -592,6 +648,7 @@
             editor.SortOrder,
             editor.IsEnabled,
             editor.WaivesDeliveryFee,
+            editor.CollectionSlug,
             HasNewImage = editor.ImageFile is not null
         });
 
@@ -814,6 +871,7 @@
             "Kies asseblief 'n geldige winkel produk." => "Please select a valid shop product.",
             "Winkel produk slug is ongeldig." => "Shop product slug is invalid.",
             "Winkel produk naam is verpligtend." => "Shop product name is required.",
+            "Kies 'n geldige produkversameling." => "Choose a valid product collection.",
             "Winkel produk image is verpligtend." => "Shop product image is required.",
             "Winkel produk prys moet groter as nul wees." => "Shop product price must be greater than zero.",
             "Winkel produk slug bestaan reeds." => "Shop product slug already exists.",
@@ -857,6 +915,7 @@
         public int SortOrder { get; set; } = 100;
         public bool IsEnabled { get; set; } = true;
         public bool WaivesDeliveryFee { get; set; }
+        public string CollectionSlug { get; set; } = string.Empty;
         public IBrowserFile? ImageFile { get; set; }
         public string? ImageFileName { get; set; }
         public string? ImagePreviewPath { get; set; }
@@ -890,6 +949,7 @@
                 SortOrder = record.SortOrder,
                 IsEnabled = record.IsEnabled,
                 WaivesDeliveryFee = record.WaivesDeliveryFee,
+                CollectionSlug = StoreProductCollections.GetOrDefault(record.CollectionSlug).Slug,
                 ImagePreviewPath = record.ImagePath
             };
     }

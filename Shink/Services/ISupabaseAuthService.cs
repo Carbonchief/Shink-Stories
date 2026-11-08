@@ -84,9 +84,12 @@ public sealed record SignUpProfileData(
 
 public sealed record SupabaseSignInResult(bool IsSuccess, string? UserEmail, string? ErrorMessage)
 {
+    public string? DiagnosticReason { get; init; }
+
     public static SupabaseSignInResult Success(string? userEmail) => new(true, userEmail, null);
 
-    public static SupabaseSignInResult Failure(string errorMessage) => new(false, null, errorMessage);
+    public static SupabaseSignInResult Failure(string errorMessage, string? diagnosticReason = null) =>
+        new(false, null, errorMessage) { DiagnosticReason = diagnosticReason };
 }
 
 public sealed record SupabasePasswordResetResult(bool IsSuccess, string? UserEmail, string? ErrorMessage)

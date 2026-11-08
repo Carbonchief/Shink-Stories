@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shink.Mobile\Services\MobileApiRequestSampling.cs" Link="Mobile\MobileApiRequestSampling.cs" />
+    <Compile Include="..\Shink.Mobile\Services\MobileAuthFailure.cs" Link="Mobile\MobileAuthFailure.cs" />
     <Compile Include="..\Shink.Mobile\Services\MobileAnalyticsIdentity.cs" Link="Mobile\MobileAnalyticsIdentity.cs" />
     <Compile Include="..\Shink.Mobile\Services\MobileFailureRecovery.cs" Link="Mobile\MobileFailureRecovery.cs" />
     <Compile Include="..\Shink.Mobile\Services\MobileCrashDiagnostics.cs" Link="Mobile\MobileCrashDiagnostics.cs" />

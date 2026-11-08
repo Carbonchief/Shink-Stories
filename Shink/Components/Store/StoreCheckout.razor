@@ -2,8 +2,9 @@
 <div class="winkel-cart-loading" data-store-loading role="status">Ons maak jou bestelling gereed…</div>
 <div class="winkel-empty" data-store-empty hidden><h2>Voeg eers 'n maatjie by jou mandjie.</h2><a class="winkel-submit" href="/winkel">Gaan winkel toe</a></div>
 <div class="winkel-cart-layout winkel-checkout-layout" data-store-filled hidden>
-    <form id="winkel-order-form" class="winkel-checkout-form" method="post" action="/winkel/koop/paystack" data-enhance="false">
+    <form id="winkel-order-form" class="winkel-checkout-form" method="post" action="/winkel/koop/paystack" data-enhance="false" data-store-customer-key="@AccountEmail">
         <AntiforgeryToken />
+        <input type="hidden" name="expectedAccountEmail" value="@AccountEmail" />
         @foreach (var product in Products)
         {
             <input @key="product.Slug" type="hidden" name="@($"qty-{product.Slug}")" value="0" data-store-post-quantity="@product.Slug" />
@@ -11,22 +12,34 @@
         <input type="hidden" name="cartTotalCents" value="0" data-store-post-total />
         <input type="hidden" name="checkoutCartId" data-store-checkout-id />
         <section class="winkel-checkout-section"><h2><span class="winkel-step">1</span> Jou besonderhede</h2>
+            @if (string.IsNullOrEmpty(AccountEmail))
+            {
+                <div class="winkel-checkout-signin"><p>Het jy reeds 'n rekening? Teken in om jou beskikbare besonderhede outomaties in te vul en jou afleweringsadres vir volgende keer te stoor.</p><a class="winkel-secondary" href="/teken-in?returnUrl=%2Fwinkel%2Fafreken" data-enhance-nav="false"><i class="fa-solid fa-user" aria-hidden="true"></i> Teken in</a></div>
+            }
+            else
+            {
+                <p class="winkel-checkout-account">Ingeteken as @AccountEmail. Gaan jou besonderhede na en verander dit indien nodig.</p>
+            }
             <div class="winkel-form-grid">
-                <label class="winkel-field winkel-field-full"><span>Volle naam</span><input type="text" name="naam" maxlength="120" autocomplete="name" required /></label>
-                <label class="winkel-field"><span>E-posadres</span><input type="email" name="epos" maxlength="254" autocomplete="email" required /><small>Gebruik die adres waarmee ons jou oor jou bestelling kan kontak.</small></label>
-                <label class="winkel-field"><span>Selfoonnommer</span><input type="tel" name="selfoon" maxlength="40" autocomplete="tel" required /></label>
+                <label class="winkel-field winkel-field-full"><span>Volle naam</span><input type="text" name="naam" value="@Details.Name" maxlength="120" autocomplete="name" required /></label>
+                <label class="winkel-field"><span>E-posadres</span><input type="email" name="epos" value="@Details.Email" maxlength="254" autocomplete="email" required /><small>Gebruik die adres waarmee ons jou oor jou bestelling kan kontak.</small></label>
+                <label class="winkel-field"><span>Selfoonnommer</span><input type="tel" name="selfoon" value="@Details.Phone" maxlength="40" autocomplete="tel" required /></label>
             </div>
         </section>
         <section class="winkel-checkout-section"><h2><span class="winkel-step">2</span> Aflewering</h2>
             <p>Ons gebruik PUDO lockers vir aflewering. Vul jou PUDO locker of afleweringsadres hieronder in. Die standaard koste is @StoreCheckoutRules.FormatZar(StoreCheckoutRules.DeliveryFeeZar) per bestelling; kwalifiserende produkte sluit aflewering in.</p>
             <div class="winkel-form-grid">
-                <label class="winkel-field winkel-field-full"><span>PUDO locker / adres lyn 1</span><input id="winkel-address-line-1" type="text" name="adresLyn1" maxlength="250" autocomplete="address-line1" aria-autocomplete="list" aria-controls="winkel-address-suggestions" aria-expanded="false" data-winkel-address-input required /><div id="winkel-address-suggestions" class="winkel-address-suggestions" data-winkel-address-suggestions role="listbox" hidden></div></label>
-                <label class="winkel-field winkel-field-full"><span>Adres lyn 2 <em>(opsioneel)</em></span><input type="text" name="adresLyn2" maxlength="250" autocomplete="address-line2" /></label>
-                <label class="winkel-field"><span>Voorstad <em>(opsioneel)</em></span><input type="text" name="voorstad" maxlength="120" autocomplete="address-level3" data-winkel-address-suburb /></label>
-                <label class="winkel-field"><span>Stad / dorp</span><input type="text" name="stad" maxlength="120" autocomplete="address-level2" data-winkel-address-city required /></label>
-                <label class="winkel-field"><span>Poskode</span><input type="text" name="poskode" maxlength="20" minlength="3" pattern="[A-Za-z0-9 \-]{3,20}" autocomplete="postal-code" data-winkel-address-postal-code required /></label>
+                <label class="winkel-field winkel-field-full"><span>PUDO locker / adres lyn 1</span><input id="winkel-address-line-1" type="text" name="adresLyn1" value="@Details.AddressLine1" maxlength="250" autocomplete="address-line1" aria-autocomplete="list" aria-controls="winkel-address-suggestions" aria-expanded="false" data-winkel-address-input required /><div id="winkel-address-suggestions" class="winkel-address-suggestions" data-winkel-address-suggestions role="listbox" hidden></div></label>
+                <label class="winkel-field winkel-field-full"><span>Adres lyn 2 <em>(opsioneel)</em></span><input type="text" name="adresLyn2" value="@Details.AddressLine2" maxlength="250" autocomplete="address-line2" /></label>
+                <label class="winkel-field"><span>Voorstad <em>(opsioneel)</em></span><input type="text" name="voorstad" value="@Details.Suburb" maxlength="120" autocomplete="address-level3" data-winkel-address-suburb /></label>
+                <label class="winkel-field"><span>Stad / dorp</span><input type="text" name="stad" value="@Details.City" maxlength="120" autocomplete="address-level2" data-winkel-address-city required /></label>
+                <label class="winkel-field"><span>Poskode</span><input type="text" name="poskode" value="@Details.PostalCode" maxlength="20" minlength="3" pattern="[A-Za-z0-9 \-]{3,20}" autocomplete="postal-code" data-winkel-address-postal-code required /></label>
                 <label class="winkel-field winkel-field-full"><span>Bestelnotas <em>(opsioneel)</em></span><textarea name="notas" rows="3" maxlength="2000"></textarea></label>
             </div>
+            @if (!string.IsNullOrEmpty(AccountEmail))
+            {
+                <label class="winkel-terms winkel-save-details"><input type="checkbox" name="saveDetails" value="ja" checked data-store-save-details /><span>Stoor my kontak- en afleweringsbesonderhede by my rekening vir toekomstige aankope.</span></label>
+            }
         </section>
         <section class="winkel-checkout-section"><h2><span class="winkel-step">3</span> Veilige betaling</h2>
             <label class="winkel-terms"><input type="checkbox" name="terme" value="aanvaar" required /><span>Ek aanvaar die <a href="/terme-en-voorwaardes" target="_blank" rel="noopener">terme en voorwaardes</a> en het die <a href="/privaatheidsbeleid" target="_blank" rel="noopener">privaatheidsbeleid</a> gelees.</span></label>
@@ -40,4 +53,6 @@
 
 @code {
     [Parameter] public IReadOnlyList<StoreProduct> Products { get; set; } = [];
+    [Parameter] public StoreCustomerDetails Details { get; set; } = new();
+    [Parameter] public string? AccountEmail { get; set; }
 }

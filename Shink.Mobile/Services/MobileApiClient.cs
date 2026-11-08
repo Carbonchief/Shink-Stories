@@ -1417,6 +1417,7 @@ public sealed class MobileApiClient
         await EnsureAuthCookiesLoadedAsync(cancellationToken);
         var startedAt = DateTimeOffset.UtcNow;
         HttpStatusCode? statusCode = null;
+        var authRequestId = MobileAuthFailure.IsSignInPath(path) ? Guid.NewGuid().ToString("N") : null;
 
         try
         {
@@ -1425,11 +1426,13 @@ public sealed class MobileApiClient
                 Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
             };
             AddMobileAppHeaderIfNeeded(request, path);
+            if (authRequestId is not null)
+                request.Headers.Add(MobileAuthFailure.RequestIdHeader, authRequestId);
 
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             statusCode = response.StatusCode;
             await SaveAuthCookiesAsync(cancellationToken);
-            await EnsureSuccessAsync(response, cancellationToken);
+            await EnsureSuccessAsync(response, cancellationToken, authRequestId);
 
             if (response.Content.Headers.ContentLength == 0)
             {
@@ -1453,7 +1456,7 @@ public sealed class MobileApiClient
         }
         catch (Exception ex)
         {
-            TrackMobileApiRequest("POST", path, statusCode, startedAt, false, ex);
+            TrackMobileApiRequest("POST", path, statusCode, startedAt, false, ex, authRequestId);
             throw;
         }
     }
@@ -2290,7 +2293,8 @@ public sealed class MobileApiClient
         HttpStatusCode? statusCode,
         DateTimeOffset startedAt,
         bool isSuccess,
-        Exception? exception = null)
+        Exception? exception = null,
+        string? authRequestId = null)
     {
         var durationMilliseconds = Math.Max(0, (DateTimeOffset.UtcNow - startedAt).TotalMilliseconds);
         if (!MobileApiRequestSampling.ShouldCapture(isSuccess, durationMilliseconds, Random.Shared.NextDouble()))
@@ -2312,6 +2316,8 @@ public sealed class MobileApiClient
         if (exception is not null)
         {
             properties["exception_type"] = exception.GetType().Name;
+            if (authRequestId is not null)
+                MobileAuthFailure.AddDiagnostics(properties, exception, authRequestId);
         }
 
         _analytics.TrackEvent("mobile_api_request", properties);
@@ -2745,7 +2751,7 @@ public sealed class MobileApiClient
         return string.IsNullOrWhiteSpace(segment) ? "audio" : segment;
     }
 
-    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken, string? authRequestId = null)
     {
         if (response.IsSuccessStatusCode)
         {
@@ -2753,6 +2759,8 @@ public sealed class MobileApiClient
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (authRequestId is not null)
+            throw MobileAuthFailure.Create(response, body, authRequestId);
         throw new InvalidOperationException(string.IsNullOrWhiteSpace(body)
             ? $"Versoek het misluk met status {(int)response.StatusCode}."
             : ExtractErrorMessage(body));

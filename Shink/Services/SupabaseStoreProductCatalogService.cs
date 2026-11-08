@@ -102,7 +102,7 @@ public sealed class SupabaseStoreProductCatalogService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/store_products" +
-            "?select=store_product_id,slug,name,description,image_path,alt_text,theme_class,unit_price_zar,sort_order,is_enabled,waives_delivery_fee,updated_at" +
+            "?select=store_product_id,slug,name,description,image_path,alt_text,theme_class,unit_price_zar,sort_order,is_enabled,waives_delivery_fee,collection_slug,updated_at" +
             "&order=sort_order.asc" +
             "&order=name.asc" +
             "&limit=500");
@@ -206,7 +206,8 @@ public sealed class SupabaseStoreProductCatalogService(
             UnitPriceZar: row.UnitPriceZar,
             SortOrder: normalizedSortOrder,
             IsEnabled: row.IsEnabled,
-            WaivesDeliveryFee: row.WaivesDeliveryFee);
+            WaivesDeliveryFee: row.WaivesDeliveryFee,
+            CollectionSlug: StoreProductCollections.GetOrDefault(row.CollectionSlug).Slug);
     }
 
     private static string? NormalizeOptionalText(string? value, int maxLength)
@@ -292,6 +293,9 @@ public sealed class SupabaseStoreProductCatalogService(
 
     private sealed class StoreProductRow
     {
+        [JsonPropertyName("collection_slug")]
+        public string? CollectionSlug { get; set; }
+
         [JsonPropertyName("store_product_id")]
         public Guid StoreProductId { get; set; }
 

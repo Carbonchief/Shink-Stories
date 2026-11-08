@@ -10,6 +10,8 @@ public partial class Winkel
     [Inject] private NavigationManager NavigationManager { get; set; } = default!;
     [Inject] private IStoreProductCatalogService StoreProductCatalogService { get; set; } = default!;
     [Inject] private IStoreOrderService StoreOrderService { get; set; } = default!;
+    [Inject] private IStoreCustomerDetailsService CustomerDetailsService { get; set; } = default!;
+    [Inject] private ISubscriptionLedgerService SubscriptionLedgerService { get; set; } = default!;
     [Inject] private StoreReceiptAccess ReceiptAccess { get; set; } = default!;
     [Inject] private IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
 
@@ -24,6 +26,8 @@ public partial class Winkel
     private StoreOrderRecord? VerifiedOrder { get; set; }
     private string? CompletedCheckoutId { get; set; }
     private string View { get; set; } = "catalog";
+    private StoreCustomerDetails CheckoutDetails { get; set; } = new();
+    private string? CheckoutAccountEmail { get; set; }
     private bool HasPaymentStatus => !string.IsNullOrWhiteSpace(PaymentStatus);
     private bool IsVerifiedPaid => string.Equals(VerifiedOrder?.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase);
     private string PageHeading => VerifiedOrder is not null ? "Jou bestelling" : View switch
@@ -60,6 +64,19 @@ public partial class Winkel
         VerifiedOrder = null;
         CompletedCheckoutId = null;
         var context = HttpContextAccessor.HttpContext;
+        CheckoutDetails = new();
+        CheckoutAccountEmail = StoreCustomerDetails.AccountEmail(context?.User);
+        if (View == "checkout" && context is not null)
+        {
+            context.Response.Headers.TryAdd("Cache-Control", "private, no-store");
+            if (CheckoutAccountEmail is not null)
+            {
+                var profileTask = SubscriptionLedgerService.GetSubscriberProfileAsync(CheckoutAccountEmail, context.RequestAborted);
+                var savedTask = CustomerDetailsService.GetAsync(context.User, context.RequestAborted);
+                await Task.WhenAll(profileTask, savedTask);
+                CheckoutDetails = StoreCustomerDetails.Prefill(context.User, await profileTask, await savedTask);
+            }
+        }
         if (HasPaymentStatus)
         {
             context?.Response.Headers.TryAdd("Cache-Control", "private, no-store");
@@ -91,6 +108,7 @@ public partial class Winkel
     {
         ["@context"] = "https://schema.org", ["@type"] = "Product", ["name"] = product.Name,
         ["description"] = product.Description, ["image"] = NavigationManager.ToAbsoluteUri(product.ImagePath).ToString(),
+        ["category"] = product.CollectionName,
         ["url"] = NavigationManager.ToAbsoluteUri($"/winkel/produk/{Uri.EscapeDataString(product.Slug)}").ToString(),
         ["offers"] = new Dictionary<string, object?>
         {

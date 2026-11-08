@@ -75,7 +75,8 @@ public sealed class SupabaseErrorLoggingProvider(
 
         public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
 
-        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Error;
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Error ||
+            (logLevel == LogLevel.Warning && _categoryName == typeof(AuthRequestDiagnosticsMiddleware).FullName);
 
         public void Log<TState>(
             LogLevel logLevel,

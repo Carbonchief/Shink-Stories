@@ -11,6 +11,39 @@ namespace Shink.Tests;
 public class SupabaseAuthServiceTests
 {
     [TestMethod]
+    [DataRow(400, """{"error_code":"invalid_credentials","msg":"Invalid login credentials"}""", "invalid_credentials")]
+    [DataRow(400, """{"error_code":"email_not_confirmed","msg":"Email not confirmed"}""", "email_not_confirmed")]
+    [DataRow(400, """{"error_code":"private-token","msg":"Request rejected"}""", "auth_rejected")]
+    [DataRow(429, """{"msg":"Too many requests"}""", "rate_limited")]
+    [DataRow(503, """{"msg":"Service unavailable"}""", "auth_unavailable")]
+    public async Task SignInWithPasswordAsync_ProviderRejection_RetainsSafeDiagnosticReason(int status, string body, string expectedReason)
+    {
+        using var client = new HttpClient(new RecordingHandler(_ => new HttpResponseMessage((HttpStatusCode)status)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        }));
+
+        var result = await CreateService(client).SignInWithPasswordAsync("test@example.com", "test-password");
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual(expectedReason, result.DiagnosticReason);
+        Assert.IsNotNull(result.ErrorMessage);
+        if (expectedReason == "invalid_credentials")
+            Assert.AreEqual("Ongeldige e-pos of wagwoord. Probeer asseblief weer.", result.ErrorMessage);
+    }
+
+    [TestMethod]
+    public async Task SignInWithPasswordAsync_ConnectionFailure_ReturnsUnavailableReason()
+    {
+        using var client = new HttpClient(new RecordingHandler(_ => throw new HttpRequestException("connection failed")));
+
+        var result = await CreateService(client).SignInWithPasswordAsync("test@example.com", "test-password");
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual("auth_unavailable", result.DiagnosticReason);
+    }
+
+    [TestMethod]
     public async Task SendPasswordResetEmailAsync_MigratesImportedWordPressUserBeforeSendingRecoveryEmail()
     {
         var requestBodies = new List<string>();

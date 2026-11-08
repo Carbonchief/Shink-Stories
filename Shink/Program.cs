@@ -196,6 +196,7 @@ builder.Services.AddHttpClient<MobileStoreEntitlementService>();
 builder.Services.AddHttpClient<StoreSubscriptionReconciliationService>().WithSupabaseResponseCompression();
 builder.Services.AddHostedService<StoreSubscriptionReconciliationWorker>();
 builder.Services.AddHttpClient<IStoreOrderService, SupabaseStoreOrderService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<IStoreCustomerDetailsService, SupabaseStoreCustomerDetailsService>(client => client.Timeout = TimeSpan.FromSeconds(10)).WithSupabaseResponseCompression();
 builder.Services.AddSingleton<StoreReceiptAccess>();
 builder.Services.AddHttpClient<IStoreOrderNotificationService, ResendStoreOrderNotificationService>();
 builder.Services.AddHttpClient<ISubscriptionNotificationEmailService, ResendSubscriptionNotificationEmailService>();
@@ -327,6 +328,7 @@ if (!app.Environment.IsDevelopment())
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
+app.UseMiddleware<AuthRequestDiagnosticsMiddleware>();
 app.UseStatusCodePagesWithReExecute("/error/{0}", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 app.UseResponseCompression();
@@ -1777,6 +1779,7 @@ app.MapPost("/winkel/koop/paystack", async (
     StoreReceiptAccess receiptAccess,
     PaystackCheckoutService paystackCheckoutService,
     IStoreOrderService storeOrderService,
+    IStoreCustomerDetailsService storeCustomerDetailsService,
     IStoreProductCatalogService storeProductCatalogService,
     IAbandonedCartRecoveryService abandonedCartRecoveryService,
     IOptions<SiteOptions> siteOptions,
@@ -1814,6 +1817,14 @@ app.MapPost("/winkel/koop/paystack", async (
     }
 
     var storeDraft = draft!;
+
+    var preferencesError = await StoreCheckoutPreferences.SaveIfRequestedAsync(
+        httpContext.User, form, storeDraft, storeCustomerDetailsService, httpContext.RequestAborted);
+    if (preferencesError is not null)
+        return Results.Redirect(QueryHelpers.AddQueryString("/winkel/afreken", new Dictionary<string, string?>
+        {
+            ["betaling"] = "misluk", ["boodskap"] = preferencesError
+        }));
 
     var createResult = await storeOrderService.CreatePendingOrderAsync(storeDraft, httpContext.RequestAborted);
     if (!createResult.IsSuccess || createResult.Order is null)
@@ -2716,12 +2727,14 @@ app.MapPost("/api/auth/login", async (
     var validationError = ValidateSignInRequest(request.Email, request.Password);
     if (validationError is not null)
     {
+        AuthRequestDiagnosticsMiddleware.SetFailureReason(httpContext, "invalid_input");
         return Results.BadRequest(new { message = validationError });
     }
 
     var signInResult = await supabaseAuthService.SignInWithPasswordAsync(request.Email!, request.Password!, httpContext.RequestAborted);
     if (!signInResult.IsSuccess)
     {
+        AuthRequestDiagnosticsMiddleware.SetFailureReason(httpContext, signInResult.DiagnosticReason);
         return Results.BadRequest(new
         {
             message = signInResult.ErrorMessage ?? "Kon nie teken in nie. Probeer asseblief weer."

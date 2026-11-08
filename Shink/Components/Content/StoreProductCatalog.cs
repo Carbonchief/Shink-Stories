@@ -13,9 +13,11 @@ public sealed record StoreProduct(
     decimal UnitPriceZar,
     int SortOrder = 0,
     bool IsEnabled = true,
-    bool WaivesDeliveryFee = false)
+    bool WaivesDeliveryFee = false,
+    string CollectionSlug = StoreProductCollections.StoryBuddies)
 {
     public string UnitPriceDisplay => UnitPriceZar.ToString("0.00", CultureInfo.InvariantCulture);
+    public string CollectionName => StoreProductCollections.GetOrDefault(CollectionSlug).Name;
 }
 
 public static class StoreProductCatalog

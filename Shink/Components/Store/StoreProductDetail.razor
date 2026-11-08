@@ -2,7 +2,7 @@
 <section class="winkel-product-detail">
     <div class="winkel-detail-media"><img src="@Product.ImagePath" alt="@Product.AltText" width="1080" height="1080" decoding="async" fetchpriority="high" onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';" /></div>
     <div class="winkel-detail-copy">
-        <p class="winkel-section-kicker">StorieTjommie</p>
+        <p class="winkel-section-kicker">@Product.CollectionName</p>
         <h1>@Product.Name</h1>
         <p class="winkel-detail-price">@StoreCheckoutRules.FormatZar(Product.UnitPriceZar)</p>
         <p>@(string.IsNullOrWhiteSpace(Product.Description) ? "Gereed vir storietyd, slaaptyd en elke klein knuffel tussenin." : Product.Description)</p>

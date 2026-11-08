@@ -1,39 +1,82 @@
-<section class="winkel-hero">
-    <div class="winkel-hero-copy">
-        <p class="winkel-section-kicker">Vir klein handjies. En groot verbeeldings.</p>
-        <h1>Jou gunsteling stories.<br />Nou ook 'n maatjie.</h1>
-        <p>Bring die wonder van storietyd huis toe met 'n StorieTjommie om vas te hou, mee te speel en lief te hê.</p>
-        <a class="winkel-submit" href="#winkel-produkte">Ontmoet die StorieTjommies <i class="fa-solid fa-arrow-down" aria-hidden="true"></i></a>
-    </div>
-    <img src="/branding/winkel/storie-tjommie-lama-lifestyle.png" alt="'n Kind hou 'n StorieTjommie vas" width="766" height="1024" fetchpriority="high" decoding="async" />
-</section>
-<StoreBenefits />
+<header class="winkel-catalog-heading">
+    <p class="winkel-section-kicker">Uit ons storiewêreld. Met liefde.</p>
+    <h1 id="winkel-produkte">'n Maatjie vir elke <span>storie.</span></h1>
+    <p>Bekende karakters vir storietyd, speeltyd en elke knuffel tussenin.</p>
+</header>
 <section class="winkel-products" aria-labelledby="winkel-produkte">
-    <div class="winkel-products-heading">
-        <div><p class="winkel-section-kicker">'n Maatjie vir elke storie</p><h2 id="winkel-produkte">Kies jou StorieTjommie</h2></div>
-        <p data-store-results>@Products.Count produkte</p>
-    </div>
     @if (Products.Count > 0)
     {
-        <div class="winkel-filters" data-store-filters>
-            <label class="winkel-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Soek produkte</span><input type="search" placeholder="Soek 'n maatjie…" data-store-search /></label>
-            <label class="winkel-sort"><span>Sorteer:</span><select data-store-sort aria-label="Sorteer produkte"><option value="featured">Uitgesoek vir jou</option><option value="price-asc">Prys: laag na hoog</option><option value="price-desc">Prys: hoog na laag</option><option value="name">Naam: A–Z</option></select></label>
-            <label class="winkel-filter-check"><input type="checkbox" data-store-free-filter /> Aflewering ingesluit</label>
+        <div class="winkel-catalog-browser" data-store-filters>
+            <div class="winkel-catalog-toolbar">
+                <button class="winkel-filter-toggle" type="button" data-store-filter-toggle aria-controls="winkel-filters" aria-expanded="true">
+                    <i class="fa-solid fa-sliders" aria-hidden="true"></i> Filters
+                    <i class="fa-solid fa-chevron-down winkel-filter-chevron" aria-hidden="true"></i>
+                </button>
+                <p class="winkel-results-count" data-store-results role="status" aria-live="polite">@Products.Count produkte</p>
+                <label class="winkel-search">
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <span class="sr-only">Soek produkte</span>
+                    <input type="search" placeholder="Soek produkte…" data-store-search autocomplete="off" />
+                </label>
+            </div>
+            <div class="winkel-catalog-layout" data-store-catalog-layout data-filters="open">
+                <aside class="winkel-sidebar" id="winkel-filters" data-store-filter-panel aria-label="Produkfilters">
+                    <fieldset class="winkel-filter-group">
+                        <legend>Sorteer volgens</legend>
+                        <label><input type="radio" name="winkel-sort" value="featured" data-store-sort checked /> Uitgesoek vir jou</label>
+                        <label><input type="radio" name="winkel-sort" value="name" data-store-sort /> Naam: A–Z</label>
+                        <label><input type="radio" name="winkel-sort" value="name-desc" data-store-sort /> Naam: Z–A</label>
+                        <label><input type="radio" name="winkel-sort" value="price-asc" data-store-sort /> Prys: laag na hoog</label>
+                        <label><input type="radio" name="winkel-sort" value="price-desc" data-store-sort /> Prys: hoog na laag</label>
+                    </fieldset>
+                    <fieldset class="winkel-filter-group">
+                        <legend>Versameling</legend>
+                        <label class="winkel-collection-option"><input type="radio" name="winkel-collection" value="" data-store-collection checked /><span>Alle produkte</span><small>@Products.Count</small></label>
+                        @foreach (var collection in StoreProductCollections.All)
+                        {
+                            var count = Products.Count(product => product.CollectionSlug == collection.Slug);
+                            <label class="winkel-collection-option"><input type="radio" name="winkel-collection" value="@collection.Slug" data-store-collection /><span>@collection.Name</span><small>@count</small></label>
+                        }
+                    </fieldset>
+                    <fieldset class="winkel-filter-group">
+                        <legend>Aflewering</legend>
+                        <label><input type="checkbox" data-store-free-filter /> Aflewering ingesluit</label>
+                        <p>Kwalifiserende maatjies sluit aflewering vir jou hele bestelling in.</p>
+                    </fieldset>
+                    <div class="winkel-sidebar-story">
+                        <img src="/branding/characters/thumbs/suurlemoentjie.webp" alt="" width="72" height="72" loading="lazy" decoding="async" />
+                        <p>Elke maatjie het 'n storie.</p>
+                        <a href="/luister">Kom luister saam <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+                    </div>
+                </aside>
+                <div class="winkel-catalog-results">
+                    <div class="winkel-grid" data-store-grid>
+                        @foreach (var product in Products)
+                        {
+                            <StoreProductCard @key="product.Slug" Product="product" />
+                        }
+                    </div>
+                    <div class="winkel-empty" data-store-no-results hidden>
+                        <i class="fa-regular fa-face-smile" aria-hidden="true"></i>
+                        <h2>Geen produkte pas by jou soektog nie.</h2>
+                        <p>Probeer 'n ander naam of wys weer al die produkte.</p>
+                        <button class="winkel-secondary" type="button" data-store-reset-filters>Wys alle produkte</button>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="winkel-grid" data-store-grid>
-            @foreach (var product in Products)
-            {
-                <StoreProductCard @key="product.Slug" Product="product" />
-            }
-        </div>
-        <div class="winkel-empty" data-store-no-results hidden><h3>Geen maatjies pas by jou soektog nie.</h3><p>Probeer 'n ander naam of wys weer al die produkte.</p><button class="winkel-secondary" type="button" data-store-reset-filters>Wys alle produkte</button></div>
     }
     else
     {
         <div class="winkel-empty"><h3>Nuwe maatjies is op pad.</h3><p>Ons werk tans aan ons produkte. Kyk asseblief weer oor 'n rukkie.</p></div>
     }
 </section>
-<section class="winkel-help"><div><p class="winkel-section-kicker">Van storietyd tot slaaptyd</p><h2>Meer as net 'n sagte maatjie.</h2><p>Die karakters wat jou kind in Schink se stories leer ken, kan nou ook deel van elke dag wees. Kies een gunsteling, of maak 'n mandjie vol maatjies.</p></div><a class="winkel-secondary" href="/luister">Ontdek die stories <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></section>
+<section class="winkel-help">
+    <div><p class="winkel-section-kicker">Van storietyd tot knuffeltyd</p><h2>Die stories word deel van hulle wêreld.</h2><p>Ontmoet die karakters, luister na hulle avonture en kies 'n maatjie om naby te hou.</p></div>
+    <a class="winkel-secondary" href="/luister"><i class="fa-solid fa-headphones" aria-hidden="true"></i> Ontdek die stories</a>
+</section>
+<StoreBenefits />
+<StoreQuickView />
 
 @code {
     [Parameter] public IReadOnlyList<StoreProduct> Products { get; set; } = [];

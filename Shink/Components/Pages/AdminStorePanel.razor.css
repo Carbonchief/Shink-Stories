@@ -338,6 +338,7 @@
 }
 
 .store-admin-field input,
+.store-admin-field select,
 .store-admin-field textarea {
     border-radius: 10px;
     border: 1px solid var(--admin-input-border);

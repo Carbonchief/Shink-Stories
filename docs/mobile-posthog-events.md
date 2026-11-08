@@ -74,6 +74,21 @@ the HTTP status when a response was received; status 0 means no response was ava
 A POST response that fails JSON parsing produces one failed diagnostic rather than
 both a success and a failure.
 
+Failed email, Google and Apple sign-in completion requests also carry an opaque
+`request_id`, an allowlisted `failure_reason`, and `response_body_kind` when an HTTP
+error response was received (`empty`, `json`, `html`, or `other`). The app sends
+`X-Schink-Request-Id`; the server accepts only a GUID in N format, returns the ID,
+and stores a warning named `AuthenticationRequestFailed` in `app_error_logs` with
+the same ID, endpoint path, status and safe reason. Pre-handler errors such as
+malformed login JSON are included. A rejection before the request reaches the
+app server may have a client diagnostic without a matching server entry.
+Passwords, auth tokens, request/response bodies and arbitrary upstream error text
+are not added to these diagnostics. Existing structured Afrikaans API messages
+remain visible; empty responses and proxy HTML/plain text receive retry guidance.
+These fields require updated app/server builds. In particular, build 32 logged
+failed HTTP responses as status 0, so its historical status 0 is not proof of a
+network failure.
+
 Raw request counts and raw failure percentages are no longer representative of all
 requests. Sum `sample_weight` to estimate request volume for events carrying this
 metadata; weighted ratios are estimates. Older events without sampling metadata

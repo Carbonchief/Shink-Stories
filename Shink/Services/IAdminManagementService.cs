@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Shink.Components.Content;
 
 namespace Shink.Services;
 
@@ -653,7 +654,8 @@ public sealed record AdminStoreProductRecord(
     int SortOrder,
     bool IsEnabled,
     bool WaivesDeliveryFee,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    string CollectionSlug = StoreProductCollections.StoryBuddies);
 
 public sealed record AdminStoreProductSaveRequest(
     Guid? StoreProductId,
@@ -666,7 +668,8 @@ public sealed record AdminStoreProductSaveRequest(
     decimal UnitPriceZar,
     int SortOrder,
     bool IsEnabled,
-    bool WaivesDeliveryFee);
+    bool WaivesDeliveryFee,
+    string CollectionSlug = StoreProductCollections.StoryBuddies);
 
 public sealed record AdminSubscriptionSettingsSnapshot(
     bool SignupCodeBypassEnabled,

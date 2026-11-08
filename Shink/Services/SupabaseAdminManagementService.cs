@@ -2276,7 +2276,8 @@ public sealed partial class SupabaseAdminManagementService(
                     SortOrder: Math.Clamp(row.SortOrder, -500_000, 500_000),
                     IsEnabled: row.IsEnabled,
                     WaivesDeliveryFee: row.WaivesDeliveryFee,
-                    UpdatedAt: row.UpdatedAt);
+                    UpdatedAt: row.UpdatedAt,
+                    CollectionSlug: StoreProductCollections.GetOrDefault(row.CollectionSlug).Slug);
             })
             .Where(record => !string.IsNullOrWhiteSpace(record.ImagePath))
             .OrderBy(row => row.SortOrder)
@@ -2309,6 +2310,10 @@ public sealed partial class SupabaseAdminManagementService(
         {
             return new AdminOperationResult(false, "Winkel produk naam is verpligtend.");
         }
+
+        var collection = StoreProductCollections.Find(request.CollectionSlug);
+        if (collection is null)
+            return new AdminOperationResult(false, "Kies 'n geldige produkversameling.");
 
         var isNewProduct = request.StoreProductId is null || request.StoreProductId == Guid.Empty;
         var normalizedImagePath = NormalizeStoreProductImagePath(request.ImagePath);
@@ -2344,7 +2349,8 @@ public sealed partial class SupabaseAdminManagementService(
             ["unit_price_zar"] = normalizedPrice,
             ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
             ["is_enabled"] = request.IsEnabled,
-            ["waives_delivery_fee"] = request.WaivesDeliveryFee
+            ["waives_delivery_fee"] = request.WaivesDeliveryFee,
+            ["collection_slug"] = collection.Slug
         };
 
         if (!string.IsNullOrWhiteSpace(normalizedImagePath))
@@ -3991,7 +3997,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/store_products" +
-            "?select=store_product_id,slug,name,description,image_path,alt_text,theme_class,unit_price_zar,sort_order,is_enabled,waives_delivery_fee,updated_at" +
+            "?select=store_product_id,slug,name,description,image_path,alt_text,theme_class,unit_price_zar,sort_order,is_enabled,waives_delivery_fee,collection_slug,updated_at" +
             "&order=sort_order.asc" +
             "&order=name.asc" +
             "&limit=1000");
@@ -4015,7 +4021,8 @@ public sealed partial class SupabaseAdminManagementService(
                 SortOrder: product.SortOrder,
                 IsEnabled: product.IsEnabled,
                 WaivesDeliveryFee: product.WaivesDeliveryFee,
-                UpdatedAt: null))
+                UpdatedAt: null,
+                CollectionSlug: product.CollectionSlug))
             .ToArray();
 
     private async Task<IReadOnlyList<ResourceDocumentRow>> FetchResourceDocumentsAsync(
@@ -8106,6 +8113,9 @@ public sealed partial class SupabaseAdminManagementService(
 
     private sealed class StoreProductRow
     {
+        [JsonPropertyName("collection_slug")]
+        public string? CollectionSlug { get; set; }
+
         [JsonPropertyName("store_product_id")]
         public Guid StoreProductId { get; set; }
 

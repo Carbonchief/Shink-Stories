@@ -274,6 +274,7 @@ function updateBadges(items) {
         0,
     );
     textAll(document, "[data-store-count]", String(Math.min(MAX_ITEMS, count)));
+    document.documentElement.classList.toggle("has-store-cart", count > 0);
     all(document, "[data-store-cart-link]").forEach((link) =>
         link.setAttribute(
             "aria-label",
@@ -315,11 +316,21 @@ export function initialize() {
     const controller = new AbortController();
     const listen = (target, event, handler) =>
         target.addEventListener(event, handler, { signal: controller.signal });
-    disposeCurrent = () => controller.abort();
+    const quickView = root.querySelector("[data-store-quick-view]");
+    let selectedProduct = null;
+    disposeCurrent = () => {
+        if (quickView?.open) quickView.close();
+        document.body.classList.remove("winkel-quick-view-open");
+        controller.abort();
+    };
     const products = all(root, "[data-store-product]").map((element) => ({
         slug: element.dataset.storeProduct,
         name: element.dataset.name,
         price: Number(element.dataset.price),
+        image: element.dataset.image,
+        alt: element.dataset.alt,
+        description: element.dataset.description,
+        collectionLabel: element.dataset.collectionLabel,
         freeDelivery: element.dataset.freeDelivery === "true",
     }));
     const originalItems = JSON.stringify(state.items);
@@ -428,6 +439,9 @@ export function initialize() {
             button.disabled =
                 quantity >= MAX_PER_PRODUCT || totals.count >= MAX_ITEMS;
         });
+        all(root, "[data-store-open-product]").forEach((button) => {
+            button.disabled = false;
+        });
         all(root, "[data-store-post-quantity]").forEach((input) => {
             input.value = String(
                 quantities.get(input.dataset.storePostQuantity) || 0,
@@ -447,12 +461,113 @@ export function initialize() {
         saveState(state);
         render();
         notice(result.error || successMessage || "Jou mandjie is opgedateer.");
+        return result.error;
+    }
+
+    function openProduct(slug) {
+        selectedProduct = products.find((product) => product.slug === slug);
+        if (!selectedProduct || !quickView) return;
+        if (typeof quickView.showModal !== "function") {
+            location.assign(`/winkel/produk/${encodeURIComponent(slug)}`);
+            return;
+        }
+        textAll(quickView, "[data-store-quick-name]", selectedProduct.name);
+        textAll(
+            quickView,
+            "[data-store-quick-collection]",
+            selectedProduct.collectionLabel,
+        );
+        textAll(
+            quickView,
+            "[data-store-quick-price]",
+            money(selectedProduct.price),
+        );
+        textAll(
+            quickView,
+            "[data-store-quick-description]",
+            selectedProduct.description ||
+                "Gereed vir storietyd, slaaptyd en elke klein knuffel tussenin.",
+        );
+        textAll(
+            quickView,
+            "[data-store-quick-delivery]",
+            selectedProduct.freeDelivery
+                ? "Hierdie maatjie sluit aflewering vir jou hele bestelling in."
+                : `${money(Number(root.dataset.storeDeliveryCents))} PUDO-aflewering per bestelling.`,
+        );
+        const image = quickView.querySelector("[data-store-quick-image]");
+        image.src = selectedProduct.image;
+        image.alt = selectedProduct.alt;
+        quickView.querySelector("[data-store-quick-quantity]").value = "1";
+        quickView.querySelector("[data-store-quick-error]").hidden = true;
+        quickView.showModal();
+        document.body.classList.add("winkel-quick-view-open");
+    }
+
+    if (quickView) {
+        const image = quickView.querySelector("[data-store-quick-image]");
+        listen(image, "error", () => {
+            if (
+                image.getAttribute("src") !== "/branding/schink-placeholder.png"
+            )
+                image.src = "/branding/schink-placeholder.png";
+        });
+        listen(quickView, "close", () => {
+            selectedProduct = null;
+            document.body.classList.remove("winkel-quick-view-open");
+        });
+        listen(quickView, "click", (event) => {
+            if (event.target !== quickView) return;
+            const bounds = quickView.getBoundingClientRect();
+            if (
+                event.clientX < bounds.left ||
+                event.clientX > bounds.right ||
+                event.clientY < bounds.top ||
+                event.clientY > bounds.bottom
+            )
+                quickView.close();
+        });
     }
 
     listen(root, "click", (event) => {
         const button = event.target.closest("button");
         if (!button) return;
-        if (button.hasAttribute("data-store-add")) {
+        if (button.hasAttribute("data-store-open-product")) {
+            openProduct(button.dataset.storeOpenProduct);
+        } else if (button.hasAttribute("data-store-quick-close")) {
+            quickView.close();
+        } else if (
+            button.hasAttribute("data-store-quick-add") ||
+            button.hasAttribute("data-store-quick-buy")
+        ) {
+            if (!selectedProduct) return;
+            const quantity = Number(
+                quickView.querySelector("[data-store-quick-quantity]").value,
+            );
+            const existing =
+                normalizeCart(readState().items, products).find(
+                    (item) => item.slug === selectedProduct.slug,
+                )?.quantity || 0;
+            const error =
+                !Number.isInteger(quantity) ||
+                quantity < 1 ||
+                quantity > MAX_PER_PRODUCT
+                    ? "Kies 'n hoeveelheid van 1 tot 10."
+                    : change(
+                          selectedProduct.slug,
+                          existing + quantity,
+                          `${selectedProduct.name} is by jou mandjie.`,
+                      );
+            if (error) {
+                textAll(quickView, "[data-store-quick-error]", error);
+                quickView.querySelector("[data-store-quick-error]").hidden =
+                    false;
+                return;
+            }
+            quickView.close();
+            if (button.hasAttribute("data-store-quick-buy"))
+                location.assign("/winkel/afreken");
+        } else if (button.hasAttribute("data-store-add")) {
             const slug = button.dataset.storeAdd;
             const product = products.find((product) => product.slug === slug);
             const quantityInput = button
@@ -517,17 +632,24 @@ export function initialize() {
         const freeOnly = root.querySelector(
             "[data-store-free-filter]",
         )?.checked;
-        const sort = root.querySelector("[data-store-sort]")?.value;
+        const collection =
+            root.querySelector("input[data-store-collection]:checked")?.value ||
+            "";
+        const sort =
+            root.querySelector("input[data-store-sort]:checked")?.value ??
+            root.querySelector("select[data-store-sort]")?.value;
         const cards = all(root, "[data-store-card]");
         cards.sort((a, b) =>
             sort === "price-asc"
                 ? Number(a.dataset.price) - Number(b.dataset.price)
                 : sort === "price-desc"
                   ? Number(b.dataset.price) - Number(a.dataset.price)
-                  : sort === "name"
-                    ? a.dataset.search.localeCompare(b.dataset.search, "af")
-                    : Number(a.dataset.order) - Number(b.dataset.order) ||
-                      a.dataset.search.localeCompare(b.dataset.search, "af"),
+                  : sort === "name-desc"
+                    ? b.dataset.search.localeCompare(a.dataset.search, "af")
+                    : sort === "name"
+                      ? a.dataset.search.localeCompare(b.dataset.search, "af")
+                      : Number(a.dataset.order) - Number(b.dataset.order) ||
+                        a.dataset.search.localeCompare(b.dataset.search, "af"),
         );
         let count = 0;
         cards.forEach((card) => {
@@ -535,6 +657,7 @@ export function initialize() {
                 !card.dataset.search
                     .toLocaleLowerCase("af-ZA")
                     .includes(query) ||
+                (collection && card.dataset.collection !== collection) ||
                 (freeOnly && card.dataset.freeDelivery !== "true");
             if (!card.hidden) count++;
             card.parentElement.appendChild(card);
@@ -556,21 +679,53 @@ export function initialize() {
             () => {
                 root.querySelector("[data-store-search]").value = "";
                 root.querySelector("[data-store-free-filter]").checked = false;
-                root.querySelector("[data-store-sort]").value = "featured";
+                all(root, "input[data-store-sort]").forEach((input) => {
+                    input.checked = input.value === "featured";
+                });
+                all(root, "input[data-store-collection]").forEach((input) => {
+                    input.checked = input.value === "";
+                });
+                const sortSelect = root.querySelector(
+                    "select[data-store-sort]",
+                );
+                if (sortSelect) sortSelect.value = "featured";
                 filterProducts();
             },
         );
+        const filterToggle = root.querySelector("[data-store-filter-toggle]");
+        const filterPanel = root.querySelector("[data-store-filter-panel]");
+        const catalogLayout = root.querySelector("[data-store-catalog-layout]");
+        if (filterToggle && filterPanel && catalogLayout) {
+            const wideScreen = window.matchMedia("(min-width: 900px)");
+            const setFiltersOpen = (open) => {
+                filterPanel.hidden = !open;
+                filterPanel.classList.toggle("is-open", open);
+                filterToggle.setAttribute("aria-expanded", String(open));
+                catalogLayout.dataset.filters = open ? "open" : "closed";
+            };
+            setFiltersOpen(wideScreen.matches);
+            listen(filterToggle, "click", () =>
+                setFiltersOpen(filterPanel.hidden),
+            );
+            listen(wideScreen, "change", (event) =>
+                setFiltersOpen(event.matches),
+            );
+        }
+        filterProducts();
     }
 
     const form = root.querySelector("#winkel-order-form");
     if (form) {
         let draftCheckoutId = null;
+        const customerKey = form.dataset.storeCustomerKey || "";
+        const saveDetails = form.querySelector("[data-store-save-details]");
         const fields = () =>
             form.querySelectorAll(
                 "input:not([type=hidden]):not([type=checkbox]), textarea",
             );
         const saveDraft = () => {
-            const draft = { checkoutId: draftCheckoutId };
+            const draft = { checkoutId: draftCheckoutId, customerKey };
+            if (saveDetails) draft.saveDetails = saveDetails.checked;
             for (const input of fields()) draft[input.name] = input.value;
             try {
                 sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -582,10 +737,24 @@ export function initialize() {
         form.querySelector("[data-store-pay]")?.removeAttribute("aria-busy");
         try {
             const draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "{}");
-            draftCheckoutId = draft.checkoutId || null;
-            for (const input of fields()) {
-                if (typeof draft[input.name] === "string")
-                    input.value = draft[input.name];
+            const draftOwner =
+                typeof draft.customerKey === "string" ? draft.customerKey : "";
+            const sameCustomer = draftOwner === customerKey;
+            // Keep guest edits across sign-in, filling their blank fields from the account.
+            // Never restore one signed-in customer's details for a different account or guest.
+            if (sameCustomer || (!draftOwner && customerKey)) {
+                draftCheckoutId = draft.checkoutId || null;
+                for (const input of fields()) {
+                    if (
+                        typeof draft[input.name] === "string" &&
+                        (sameCustomer || draft[input.name].trim())
+                    )
+                        input.value = draft[input.name];
+                }
+                if (saveDetails && typeof draft.saveDetails === "boolean")
+                    saveDetails.checked = draft.saveDetails;
+            } else {
+                sessionStorage.removeItem(DRAFT_KEY);
             }
         } catch {
             /* Invalid or unavailable draft storage does not block checkout. */
@@ -593,7 +762,7 @@ export function initialize() {
         const saveEditedDraft = (event) => {
             if (
                 event.target.matches(
-                    "input:not([type=hidden]):not([type=checkbox]), textarea",
+                    "input:not([type=hidden]):not([type=checkbox]), textarea, [data-store-save-details]",
                 )
             ) {
                 draftCheckoutId = null;

@@ -1,22 +1,24 @@
 <article class="winkel-product @Product.ThemeClass" data-store-card data-slug="@Product.Slug"
          data-search="@($"{Product.Name} {Product.Description}")" data-price="@StoreCheckoutRules.ToCents(Product.UnitPriceZar)"
-         data-order="@Product.SortOrder" data-free-delivery="@(Product.WaivesDeliveryFee ? "true" : "false")">
-    <a class="winkel-product-media" href="@ProductUrl" aria-label="@($"Bekyk {Product.Name}")">
-        <img src="@Product.ImagePath" alt="@Product.AltText" width="1080" height="1080" loading="lazy" decoding="async"
-             onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
-    </a>
+         data-order="@Product.SortOrder" data-free-delivery="@(Product.WaivesDeliveryFee ? "true" : "false")" data-collection="@Product.CollectionSlug">
+    <div class="winkel-product-visual">
+        <a class="winkel-product-media" href="@ProductUrl" aria-label="@($"Bekyk {Product.Name}")">
+            <img src="@Product.ImagePath" alt="@Product.AltText" width="1080" height="1080" loading="lazy" decoding="async"
+                 onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
+        </a>
+        <button class="winkel-quick-add" type="button" data-store-open-product="@Product.Slug" aria-label="@($"Kies {Product.Name} vir jou mandjie")" aria-haspopup="dialog" disabled>
+            <i class="fa-solid fa-plus" aria-hidden="true"></i><span>Voeg by</span>
+        </button>
+        @if (Product.WaivesDeliveryFee)
+        {
+            <span class="winkel-product-promotion">Aflewering ingesluit</span>
+        }
+    </div>
     <div class="winkel-product-body">
-        <p class="winkel-product-type">StorieTjommie</p>
+        <p class="winkel-product-type">@Product.CollectionName</p>
         <h3><a href="@ProductUrl">@Product.Name</a></h3>
         <p class="winkel-product-price">@StoreCheckoutRules.FormatZar(Product.UnitPriceZar)</p>
         <p class="winkel-product-description">@(string.IsNullOrWhiteSpace(Product.Description) ? "Gereed vir storietyd, slaaptyd en elke klein knuffel tussenin." : Product.Description)</p>
-        @if (Product.WaivesDeliveryFee)
-        {
-            <span class="winkel-delivery-badge"><i class="fa-solid fa-truck" aria-hidden="true"></i> Aflewering ingesluit</span>
-        }
-        <button class="winkel-submit" type="button" data-store-add="@Product.Slug" disabled>
-            <i class="fa-solid fa-plus" aria-hidden="true"></i> Voeg by mandjie
-        </button>
         <span class="winkel-in-cart" data-store-in-cart="@Product.Slug" hidden></span>
     </div>
 </article>

@@ -1,14 +1,102 @@
+.site-shell.store-route.winkel-route {
+    background: #fffefa;
+}
+.winkel-route .site-container {
+    width: min(1320px, 100% - 3rem);
+}
+.winkel-route .site-header {
+    background: #fffefa;
+    box-shadow: none;
+    border-bottom-color: #e7eae4;
+}
+.winkel-route .site-header .brand-wordmark {
+    filter: brightness(0) saturate(100%) invert(30%) sepia(19%) saturate(1160%)
+        hue-rotate(111deg) brightness(91%) contrast(88%);
+}
+.winkel-route .winkel-header-cart .winkel-cart-count {
+    background: #337d6d;
+}
+.winkel-navigation-links {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+.winkel-listen-link {
+    font-size: 0.8rem;
+    text-decoration: none;
+    color: var(--winkel-muted) !important;
+}
+.winkel-listen-link i {
+    font-size: 0.65rem;
+    margin-left: 0.25rem;
+}
+.winkel-currency {
+    color: var(--winkel-muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+body.schink-night-mode .site-shell.store-route.winkel-route {
+    background: #111c20;
+}
+body.schink-night-mode .winkel-route .site-header {
+    background: #111c20;
+    border-bottom-color: #2b3d3d;
+}
+body.schink-night-mode .winkel-route .site-header .brand-wordmark {
+    filter: none;
+}
+body.schink-night-mode .winkel-page {
+    --winkel-ink: #edf4e9;
+    --winkel-muted: #a9bcb1;
+    --winkel-line: #2e4341;
+    --winkel-cream: #1a2b2b;
+    --winkel-panel: #152325;
+    --winkel-accent: #a6d0ba;
+    --winkel-accent-deep: #b9d9c4;
+}
+body.schink-night-mode .winkel-page .winkel-product,
+body.schink-night-mode .winkel-page .winkel-product-body {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+body.schink-night-mode .winkel-catalog-heading h1 span::after {
+    background: #475e36;
+}
+body.schink-night-mode .winkel-page .winkel-search input {
+    background: transparent;
+    color: var(--winkel-ink);
+}
+body.schink-night-mode .winkel-page .winkel-submit {
+    color: #123d30;
+    background: #b9d9c4;
+}
+body.schink-night-mode .winkel-page .winkel-submit:hover:not(:disabled) {
+    background: #d0e8d2;
+}
+body.schink-night-mode .winkel-page .winkel-cart-count,
+body.schink-night-mode .winkel-page .winkel-step {
+    color: #123d30;
+}
+@media (max-width: 560px) {
+    .winkel-route .site-container {
+        width: calc(100% - 1.5rem);
+    }
+}
 .winkel-page {
-    --winkel-ink: #233428;
-    --winkel-muted: #5e6f63;
-    --winkel-line: rgba(35, 52, 40, 0.12);
-    --winkel-cream: #fffaf1;
-    --winkel-panel: #fffdf8;
-    --winkel-accent: #d86f34;
-    --winkel-accent-deep: #a74a1f;
+    --winkel-ink: #233d36;
+    --winkel-muted: #68756f;
+    --winkel-line: #e2e8e1;
+    --winkel-cream: #f7f6ed;
+    --winkel-panel: #fffefa;
+    --winkel-accent: #337d6d;
+    --winkel-accent-deep: #215e50;
     display: grid;
-    gap: 2.4rem;
-    padding: clamp(1rem, 3vw, 2.4rem);
+    width: min(1320px, 100% - 3rem);
+    margin-inline: auto;
+    gap: 2rem;
+    padding: clamp(0.8rem, 2vw, 1.6rem) 0 5.5rem;
     color: var(--winkel-ink);
 }
 .winkel-page [hidden] {
@@ -73,7 +161,7 @@
     font-weight: 800;
 }
 .winkel-header-cart {
-    display: inline-flex;
+    display: none;
     gap: 0.35rem;
     align-items: center;
     text-decoration: none;
@@ -81,6 +169,10 @@
     padding: 0.5rem;
     margin-left: auto;
     flex-shrink: 0;
+}
+.has-store-cart .winkel-header-cart,
+.winkel-route .winkel-header-cart {
+    display: inline-flex;
 }
 .winkel-header-cart .winkel-cart-count {
     background: #c8591f;
@@ -91,40 +183,152 @@
 .is-search-active .winkel-header-cart {
     display: none;
 }
-.winkel-hero {
+.winkel-page .winkel-floating-cart {
+    position: fixed;
+    z-index: 20;
+    right: max(1.5rem, env(safe-area-inset-right, 0px));
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
     display: grid;
-    grid-template-columns: 1.25fr 0.75fr;
-    min-height: 25rem;
-    background: var(--winkel-cream);
-    border: 1px solid var(--winkel-line);
-    border-radius: 28px;
+    place-items: center;
+    width: 60px;
+    height: 60px;
+    border-radius: 10px;
+    background: var(--winkel-accent-deep);
+    color: var(--winkel-panel);
+    text-decoration: none;
+    box-shadow: 0 5px 22px #173f3233;
+}
+.winkel-floating-cart > i {
+    font-size: 1.4rem;
+}
+.winkel-floating-cart:hover {
+    box-shadow: 0 7px 26px #173f3255;
+}
+.winkel-floating-cart-count {
+    position: absolute;
+    top: -0.45rem;
+    right: -0.45rem;
+    display: grid;
+    place-items: center;
+    min-width: 1.65rem;
+    height: 1.65rem;
+    padding: 0 0.3rem;
+    border: 2px solid var(--winkel-panel);
+    border-radius: 999px;
+    background: #233d36;
+    color: #fffefa;
+    font-size: 0.75rem;
+    font-weight: 750;
+    line-height: 1;
+}
+body.winkel-quick-view-open {
     overflow: hidden;
 }
-.winkel-hero-copy {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: flex-start;
-    gap: 1.3rem;
-    padding: clamp(1.5rem, 4vw, 3.5rem);
+.winkel-quick-view {
+    position: fixed;
+    width: min(520px, calc(100% - 2rem));
+    max-width: none;
+    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--winkel-line);
+    border-radius: 14px;
+    background: var(--winkel-panel);
+    color: var(--winkel-ink);
+    box-shadow: 0 20px 70px #0b221d40;
+}
+.winkel-quick-view::backdrop {
+    background: #0b221d80;
+    backdrop-filter: blur(2px);
+}
+.winkel-quick-view-content {
+    position: relative;
+    padding: 1.8rem;
+}
+.winkel-quick-close {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    display: grid;
+    place-items: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--winkel-ink);
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+.winkel-quick-close:hover {
+    background: var(--winkel-cream);
+}
+.winkel-quick-summary {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    align-items: center;
+    gap: 1.4rem;
+    padding-right: 1rem;
+}
+.winkel-quick-summary > img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    object-fit: contain;
+    padding: 0.6rem;
+    border-radius: 9px;
+    background: var(--winkel-cream);
+}
+.winkel-page .winkel-quick-summary h2 {
+    margin: 0.35rem 0;
+    font-size: 1.3rem;
+    letter-spacing: -0.025em;
+    overflow-wrap: anywhere;
+}
+.winkel-page .winkel-quick-price {
+    color: var(--winkel-ink);
+    font-weight: 750;
+}
+.winkel-page .winkel-quick-description {
+    margin: 1.3rem 0;
+    font-size: 0.9rem;
+}
+.winkel-quick-quantity {
+    width: 7rem;
+}
+.winkel-page .winkel-quick-delivery {
+    margin: 1rem 0;
+    font-size: 0.78rem;
+}
+.winkel-page .winkel-quick-error {
+    margin: 1rem 0;
+    padding: 0.75rem;
+    border: 1px solid var(--winkel-line);
+    border-radius: 8px;
+    background: var(--winkel-cream);
+    color: var(--winkel-ink);
+    font-size: 0.85rem;
+}
+.winkel-quick-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem;
+}
+.winkel-quick-actions button {
+    min-height: 3.2rem;
+    padding-inline: 0.65rem;
+    border-radius: 8px;
+    font-size: 0.86rem;
 }
 .winkel-page .winkel-section-kicker {
     color: var(--winkel-accent-deep);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     text-transform: uppercase;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-}
-.winkel-hero-copy > p:not(.winkel-section-kicker) {
-    max-width: 34rem;
-    font-size: 1.05rem;
-}
-.winkel-hero > img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    max-height: 34rem;
-    object-position: center 40%;
+    font-weight: 750;
+    letter-spacing: 0.16em;
 }
 .winkel-submit,
 .winkel-secondary {
@@ -146,11 +350,11 @@
 }
 .winkel-page .winkel-submit {
     color: #fff;
-    background: #c8591f;
+    background: var(--winkel-accent-deep);
     border: 1px solid transparent;
 }
 .winkel-submit:hover:not(:disabled) {
-    background: #a74a1f;
+    background: #173f37;
     transform: translateY(-1px);
 }
 .winkel-secondary {
@@ -166,163 +370,361 @@
     outline: 3px solid var(--winkel-accent);
     outline-offset: 3px;
 }
-.winkel-benefits {
+.winkel-catalog-heading {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 1.4rem;
-    padding: 0.4rem 0.6rem 1.5rem;
-    border-bottom: 1px solid var(--winkel-line);
-}
-.winkel-benefits > span {
-    display: flex;
-    align-items: center;
+    justify-items: center;
     gap: 0.8rem;
+    text-align: center;
+    padding: clamp(1.2rem, 2vw, 1.5rem) 0;
 }
-.winkel-benefits i {
+.winkel-catalog-heading h1 {
+    font-size: clamp(2.2rem, 4.2vw, 3.6rem);
+    letter-spacing: -0.045em;
+    font-weight: 800;
+    line-height: 1.13;
+}
+.winkel-catalog-heading h1 span {
+    position: relative;
+    isolation: isolate;
+    white-space: nowrap;
     color: var(--winkel-accent-deep);
-    font-size: 1.3rem;
 }
-.winkel-benefits strong,
-.winkel-benefits small {
-    display: block;
+.winkel-catalog-heading h1 span::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    left: -0.02em;
+    right: -0.04em;
+    bottom: 0.02em;
+    height: 0.16em;
+    background: #e8edba;
+    border-radius: 50%;
+    transform: rotate(-3deg);
 }
-.winkel-benefits strong {
-    font-size: 0.88rem;
+.winkel-catalog-heading > p:last-child {
+    max-width: 38rem;
+    font-size: 0.98rem;
 }
-.winkel-benefits small {
-    color: var(--winkel-muted);
-    font-size: 0.76rem;
-    margin-top: 0.2rem;
-}
-.winkel-products {
+.winkel-products,
+.winkel-catalog-browser {
     display: grid;
     gap: 1.5rem;
+    min-width: 0;
 }
-.winkel-products-heading {
-    display: flex;
-    align-items: end;
-    justify-content: space-between;
-    gap: 1rem;
-}
-.winkel-products-heading h2 {
-    margin-top: 0.45rem;
-}
-.winkel-filters {
+.winkel-catalog-toolbar {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 0.8rem;
+    gap: 1.2rem;
+    min-width: 0;
 }
-.winkel-search,
-.winkel-sort {
-    display: flex;
+.winkel-filter-toggle {
+    display: inline-flex;
     align-items: center;
-    gap: 0.6rem;
-    background: var(--winkel-panel);
-    border: 1px solid var(--winkel-line);
-    border-radius: 12px;
-    padding: 0.6rem 0.9rem;
-}
-.winkel-search {
-    flex: 1;
-    min-width: 12rem;
-}
-.winkel-search input,
-.winkel-sort select {
-    width: 100%;
-    min-height: 1.9rem;
+    gap: 0.65rem;
+    min-height: 44px;
+    padding: 0.5rem 0;
     border: 0;
     background: transparent;
     color: var(--winkel-ink);
     font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
 }
-.winkel-sort {
+.winkel-filter-toggle > i:first-child {
     font-size: 0.85rem;
 }
-.winkel-sort select {
-    width: auto;
+.winkel-filter-chevron {
+    font-size: 0.6rem;
+    transition: transform 0.18s;
+}
+.winkel-filter-toggle[aria-expanded="true"] .winkel-filter-chevron {
+    transform: rotate(180deg);
+}
+.winkel-page .winkel-results-count {
+    font-size: 0.8rem;
+    margin-left: 0.2rem;
+}
+.winkel-search {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: min(100%, 20rem);
+    min-width: 0;
+    margin-left: auto;
+    padding: 0.55rem 0.8rem;
+    border: 1px solid var(--winkel-line);
+    border-radius: 8px;
+    background: var(--winkel-panel);
+    color: var(--winkel-muted);
+}
+.winkel-search input {
+    width: 100%;
+    min-width: 0;
+    min-height: 1.6rem;
+    border: 0;
+    background: transparent;
+    color: var(--winkel-ink);
+    font: inherit;
+    font-size: 0.85rem;
+}
+.winkel-search input::placeholder {
+    color: var(--winkel-muted);
+    opacity: 0.85;
+}
+.winkel-catalog-layout {
+    display: grid;
+    grid-template-columns: 12.5rem minmax(0, 1fr);
+    gap: clamp(1.5rem, 3vw, 3rem);
+    align-items: start;
+}
+.winkel-catalog-layout[data-filters="closed"] {
+    grid-template-columns: minmax(0, 1fr);
+}
+.winkel-catalog-results {
     min-width: 0;
 }
-.winkel-sort select option {
-    color: #233428;
-    background: #fffdf8;
+.winkel-sidebar {
+    display: grid;
+    gap: 2rem;
+    padding-top: 0.15rem;
+    min-width: 0;
 }
-.winkel-filter-check {
-    display: inline-flex;
+.winkel-filter-group {
+    display: grid;
+    gap: 0.65rem;
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+}
+.winkel-filter-group legend,
+.winkel-filter-group h2 {
+    padding: 0;
+    margin: 0 0 0.5rem;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    font-weight: 750;
+    color: var(--winkel-ink);
+    letter-spacing: 0;
+}
+.winkel-filter-group label {
+    display: flex;
+    gap: 0.55rem;
     align-items: center;
-    gap: 0.4rem;
-    font-size: 0.85rem;
+    min-height: 1.65rem;
+    font-size: 0.82rem;
+    color: var(--winkel-muted);
+    cursor: pointer;
+}
+.winkel-page .winkel-filter-group input {
+    flex-shrink: 0;
+    width: 0.95rem;
+    height: 0.95rem;
+    margin: 0;
+    accent-color: var(--winkel-accent-deep);
+}
+.winkel-page .winkel-filter-group p {
+    font-size: 0.74rem;
+    line-height: 1.7;
+}
+.winkel-filter-group .winkel-collection-option {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--winkel-accent-deep) !important;
+    font-size: 0.82rem;
+    font-weight: 650;
+}
+.winkel-collection-option small {
+    min-width: 1.5rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 5px;
+    font-size: 0.7rem;
+    text-align: center;
+    background: var(--winkel-cream);
+}
+.winkel-sidebar-story {
+    display: grid;
+    justify-items: start;
+    gap: 0.6rem;
+    padding: 1.1rem;
+    background: var(--winkel-cream);
+    border-radius: 14px;
+    margin-top: 0.2rem;
+}
+.winkel-sidebar-story img {
+    width: 3.5rem;
+    height: 3.5rem;
+    object-fit: contain;
+}
+.winkel-sidebar-story p {
+    font-size: 0.88rem;
+    font-weight: 650;
+    color: var(--winkel-ink);
+}
+.winkel-sidebar-story a {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-underline-offset: 0.2rem;
+}
+.winkel-sidebar-story a i {
+    font-size: 0.6rem;
+    margin-left: 0.2rem;
 }
 .winkel-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 1.1rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2rem 1.5rem;
 }
 .winkel-product {
+    --winkel-product-canvas: #efece1;
     display: flex;
     flex-direction: column;
+    min-width: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.winkel-product.is-suurlemoentjie {
+    --winkel-product-canvas: #f4edca;
+}
+.winkel-product.is-tiekie {
+    --winkel-product-canvas: #f1e4de;
+}
+.winkel-product.is-lama {
+    --winkel-product-canvas: #ebe7f1;
+}
+.winkel-product.is-georgie {
+    --winkel-product-canvas: #e2ece5;
+}
+.winkel-product-visual {
+    position: relative;
+    background: var(--winkel-product-canvas);
+    border-radius: 13px;
     overflow: hidden;
-    border: 1px solid var(--winkel-line);
-    border-radius: 22px;
-    background: var(--winkel-panel);
-    box-shadow: 0 6px 22px rgba(78, 58, 32, 0.05);
+    isolation: isolate;
 }
 .winkel-product-media {
-    display: block;
-    background: #f8eddb;
-    padding: 0.7rem;
+    display: grid;
+    place-items: center;
+    padding: 2.3rem 0.6rem 1rem;
+    aspect-ratio: 4 / 5;
     overflow: hidden;
 }
 .winkel-product-media img {
     display: block;
     width: 100%;
-    height: auto;
-    aspect-ratio: 1;
-    object-fit: cover;
-    border-radius: 14px;
-    transition: transform 0.2s;
+    height: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.35s ease;
 }
 .winkel-product-media:hover img {
-    transform: scale(1.025);
+    transform: scale(1.04);
+}
+.winkel-quick-add {
+    position: absolute;
+    top: 0.8rem;
+    left: 0.8rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 2.35rem;
+    padding: 0.55rem 0.8rem;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #245b51;
+    box-shadow: 0 2px 8px #244b3910;
+    font: inherit;
+    font-size: 0.68rem;
+    letter-spacing: 0.025em;
+    font-weight: 750;
+    cursor: pointer;
+    transition:
+        background 0.18s,
+        transform 0.18s;
+}
+.winkel-quick-add:hover:not(:disabled) {
+    background: #245f54;
+    border-color: #245f54;
+    color: white;
+    transform: translateY(-1px);
+}
+.winkel-quick-add i {
+    font-size: 0.6rem;
+}
+.winkel-product-promotion {
+    position: absolute;
+    top: 0.85rem;
+    right: 0.7rem;
+    max-width: 7rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: 999px;
+    background: #347e6b;
+    color: #fff;
+    text-align: center;
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1.4;
 }
 .winkel-product-body {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.65rem;
-    padding: 1.15rem;
+    gap: 0.35rem;
+    padding: 0.95rem 0.05rem 0;
     flex: 1;
 }
 .winkel-page .winkel-product-type {
+    font-size: 0.6rem;
     text-transform: uppercase;
-    font-size: 0.68rem;
-    letter-spacing: 0.12em;
-    font-weight: 750;
+    letter-spacing: 0.13em;
+    font-weight: 700;
     color: var(--winkel-accent-deep);
 }
 .winkel-product h3 {
-    font-size: 1.14rem;
+    font-size: 0.98rem;
+    line-height: 1.35;
+    font-weight: 700;
+    letter-spacing: -0.015em;
 }
 .winkel-product h3 a {
     text-decoration: none;
 }
 .winkel-product h3 a:hover {
     text-decoration: underline;
+    text-underline-offset: 0.2rem;
 }
 .winkel-page .winkel-product-price {
-    font-size: 1.15rem;
-    font-weight: 800;
     color: var(--winkel-ink);
+    font-size: 0.95rem;
+    font-weight: 750;
 }
 .winkel-product-description {
-    font-size: 0.88rem;
-    flex: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.77rem;
+    line-height: 1.6;
 }
-.winkel-product .winkel-submit {
-    width: 100%;
-    padding: 0.7rem 0.6rem;
-    font-size: 0.83rem;
+.winkel-in-cart {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--winkel-accent-deep);
+    font-size: 0.7rem;
+    font-weight: 600;
     margin-top: 0.3rem;
+}
+.winkel-in-cart::before {
+    content: "✓";
+    font-size: 0.65rem;
 }
 .winkel-delivery-badge {
     display: inline-flex;
@@ -335,27 +737,60 @@
     padding: 0.3rem 0.5rem;
     font-size: 0.75rem;
 }
-.winkel-in-cart {
-    font-size: 0.75rem;
-    color: var(--winkel-muted);
-}
 .winkel-help {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 2rem;
+    margin-top: 1.2rem;
+    padding: clamp(1.4rem, 3vw, 2.5rem);
     border: 1px solid var(--winkel-line);
-    border-radius: 22px;
-    padding: clamp(1.5rem, 3vw, 2.5rem);
+    border-radius: 16px;
     background: var(--winkel-cream);
 }
 .winkel-help > div {
     display: grid;
-    gap: 0.7rem;
+    gap: 0.6rem;
     max-width: 42rem;
+}
+.winkel-help h2 {
+    font-size: clamp(1.35rem, 2.4vw, 1.8rem);
+}
+.winkel-help p {
+    font-size: 0.9rem;
 }
 .winkel-help .winkel-secondary {
     flex-shrink: 0;
+}
+.winkel-benefits {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.5rem;
+    padding: 1.9rem 0 0.4rem;
+    border-top: 1px solid var(--winkel-line);
+}
+.winkel-benefits > span {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+.winkel-benefits i {
+    color: var(--winkel-accent-deep);
+    font-size: 1.35rem;
+}
+.winkel-benefits strong,
+.winkel-benefits small {
+    display: block;
+}
+.winkel-benefits strong {
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+.winkel-benefits small {
+    color: var(--winkel-muted);
+    font-size: 0.72rem;
+    line-height: 1.6;
+    margin-top: 0.2rem;
 }
 .winkel-page-heading {
     display: grid;
@@ -638,8 +1073,28 @@
     margin-top: 0.3rem;
     flex-shrink: 0;
 }
+.winkel-checkout-signin {
+    display: grid;
+    gap: 0.8rem;
+    padding: 1rem;
+    border: 1px solid var(--winkel-line);
+    border-radius: 12px;
+    background: var(--winkel-cream);
+}
+.winkel-checkout-signin .winkel-secondary {
+    justify-self: start;
+}
+.winkel-page .winkel-checkout-signin p,
+.winkel-page .winkel-checkout-account {
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+.winkel-save-details {
+    margin-top: 1rem;
+    font-size: 0.85rem;
+}
 .winkel-page input[type="checkbox"] {
-    accent-color: #c8591f;
+    accent-color: var(--winkel-accent-deep);
     width: 1rem;
     height: 1rem;
 }
@@ -777,7 +1232,14 @@
 }
 @media (max-width: 1100px) {
     .winkel-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .winkel-catalog-layout {
+        grid-template-columns: 11rem minmax(0, 1fr);
+        gap: 1.5rem;
+    }
+    .winkel-catalog-layout[data-filters="closed"] {
+        grid-template-columns: minmax(0, 1fr);
     }
     .winkel-cart-item {
         grid-template-columns: 72px minmax(0, 1fr);
@@ -792,21 +1254,31 @@
         align-items: center;
     }
 }
+@media (max-width: 899px) {
+    .winkel-catalog-layout,
+    .winkel-catalog-layout[data-filters="closed"] {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .winkel-sidebar {
+        display: none;
+    }
+    .winkel-sidebar.is-open {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1.3rem;
+        padding: 1.3rem;
+        background: var(--winkel-cream);
+        border: 1px solid var(--winkel-line);
+        border-radius: 12px;
+    }
+    .winkel-sidebar-story {
+        display: none;
+    }
+    .winkel-catalog-heading {
+        padding-block: 1.6rem 2rem;
+    }
+}
 @media (max-width: 800px) {
-    .winkel-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .winkel-hero {
-        grid-template-columns: 1.1fr 0.9fr;
-        min-height: 22rem;
-    }
-    .winkel-hero-copy {
-        padding: 1.6rem;
-    }
-    .winkel-benefits {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-    }
     .winkel-cart-layout {
         grid-template-columns: 1fr;
     }
@@ -819,81 +1291,142 @@
     .winkel-help {
         align-items: start;
         flex-direction: column;
+        gap: 1.1rem;
+    }
+    .winkel-benefits {
+        grid-template-columns: 1fr;
+        gap: 1.1rem;
     }
 }
 @media (max-width: 560px) {
     .winkel-page {
+        width: calc(100% - 1.5rem);
+        padding: 0.8rem 0 5rem;
         gap: 1.6rem;
-        padding: 0.8rem;
+    }
+    .winkel-page .winkel-floating-cart {
+        right: max(1rem, env(safe-area-inset-right, 0px));
+        bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+        width: 56px;
+        height: 56px;
+    }
+    .winkel-quick-view-content {
+        padding: 1.4rem;
+    }
+    .winkel-quick-summary {
+        grid-template-columns: 85px minmax(0, 1fr);
+        gap: 1rem;
+    }
+    .winkel-page .winkel-quick-summary h2 {
+        font-size: 1.1rem;
     }
     .winkel-navigation {
         gap: 0.4rem;
     }
     .winkel-home-link {
-        font-size: 0.85rem;
+        font-size: 0.78rem;
+        gap: 0.4rem;
     }
     .winkel-cart-link {
-        padding: 0.55rem 0.75rem;
-        font-size: 0.85rem;
+        padding: 0.5rem 0.65rem;
+        font-size: 0.78rem;
+        gap: 0.45rem;
     }
-    .winkel-hero {
-        grid-template-columns: 1fr;
-    }
-    .winkel-hero-copy {
-        padding: 1.5rem;
-    }
-    .winkel-hero > img {
-        max-height: 18rem;
-        aspect-ratio: 1.5;
-        object-position: center 35%;
-    }
-    .winkel-hero h1 {
-        font-size: 2.45rem;
-    }
-    .winkel-grid {
-        gap: 0.65rem;
-    }
-    .winkel-product-body {
-        padding: 0.85rem;
-        gap: 0.5rem;
-    }
-    .winkel-product h3 {
-        font-size: 1rem;
-    }
-    .winkel-product-description {
-        font-size: 0.8rem;
-    }
-    .winkel-product .winkel-submit {
-        font-size: 0.76rem;
-        padding: 0.65rem 0.4rem;
-    }
-    .winkel-product .winkel-submit i {
+    .winkel-currency,
+    .winkel-listen-link {
         display: none;
     }
-    .winkel-product-media {
-        padding: 0.4rem;
+    .winkel-catalog-heading {
+        gap: 0.85rem;
+        padding: 0.9rem 0.4rem 1.2rem;
     }
-    .winkel-product {
-        border-radius: 16px;
+    .winkel-catalog-heading h1 {
+        font-size: clamp(2.2rem, 8vw, 2.75rem);
     }
-    .winkel-filters {
-        align-items: stretch;
+    .winkel-catalog-heading > p:last-child {
+        font-size: 0.87rem;
+        max-width: 22rem;
+    }
+    .winkel-catalog-heading .winkel-section-kicker {
+        font-size: 0.59rem;
+        letter-spacing: 0.13em;
+    }
+    .winkel-catalog-toolbar {
+        flex-wrap: wrap;
+        gap: 0.6rem 1rem;
+    }
+    .winkel-filter-toggle {
+        font-size: 0.82rem;
+        min-height: 36px;
+    }
+    .winkel-page .winkel-results-count {
+        margin-left: auto;
+        font-size: 0.73rem;
     }
     .winkel-search {
-        flex-basis: 100%;
+        width: 100%;
+        margin: 0;
+        order: -1;
+        border-radius: 9px;
     }
-    .winkel-sort {
-        flex: 1;
-        justify-content: space-between;
+    .winkel-sidebar.is-open {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+        gap: 1.2rem;
     }
-    .winkel-filter-check {
-        flex-basis: 100%;
-        padding: 0.3rem 0;
+    .winkel-filter-group {
+        gap: 0.55rem;
     }
-    .winkel-products-heading {
-        align-items: start;
-        flex-direction: column;
-        gap: 0.4rem;
+    .winkel-filter-group label {
+        min-height: 1.9rem;
+    }
+    .winkel-filter-group legend {
+        margin-bottom: 0.4rem;
+    }
+    .winkel-grid {
+        gap: 1.6rem 0.85rem;
+    }
+    .winkel-product-media {
+        padding: 2rem 0.35rem 0.6rem;
+        aspect-ratio: 4 / 5;
+    }
+    .winkel-product-visual {
+        border-radius: 10px;
+    }
+    .winkel-quick-add {
+        top: 0.5rem;
+        left: 0.5rem;
+        min-height: 2rem;
+        padding: 0.4rem 0.55rem;
+        font-size: 0.6rem;
+        gap: 0.25rem;
+    }
+    .winkel-product-promotion {
+        top: auto;
+        bottom: 0.45rem;
+        right: 0.45rem;
+        max-width: calc(100% - 0.9rem);
+        font-size: 0.55rem;
+        padding: 0.3rem 0.45rem;
+    }
+    .winkel-product-body {
+        padding-top: 0.7rem;
+        gap: 0.3rem;
+    }
+    .winkel-product h3 {
+        font-size: 0.87rem;
+    }
+    .winkel-product-description {
+        display: none;
+    }
+    .winkel-page .winkel-product-price {
+        font-size: 0.86rem;
+    }
+    .winkel-page .winkel-product-type {
+        font-size: 0.53rem;
+    }
+    .winkel-in-cart {
+        font-size: 0.62rem;
     }
     .winkel-product-detail {
         grid-template-columns: 1fr;
@@ -912,9 +1445,6 @@
     }
 }
 @media (max-width: 360px) {
-    .winkel-grid {
-        grid-template-columns: 1fr;
-    }
     .winkel-cart-item-controls {
         grid-template-columns: 1fr;
     }

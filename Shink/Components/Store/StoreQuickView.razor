@@ -1,0 +1,23 @@
+<dialog class="winkel-quick-view" data-store-quick-view aria-labelledby="winkel-quick-view-title">
+    <div class="winkel-quick-view-content">
+        <button class="winkel-quick-close" type="button" data-store-quick-close aria-label="Maak produkvenster toe">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
+        <div class="winkel-quick-summary">
+            <img data-store-quick-image src="/branding/schink-placeholder.png" alt="" width="120" height="120" />
+            <div>
+                <p class="winkel-section-kicker" data-store-quick-collection></p>
+                <h2 id="winkel-quick-view-title" data-store-quick-name></h2>
+                <p class="winkel-quick-price" data-store-quick-price></p>
+            </div>
+        </div>
+        <p class="winkel-quick-description" data-store-quick-description></p>
+        <label class="winkel-field winkel-quick-quantity"><span>Hoeveelheid</span><input type="number" value="1" min="1" max="10" step="1" inputmode="numeric" data-store-quick-quantity /></label>
+        <p class="winkel-quick-delivery" data-store-quick-delivery></p>
+        <p class="winkel-quick-error" data-store-quick-error role="alert" hidden></p>
+        <div class="winkel-quick-actions">
+            <button class="winkel-submit" type="button" data-store-quick-add>Voeg by mandjie</button>
+            <button class="winkel-secondary" type="button" data-store-quick-buy>Koop nou</button>
+        </div>
+    </div>
+</dialog>
