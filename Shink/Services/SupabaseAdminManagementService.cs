@@ -2623,7 +2623,8 @@ public sealed partial class SupabaseAdminManagementService(
 
     private async Task<AdminOperationContext?> TryCreateAdminOperationContextAsync(
         string? adminEmail,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool throwOnLookupFailure = false)
     {
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
@@ -2638,7 +2639,7 @@ public sealed partial class SupabaseAdminManagementService(
 
         var normalizedAdminEmail = NormalizeEmail(adminEmail);
         if (normalizedAdminEmail is null ||
-            !await IsAdminCoreAsync(baseUri, apiKey, normalizedAdminEmail, cancellationToken))
+            !await IsAdminCoreAsync(baseUri, apiKey, normalizedAdminEmail, cancellationToken, throwOnLookupFailure))
         {
             return null;
         }
@@ -4308,7 +4309,8 @@ public sealed partial class SupabaseAdminManagementService(
         return await IsAdminCoreAsync(baseUri, apiKey, adminEmail, cancellationToken);
     }
 
-    private async Task<bool> IsAdminCoreAsync(Uri baseUri, string apiKey, string? email, CancellationToken cancellationToken)
+    private async Task<bool> IsAdminCoreAsync(
+        Uri baseUri, string apiKey, string? email, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -4327,6 +4329,11 @@ public sealed partial class SupabaseAdminManagementService(
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                if (throwOnFailure)
+                {
+                    response.EnsureSuccessStatusCode();
+                }
+
                 var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogWarning(
                     "Admin lookup failed. email={Email} Status={StatusCode} Body={Body}",
@@ -4338,10 +4345,10 @@ public sealed partial class SupabaseAdminManagementService(
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             var rows = await JsonSerializer.DeserializeAsync<List<AdminUserRow>>(stream, JsonOptions, cancellationToken)
-                ?? [];
+                ?? (throwOnFailure ? throw new JsonException("Expected an admin user list.") : []);
             return rows.Count > 0;
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception exception) when (!throwOnFailure && (exception is HttpRequestException or TaskCanceledException or JsonException))
         {
             _logger.LogWarning(exception, "Admin lookup failed unexpectedly for {Email}.", normalizedEmail);
             return false;

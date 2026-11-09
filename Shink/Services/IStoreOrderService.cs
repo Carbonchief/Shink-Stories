@@ -72,7 +72,8 @@ public sealed record StoreOrderRecord(
     string? ProviderTransactionId,
     DateTimeOffset? PaidAt,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? ShippedAt = null);
 
 public sealed record StoreOrderItemRecord(
     string ProductSlug,

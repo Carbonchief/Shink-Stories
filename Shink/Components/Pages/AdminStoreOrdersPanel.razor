@@ -1,0 +1,132 @@
+<section class="admin-section store-orders ph-no-capture" aria-labelledby="store-orders-heading">
+    <div class="admin-section-head">
+        <h2 id="store-orders-heading">@T("Bestellings", "Orders")</h2>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RefreshOrdersAsync" Disabled="@_shipping">
+            @T("Herlaai bestellings", "Refresh orders")
+        </MudButton>
+    </div>
+
+    <MudTable T="AdminStoreOrderSummary" @ref="_ordersTable" ServerData="LoadOrdersAsync"
+              OnRowClick="OpenOrderFromRowAsync" Dense="true" Hover="true" Elevation="0"
+              Breakpoint="Breakpoint.Sm" @bind-RowsPerPage="_rowsPerPage">
+        <ToolBarContent>
+            @if (_listLoadFailed)
+            {
+                <p class="store-orders-error" role="alert">@T("Kon nie Winkel-bestellings laai nie.", "Could not load shop orders.")</p>
+            }
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>@T("Verwysing", "Reference")</MudTh>
+            <MudTh>@T("Klant", "Customer")</MudTh>
+            <MudTh>@T("Datum", "Date")</MudTh>
+            <MudTh>@T("Totaal", "Total")</MudTh>
+            <MudTh>@T("Betaling", "Payment")</MudTh>
+            <MudTh>@T("Versending", "Shipping")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel='@T("Verwysing", "Reference")'>
+                <button type="button" class="store-order-reference" @onclick="() => OpenOrderAsync(context)" @onclick:stopPropagation="true">
+                    @context.OrderReference
+                </button>
+            </MudTd>
+            <MudTd DataLabel='@T("Klant", "Customer")'>@context.CustomerName</MudTd>
+            <MudTd DataLabel='@T("Datum", "Date")'>@FormatDate(context.CreatedAt)</MudTd>
+            <MudTd DataLabel='@T("Totaal", "Total")'>@StoreCheckoutRules.FormatZar(context.TotalPriceZar)</MudTd>
+            <MudTd DataLabel='@T("Betaling", "Payment")'>@PaymentLabel(context.PaymentStatus)</MudTd>
+            <MudTd DataLabel='@T("Versending", "Shipping")'>
+                <span class="store-shipping-status @(context.ShippedAt.HasValue ? "is-shipped" : null)">
+                    @ShippingLabel(context.ShippedAt, context.PaymentStatus)
+                </span>
+            </MudTd>
+        </RowTemplate>
+        <LoadingContent>@T("Laai bestellings...", "Loading orders...")</LoadingContent>
+        <NoRecordsContent>
+            @if (!_listLoadFailed)
+            {
+                @T("Geen Winkel-bestellings op hierdie bladsy nie.", "No shop orders on this page.")
+            }
+        </NoRecordsContent>
+        <PagerContent>
+            <div class="store-orders-pager">
+                <MudTablePager HidePagination="true" RowsPerPageString='@T("Rye per bladsy", "Rows per page")'
+                               InfoFormat='@T("{first_item}–{last_item} van {all_items}", "{first_item}–{last_item} of {all_items}")' />
+                <div class="store-orders-page-buttons">
+                    <MudIconButton Icon="@Icons.Material.Filled.FirstPage" Disabled="@AtFirstOrderPage"
+                                   aria-label='@T("Eerste bladsy", "First page")' OnClick="@(() => _ordersTable?.NavigateTo(Page.First))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" Disabled="@AtFirstOrderPage"
+                                   aria-label='@T("Vorige bladsy", "Previous page")' OnClick="@(() => _ordersTable?.NavigateTo(Page.Previous))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.NavigateNext" Disabled="@AtLastOrderPage"
+                                   aria-label='@T("Volgende bladsy", "Next page")' OnClick="@(() => _ordersTable?.NavigateTo(Page.Next))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.LastPage" Disabled="@AtLastOrderPage"
+                                   aria-label='@T("Laaste bladsy", "Last page")' OnClick="@(() => _ordersTable?.NavigateTo(Page.Last))" />
+                </div>
+            </div>
+        </PagerContent>
+    </MudTable>
+</section>
+
+<MudDialog @bind-Visible="_orderOpen" Class="admin-solid-dialog ph-no-capture" Options="OrderDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@T("Bestelling", "Order") @_selectedReference</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_detailError is not null)
+        {
+            <p class="admin-feedback is-error" role="alert">@_detailError</p>
+        }
+        @if (_loadingOrder)
+        {
+            <p role="status">@T("Laai bestelling...", "Loading order...")</p>
+        }
+        else if (_selectedOrder is { } order)
+        {
+            <dl class="store-order-details">
+                <div><dt>@T("Klant", "Customer")</dt><dd>@order.CustomerName</dd></div>
+                <div><dt>@T("E-pos", "Email")</dt><dd>@order.CustomerEmail</dd></div>
+                <div><dt>@T("Selfoon", "Phone")</dt><dd>@order.CustomerPhone</dd></div>
+                <div><dt>@T("Bestel op", "Ordered on")</dt><dd>@FormatDate(order.CreatedAt)</dd></div>
+                <div><dt>@T("Betaling", "Payment")</dt><dd>@PaymentLabel(order.PaymentStatus)</dd></div>
+                <div><dt>@T("Betaal op", "Paid on")</dt><dd>@FormatDate(order.PaidAt)</dd></div>
+                <div><dt>@T("Paystack-transaksie", "Paystack transaction")</dt><dd>@(order.ProviderTransactionId ?? "–")</dd></div>
+                <div>
+                    <dt>@T("Versending", "Shipping")</dt>
+                    <dd class="store-order-shipping">@ShippingLabel(order.ShippedAt, order.PaymentStatus)
+                        @if (order.ShippedAt.HasValue)
+                        {
+                            <span class="store-order-shipped-date">@FormatDate(order.ShippedAt)</span>
+                        }
+                    </dd>
+                </div>
+                <div>
+                    <dt>@T("PUDO-locker of afleweringsadres", "PUDO locker or delivery address")</dt>
+                    @foreach (var line in DeliveryLines(order))
+                    {
+                        <dd>@line</dd>
+                    }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(order.Notes))
+                {
+                    <div><dt>@T("Bestelnotas", "Order notes")</dt><dd class="store-order-notes">@order.Notes</dd></div>
+                }
+            </dl>
+
+            <MudText Typo="Typo.subtitle1">@T("Items", "Items")</MudText>
+            <dl class="store-order-items">
+                @foreach (var item in order.Items)
+                {
+                    <div><dt>@item.ProductName × @item.Quantity</dt><dd>@StoreCheckoutRules.FormatZar(item.LineTotalZar)</dd></div>
+                }
+                <div class="store-order-total"><dt>@T("Totaal", "Total")</dt><dd>@StoreCheckoutRules.FormatZar(order.TotalPriceZar)</dd></div>
+            </dl>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseOrder" Disabled="@_shipping">@T("Sluit", "Close")</MudButton>
+        @if (_selectedOrder is { PaymentStatus: "paid", ShippedAt: null })
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="MarkShippedAsync" Disabled="@_shipping">
+                @(_shipping ? T("Stoor...", "Saving...") : T("Merk as versend", "Mark as shipped"))
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>

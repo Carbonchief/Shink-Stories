@@ -24,6 +24,7 @@ OUTPUT = ROOT / "output/storefront-upgrade/browser-tests"
 
 
 class OrderFixture(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
     orders = {}
     products = None
     product_revision = 1
@@ -38,11 +39,13 @@ class OrderFixture(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass
 
-    def respond(self, body, status=200):
+    def respond(self, body, status=200, content_range=None):
         data = json.dumps(body).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
+        if content_range is not None:
+            self.send_header("Content-Range", content_range)
         self.end_headers()
         self.wfile.write(data)
 
@@ -65,8 +68,37 @@ class OrderFixture(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/rest/v1/store_orders":
-            reference = parse_qs(parsed.query).get("order_reference", [""])[0].removeprefix("eq.")
-            self.respond([self.orders[reference]] if reference in self.orders else [])
+            query = parse_qs(parsed.query)
+            if "order_reference" in query:
+                reference = query["order_reference"][0].removeprefix("eq.")
+                self.respond([self.orders[reference]] if reference in self.orders else [])
+            elif "order_id" in query:
+                order_id = query["order_id"][0].removeprefix("eq.")
+                self.respond([row for row in self.orders.values() if row["order_id"] == order_id])
+            elif "customer_email" in query:
+                email = query["customer_email"][0].removeprefix("eq.")
+                self.respond([row for row in self.orders.values() if row.get("customer_email") == email])
+            else:
+                if self.server.fail_order_page.is_set():
+                    self.server.fail_order_page.clear()
+                    self.respond({"error": "Temporary fixture outage"}, 503)
+                    return
+                rows = sorted(self.orders.values(), key=lambda row: (row["created_at"], row["order_id"]), reverse=True)
+                offset = int(query.get("offset", [0])[0])
+                limit = int(query.get("limit", [25])[0])
+                if offset > 0 and offset >= len(rows):
+                    self.respond({"code": "PGRST103"}, 416, content_range=f"*/{len(rows)}")
+                    return
+                page = rows[offset:offset + limit]
+                content_range = f"{offset}-{offset + len(page) - 1}/{len(rows)}" if page else f"*/{len(rows)}"
+                if self.server.pause_order_page.is_set():
+                    self.server.pause_order_page.clear()
+                    self.server.order_page_paused.set()
+                    self.server.release_order_page.wait(timeout=10)
+                try:
+                    self.respond(page, content_range=content_range)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # A newer browser request can cancel this page load.
         elif parsed.path == "/rest/v1/subscribers":
             email = parse_qs(parsed.query).get("email", [""])[0].removeprefix("eq.")
             self.respond([self.profiles[email]] if email in self.profiles else [])
@@ -76,8 +108,12 @@ class OrderFixture(BaseHTTPRequestHandler):
         elif parsed.path == "/rest/v1/public_content_cache_revisions":
             self.respond([{"revision": self.product_revision}] if self.products is not None else [])
         elif parsed.path == "/rest/v1/admin_users":
+            if self.server.fail_admin_lookup.is_set():
+                self.server.fail_admin_lookup.clear()
+                self.respond({"error": "Temporary fixture outage"}, 503)
+                return
             email = parse_qs(parsed.query).get("email", [""])[0].removeprefix("eq.")
-            self.respond([{"email": email}] if email == "admin@example.invalid" else [])
+            self.respond([{"email": email}] if email == "admin@example.invalid" and self.server.admin_access else [])
         elif parsed.path == "/rest/v1/store_customer_details":
             email = parse_qs(parsed.query).get("account_email", [""])[0].removeprefix("eq.")
             self.respond([self.preferences[email]] if email in self.preferences else [])
@@ -90,8 +126,11 @@ class OrderFixture(BaseHTTPRequestHandler):
         elif parsed.path == "/_test/preferences":
             self.respond(self.preferences)
         elif parsed.path == "/_test/orders":
-            self.respond([{"reference": reference, "status": row["payment_status"]}
+            self.respond([{"reference": reference, "status": row["payment_status"],
+                           "shipped_at": row.get("shipped_at")}
                           for reference, row in self.orders.items()])
+        elif parsed.path == "/_test/order-page-paused":
+            self.respond({"paused": self.server.order_page_paused.wait(timeout=5)})
         else:
             self.respond([])
 
@@ -126,6 +165,29 @@ class OrderFixture(BaseHTTPRequestHandler):
         elif path == "/_test/paid" and payload["reference"] in self.orders:
             self.orders[payload["reference"]]["payment_status"] = "paid"
             self.respond({"paid": payload["reference"]})
+        elif path == "/_test/fail-order-page":
+            self.server.fail_order_page.set()
+            self.respond({})
+        elif path == "/_test/admin-access":
+            self.server.admin_access = payload["enabled"]
+            self.respond({})
+        elif path == "/_test/fail-admin-lookup":
+            self.server.fail_admin_lookup.set()
+            self.respond({})
+        elif path == "/_test/trim-orders":
+            newest_first = sorted(self.orders, key=lambda reference: self.orders[reference]["created_at"], reverse=True)
+            for reference in newest_first[:max(0, len(newest_first) - payload["remaining"])]:
+                del self.orders[reference]
+            self.respond({})
+        elif path == "/_test/pause-order-page":
+            self.orders[payload["reference"]]["customer_name"] = payload["customer_name"]
+            self.server.order_page_paused.clear()
+            self.server.release_order_page.clear()
+            self.server.pause_order_page.set()
+            self.respond({})
+        elif path == "/_test/release-order-page":
+            self.server.release_order_page.set()
+            self.respond({})
         else:
             self.respond([], 404)
 
@@ -148,6 +210,17 @@ class OrderFixture(BaseHTTPRequestHandler):
                     type(self).product_revision += 1
                     self.respond([row])
                     return
+        elif parsed.path == "/rest/v1/store_orders":
+            query = parse_qs(parsed.query)
+            if query.get("payment_status") != ["eq.paid"] or query.get("shipped_at") != ["is.null"]:
+                self.respond({"error": "Shipment must match a paid, unshipped order"}, 400)
+                return
+            order_id = query.get("order_id", [""])[0].removeprefix("eq.")
+            for row in self.orders.values():
+                if row["order_id"] == order_id and row["payment_status"] == "paid" and row.get("shipped_at") is None:
+                    row["shipped_at"] = payload["shipped_at"]
+                    self.respond([{"shipped_at": row["shipped_at"]}])
+                    return
         self.respond([])
 
 
@@ -167,11 +240,31 @@ class StorefrontBrowserTests(unittest.TestCase):
     def test_product_collections(self):
         self.run_scenarios("collections", 4)
 
+    def test_winkel_orders(self):
+        self.run_scenarios("orders", 7)
+
     def run_scenarios(self, suite, expected_passed):
         # Separate app instances keep both suites inside the real checkout rate limit.
         OUTPUT.mkdir(parents=True, exist_ok=True)
         fixture = ThreadingHTTPServer(("127.0.0.1", 0), OrderFixture)
+        fixture.admin_access = True
+        fixture.fail_admin_lookup = threading.Event()
+        fixture.fail_order_page = threading.Event()
+        fixture.pause_order_page = threading.Event()
+        fixture.order_page_paused = threading.Event()
+        fixture.release_order_page = threading.Event()
         OrderFixture.orders = {}
+        if suite == "orders":
+            for number in range(26):
+                reference = f"fixture-older-{number:02}"
+                OrderFixture.orders[reference] = {
+                    "order_id": str(uuid4()), "order_reference": reference, "customer_name": "Older Guest",
+                    "total_price_zar": 100, "payment_status": "paid" if number == 0 else "cancelled",
+                    "created_at": f"2026-01-{number + 1:02}T12:00:00Z",
+                }
+            OrderFixture.orders["fixture-older-00"].update(
+                product_slug="long-product-name", product_name="LongProductName" * 9, quantity=1, unit_price_zar=100,
+            )
         OrderFixture.preferences = {}
         OrderFixture.sessions = {}
         OrderFixture.product_revision = 1

@@ -145,6 +145,15 @@ public interface IAdminManagementService
         Guid storeProductId,
         CancellationToken cancellationToken = default);
 
+    Task<AdminStoreOrderPage> GetStoreOrdersPageAsync(
+        string? adminEmail, int pageIndex, int pageSize, CancellationToken cancellationToken = default);
+
+    Task<StoreOrderRecord?> GetStoreOrderAsync(
+        string? adminEmail, Guid orderId, CancellationToken cancellationToken = default);
+
+    Task<DateTimeOffset?> MarkStoreOrderShippedAsync(
+        string? adminEmail, Guid orderId, CancellationToken cancellationToken = default);
+
     Task<AdminSchoolSetupSnapshot> GetSchoolSetupsAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default);

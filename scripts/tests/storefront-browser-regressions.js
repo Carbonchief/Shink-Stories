@@ -569,6 +569,258 @@ async (page) => {
             assert(warnings.length === beforeSave, "Switching a clean editor prompted to discard changes.");
         });
     }
+    currentSuite = "orders";
+    await check("admin can inspect guest orders and record one shipment from desktop or mobile", async (tab, context) => {
+        await add(tab, "tiekie", 2);
+        await checkout(tab);
+        await details(tab, "Paid Guest");
+        const paidReference = await submit(tab);
+        await pay(tab, paidReference);
+        await tab.locator(".winkel-home-link").click();
+        await add(tab, "tiekie");
+        await checkout(tab);
+        await details(tab, "Pending Guest");
+        const pendingReference = await submit(tab);
+
+        const login = await tab.request.post(base + "/api/auth/login", {
+            data: { email: "admin@example.invalid", password: "Local-checkout-test-123!" },
+        });
+        assert(login.ok(), "Local admin sign-in failed.");
+        await tab.goto(base + "/admin");
+        await tab.getByRole("tab", { name: "Winkel", exact: true }).click();
+        const orders = tab.locator(".store-orders");
+        const paidRow = orders.getByRole("row").filter({ hasText: paidReference });
+        await paidRow.getByText("Versending nie aangeteken nie", { exact: true }).waitFor();
+        await paidRow.getByText("Paid Guest", { exact: true }).click();
+        const dialog = tab.getByRole("dialog");
+        await dialog.getByText("PUDO Toetslocker", { exact: true }).waitFor();
+        await dialog.getByText("review@example.invalid", { exact: true }).waitFor();
+        await dialog.getByText(/Tiekie.*× 2/i).waitFor();
+
+        const other = await context.newPage();
+        await other.setViewportSize({ width: 390, height: 844 });
+        await tab.evaluate(() => localStorage.setItem("shink.admin.language", "en"));
+        await other.goto(base + "/admin");
+        await other.getByRole("tab", { name: "Shop", exact: true }).click();
+        const mobileOrders = other.locator(".store-orders");
+        await mobileOrders.getByRole("button", { name: paidReference, exact: true }).click();
+        const mobileDialog = other.getByRole("dialog");
+        const mobileShip = mobileDialog.getByRole("button", { name: "Mark as shipped", exact: true });
+        await mobileShip.waitFor();
+        assert(await mobileDialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1), "The mobile order dialog overflows horizontally.");
+
+        await dialog.getByRole("button", { name: "Merk as versend", exact: true }).click();
+        await dialog.locator(".store-order-shipped-date").waitFor();
+        const readOrders = async () => (await (await tab.request.get(fixture + "/_test/orders")).json());
+        const firstShipment = (await readOrders()).find(order => order.reference === paidReference);
+        assert(firstShipment.status === "paid" && firstShipment.shipped_at, "Shipment was not persisted independently of payment.");
+        await mobileShip.click();
+        await mobileDialog.locator(".store-order-shipped-date").waitFor();
+        const retried = (await readOrders()).find(order => order.reference === paidReference);
+        assert(retried.shipped_at === firstShipment.shipped_at, "A second admin overwrote the shipment timestamp.");
+
+        await mobileDialog.getByRole("button", { name: "Close", exact: true }).click();
+        await other.reload();
+        await other.getByRole("tab", { name: "Shop", exact: true }).click();
+        await mobileOrders.getByRole("row").filter({ hasText: paidReference }).getByText("Shipped", { exact: true }).waitFor();
+        await mobileOrders.getByRole("button", { name: "Refresh orders", exact: true }).click();
+        await mobileOrders.getByRole("button", { name: pendingReference, exact: true }).click();
+        await mobileDialog.getByText("Pending", { exact: true }).waitFor();
+        assert(await mobileDialog.getByRole("button", { name: "Mark as shipped", exact: true }).count() === 0,
+            "An unpaid order can be marked as shipped.");
+        await mobileDialog.getByRole("button", { name: "Close", exact: true }).click();
+        await other.setViewportSize({ width: 320, height: 844 });
+        await mobileOrders.getByRole("button", { name: "Next page", exact: true }).click();
+        const legacyOrder = mobileOrders.getByRole("row").filter({ hasText: "fixture-older-00" });
+        await legacyOrder.getByText("Shipment not recorded", { exact: true }).waitFor();
+        await legacyOrder.getByRole("button", { name: "fixture-older-00", exact: true }).click();
+        await mobileDialog.getByText("Shipment not recorded", { exact: true }).waitFor();
+        await mobileDialog.getByText("LongProductName".repeat(9) + " × 1", { exact: true }).waitFor();
+        assert(await mobileDialog.locator(".mud-dialog-content").evaluate(element => element.scrollWidth <= element.clientWidth + 1),
+            "A long product name overflows the order dialog on a narrow screen.");
+    });
+
+    await check("overlapping order refreshes keep the current page", async (tab) => {
+        const login = await tab.request.post(base + "/api/auth/login", {
+            data: { email: "admin@example.invalid", password: "Local-checkout-test-123!" },
+        });
+        assert(login.ok(), "Local admin sign-in failed.");
+        await tab.evaluate(() => localStorage.setItem("shink.admin.language", "en"));
+        await tab.goto(base + "/admin");
+        await tab.getByRole("tab", { name: "Shop", exact: true }).click();
+        const orders = tab.locator(".store-orders");
+        await orders.getByRole("button", { name: "Next page", exact: true }).click();
+        const legacyOrder = orders.getByRole("row").filter({ hasText: "fixture-older-00" });
+        await legacyOrder.getByText("Older Guest", { exact: true }).waitFor();
+        const pageNumber = orders.locator(".mud-table-page-number-information");
+        const initialPage = await pageNumber.innerText();
+        const refresh = orders.getByRole("button", { name: "Refresh orders", exact: true });
+        await tab.request.post(fixture + "/_test/pause-order-page", {
+            data: { reference: "fixture-older-00", customer_name: "Refreshed Guest" },
+        });
+        try {
+            await refresh.click();
+            const paused = await (await tab.request.get(fixture + "/_test/order-page-paused")).json();
+            assert(paused.paused, "The first refresh never reached the fixture.");
+            await refresh.click();
+            await legacyOrder.getByText("Refreshed Guest", { exact: true }).waitFor();
+            assert(await pageNumber.innerText() === initialPage, "A cancelled refresh reset the current orders page.");
+        } finally {
+            await tab.request.post(fixture + "/_test/release-order-page");
+        }
+    });
+
+    await check("a failed order refresh keeps the page and reports the error until retry", async (tab) => {
+        const login = await tab.request.post(base + "/api/auth/login", {
+            data: { email: "admin@example.invalid", password: "Local-checkout-test-123!" },
+        });
+        assert(login.ok(), "Local admin sign-in failed.");
+        await tab.evaluate(() => localStorage.setItem("shink.admin.language", "en"));
+        await tab.goto(base + "/admin");
+        await tab.getByRole("tab", { name: "Shop", exact: true }).click();
+        const orders = tab.locator(".store-orders");
+        const legacyOrder = orders.getByRole("button", { name: "fixture-older-00", exact: true });
+        await orders.getByRole("button", { name: "Next page", exact: true }).click();
+        await legacyOrder.waitFor();
+        const pageNumber = orders.locator(".mud-table-page-number-information");
+        const initialPage = await pageNumber.innerText();
+        const refresh = orders.getByRole("button", { name: "Refresh orders", exact: true });
+        await tab.request.post(fixture + "/_test/fail-order-page");
+        await refresh.click();
+        const error = orders.getByRole("alert").filter({ hasText: "Could not load shop orders." });
+        await error.waitFor();
+        assert(await pageNumber.innerText() === initialPage, "A failed refresh reset the current orders page.");
+        assert(await legacyOrder.isVisible(), "A failed refresh removed the last loaded rows.");
+        await refresh.click();
+        await error.waitFor({ state: "hidden" });
+        assert(await pageNumber.innerText() === initialPage && await legacyOrder.isVisible(),
+            "Retrying the refresh did not restore the current orders page.");
+
+        await tab.request.post(fixture + "/_test/fail-order-page");
+        await orders.getByRole("button", { name: "Previous page", exact: true }).click();
+        await error.waitFor();
+        await legacyOrder.waitFor({ state: "hidden" });
+        await refresh.click();
+        await error.waitFor({ state: "hidden" });
+        const newer = orders.getByRole("button", { name: "fixture-older-25", exact: true });
+        await newer.waitFor();
+
+        await tab.request.post(fixture + "/_test/admin-access", { data: { enabled: false } });
+        try {
+            await refresh.click();
+            await error.waitFor();
+            await newer.waitFor({ state: "hidden" });
+            assert(await orders.locator(".store-order-reference").count() === 0,
+                "The grid kept customer rows after access was revoked.");
+        } finally {
+            await tab.request.post(fixture + "/_test/admin-access", { data: { enabled: true } });
+        }
+    });
+
+    await check("the orders pager has Afrikaans names and navigates on a narrow screen", async (tab) => {
+        const login = await tab.request.post(base + "/api/auth/login", {
+            data: { email: "admin@example.invalid", password: "Local-checkout-test-123!" },
+        });
+        assert(login.ok(), "Local admin sign-in failed.");
+        await tab.setViewportSize({ width: 320, height: 844 });
+        await tab.goto(base + "/admin");
+        await tab.getByRole("tab", { name: "Winkel", exact: true }).click();
+        const orders = tab.locator(".store-orders");
+        const first = orders.getByRole("button", { name: "Eerste bladsy", exact: true });
+        const previous = orders.getByRole("button", { name: "Vorige bladsy", exact: true });
+        const next = orders.getByRole("button", { name: "Volgende bladsy", exact: true });
+        const last = orders.getByRole("button", { name: "Laaste bladsy", exact: true });
+        const oldest = orders.getByRole("button", { name: "fixture-older-00", exact: true });
+        const newer = orders.getByRole("button", { name: "fixture-older-25", exact: true });
+        await newer.waitFor();
+        assert(await first.isDisabled() && await previous.isDisabled(), "Back navigation is available on the first page.");
+        await last.click();
+        await oldest.waitFor();
+        assert(await next.isDisabled() && await last.isDisabled(), "Forward navigation is available on the last page.");
+        await first.click();
+        await newer.waitFor();
+        await next.click();
+        await oldest.waitFor();
+        await previous.click();
+        await newer.waitFor();
+
+        const orderCount = (await (await tab.request.get(fixture + "/_test/orders")).json()).length;
+        await orders.locator(".mud-table-pagination-select").click();
+        await tab.locator(".mud-popover-open").getByText("10", { exact: true }).click();
+        await orders.getByText(`1–10 van ${orderCount}`, { exact: true }).waitFor();
+        await last.click();
+        await oldest.waitFor();
+        await orders.getByText(`21–${orderCount} van ${orderCount}`, { exact: true }).waitFor();
+        assert(await orders.evaluate(element => element.scrollWidth <= element.clientWidth + 1),
+            "The orders grid or pager overflows on a narrow screen.");
+    });
+
+    async function openOrdersOnSecondPage(tab) {
+        const login = await tab.request.post(base + "/api/auth/login", {
+            data: { email: "admin@example.invalid", password: "Local-checkout-test-123!" },
+        });
+        assert(login.ok(), "Local admin sign-in failed.");
+        await tab.evaluate(() => localStorage.setItem("shink.admin.language", "en"));
+        await tab.goto(base + "/admin");
+        await tab.getByRole("tab", { name: "Shop", exact: true }).click();
+        const orders = tab.locator(".store-orders");
+        await orders.getByRole("button", { name: "Next page", exact: true }).click();
+        await orders.getByRole("button", { name: "fixture-older-00", exact: true }).waitFor();
+        return orders;
+    }
+
+    await check("a temporary admin lookup outage leaves the current orders page in place", async (tab) => {
+        const orders = await openOrdersOnSecondPage(tab);
+        const pageNumber = orders.locator(".mud-table-page-number-information");
+        const initialPage = await pageNumber.innerText();
+        const refresh = orders.getByRole("button", { name: "Refresh orders", exact: true });
+        const error = orders.getByRole("alert").filter({ hasText: "Could not load shop orders." });
+
+        const armed = await tab.request.post(fixture + "/_test/fail-admin-lookup");
+        assert(armed.ok(), "Could not set up the admin lookup outage.");
+        await refresh.click();
+        await error.waitFor();
+        assert(await pageNumber.innerText() === initialPage, "An admin lookup outage reset the order page.");
+        assert(await orders.getByRole("button", { name: "fixture-older-00", exact: true }).isVisible(),
+            "An admin lookup outage removed the previously loaded rows.");
+        await refresh.click();
+        await error.waitFor({ state: "hidden" });
+        assert(await pageNumber.innerText() === initialPage, "Retrying the admin lookup moved the order page.");
+    });
+
+    await check("a saved shipment updates the grid even if the list refresh fails", async (tab) => {
+        const orders = await openOrdersOnSecondPage(tab);
+        const row = orders.getByRole("row").filter({ hasText: "fixture-older-00" });
+        await row.getByRole("button", { name: "fixture-older-00", exact: true }).click();
+        const dialog = tab.getByRole("dialog");
+        const ship = dialog.getByRole("button", { name: "Mark as shipped", exact: true });
+        await ship.waitFor();
+
+        const armed = await tab.request.post(fixture + "/_test/fail-order-page");
+        assert(armed.ok(), "Could not set up the order list outage.");
+        await ship.click();
+        await dialog.locator(".store-order-shipped-date").waitFor();
+        await dialog.getByRole("button", { name: "Close", exact: true }).click();
+        await orders.getByRole("alert").filter({ hasText: "Could not load shop orders." }).waitFor();
+        const savedOrders = await (await tab.request.get(fixture + "/_test/orders")).json();
+        assert(savedOrders.find(order => order.reference === "fixture-older-00")?.shipped_at,
+            "The fixture did not record the shipment.");
+        await row.getByText("Shipped", { exact: true }).waitFor();
+    });
+
+    await check("the grid recovers when the last orders page disappears at a page boundary", async (tab) => {
+        const orders = await openOrdersOnSecondPage(tab);
+        const trimmed = await tab.request.post(fixture + "/_test/trim-orders", { data: { remaining: 25 } });
+        assert(trimmed.ok(), "Could not reduce the order count.");
+        await orders.getByRole("button", { name: "Refresh orders", exact: true }).click();
+        await orders.getByText("1–25 of 25", { exact: true }).waitFor();
+        await orders.getByRole("button", { name: "fixture-older-00", exact: true }).waitFor();
+        assert(await orders.locator(".store-order-reference").count() === 25,
+            "The grid did not load the remaining orders.");
+        assert(await orders.getByRole("button", { name: "Next page", exact: true }).isDisabled(),
+            "The pager still offers a page beyond the order count.");
+    });
+
     const summary = { passed: results.filter(result => result.passed).length, failed: results.filter(result => !result.passed).length, results };
     if (summary.failed) throw new Error(JSON.stringify(summary));
     return summary;

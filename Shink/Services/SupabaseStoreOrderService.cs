@@ -357,7 +357,7 @@ public sealed class SupabaseStoreOrderService(
 
     private string ResolveApiKey() => _options.SecretKey;
 
-    private static StoreOrderRecord MapRecord(StoreOrderRow row) =>
+    internal static StoreOrderRecord MapRecord(StoreOrderRow row) =>
         new(
             OrderId: row.OrderId,
             OrderReference: row.OrderReference?.Trim() ?? string.Empty,
@@ -389,7 +389,8 @@ public sealed class SupabaseStoreOrderService(
             ProviderTransactionId: NormalizeOptionalText(row.ProviderTransactionId, 120),
             PaidAt: row.PaidAt,
             CreatedAt: row.CreatedAt,
-            UpdatedAt: row.UpdatedAt);
+            UpdatedAt: row.UpdatedAt,
+            ShippedAt: row.ShippedAt);
 
     private static IReadOnlyList<StoreOrderItemRecord> MapItems(
         JsonElement itemsNode,
@@ -585,7 +586,7 @@ public sealed class SupabaseStoreOrderService(
         return TryReadString(nested, secondProperty);
     }
 
-    private sealed record StoreOrderRow(
+    internal sealed record StoreOrderRow(
         [property: JsonPropertyName("order_id")] Guid OrderId,
         [property: JsonPropertyName("order_reference")] string? OrderReference,
         [property: JsonPropertyName("product_slug")] string? ProductSlug,
@@ -611,5 +612,6 @@ public sealed class SupabaseStoreOrderService(
         [property: JsonPropertyName("provider_transaction_id")] string? ProviderTransactionId,
         [property: JsonPropertyName("paid_at")] DateTimeOffset? PaidAt,
         [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
-        [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+        [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt,
+        [property: JsonPropertyName("shipped_at")] DateTimeOffset? ShippedAt);
 }
