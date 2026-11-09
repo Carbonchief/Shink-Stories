@@ -17,7 +17,7 @@
     @foreach (var product in Products)
     {
         <span @key="product.Slug" data-store-product="@product.Slug" data-name="@product.Name"
-              data-price="@StoreCheckoutRules.ToCents(product.UnitPriceZar)"
+              data-price="@StoreCheckoutRules.ToCents(product.UnitPriceZar)" data-collection="@product.CollectionSlug"
               data-image="@product.ImagePath" data-alt="@product.AltText" data-description="@product.Description" data-collection-label="@product.CollectionName"
               data-free-delivery="@(product.WaivesDeliveryFee ? "true" : "false")"></span>
     }

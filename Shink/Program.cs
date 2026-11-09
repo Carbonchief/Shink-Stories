@@ -58,6 +58,7 @@ const decimal StoreDeliveryFeeZar = 80m;
 
 var builder = WebApplication.CreateBuilder(args);
 var postHogSettings = PostHogSettings.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(postHogSettings);
 var postHogHostUrl = postHogSettings.HostUrl;
 var authSessionBootstrapOptions = builder.Configuration.GetSection(AuthSessionOptions.SectionName).Get<AuthSessionOptions>() ?? new AuthSessionOptions();
 var authSessionLifetimeDays = NormalizeSessionLifetimeDays(authSessionBootstrapOptions.SessionLifetimeDays);
@@ -228,6 +229,11 @@ builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificatio
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 if (builder.Configuration.GetValue("BackgroundJobs:Enabled", true))
 {
+    if (postHogSettings.IsConfigured)
+    {
+        builder.Services.AddHttpClient<StorePurchaseAnalytics>(client => client.Timeout = TimeSpan.FromSeconds(10));
+        builder.Services.AddHostedService<StorePurchaseAnalyticsWorker>();
+    }
     builder.Services.AddHostedService<PaystackAuthorizationSubscriptionBillingWorker>();
     builder.Services.AddHostedService<SubscriptionPaymentRecoveryWorker>();
     builder.Services.AddHostedService<PaystackCardUpdateWorker>();
@@ -1149,7 +1155,8 @@ app.MapGet("/betaalherinneringe/gaan", async (
             DeliverySuburb: order.DeliverySuburb,
             DeliveryCity: order.DeliveryCity,
             DeliveryPostalCode: order.DeliveryPostalCode,
-            Notes: order.Notes);
+            Notes: order.Notes,
+            AnalyticsVisitorId: order.AnalyticsVisitorId);
         var createResult = await storeOrderService.CreatePendingOrderAsync(freshDraft, httpContext.RequestAborted);
         if (!createResult.IsSuccess || createResult.Order is null)
         {
@@ -1816,7 +1823,13 @@ app.MapPost("/winkel/koop/paystack", async (
             message: errorMessage));
     }
 
-    var storeDraft = draft!;
+    var visitorId = form["winkelAnalyticsVisitorId"].ToString();
+    var storeDraft = draft! with
+    {
+        AnalyticsVisitorId = postHogSettings.IsConfigured && Guid.TryParseExact(visitorId, "D", out var parsedVisitorId) && parsedVisitorId != Guid.Empty
+            ? parsedVisitorId
+            : null
+    };
 
     var preferencesError = await StoreCheckoutPreferences.SaveIfRequestedAsync(
         httpContext.User, form, storeDraft, storeCustomerDetailsService, httpContext.RequestAborted);

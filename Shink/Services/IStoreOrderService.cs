@@ -44,7 +44,8 @@ public sealed record StoreOrderDraft(
     string? DeliverySuburb,
     string DeliveryCity,
     string DeliveryPostalCode,
-    string? Notes);
+    string? Notes,
+    Guid? AnalyticsVisitorId = null);
 
 public sealed record StoreOrderRecord(
     Guid OrderId,
@@ -73,6 +74,7 @@ public sealed record StoreOrderRecord(
     DateTimeOffset? PaidAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
+    Guid? AnalyticsVisitorId = null,
     DateTimeOffset? ShippedAt = null);
 
 public sealed record StoreOrderItemRecord(

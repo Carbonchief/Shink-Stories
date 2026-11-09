@@ -59,6 +59,7 @@ public sealed class SupabaseStoreOrderService(
                 delivery_city = draft.DeliveryCity,
                 delivery_postal_code = draft.DeliveryPostalCode,
                 notes = draft.Notes,
+                analytics_visitor_id = draft.AnalyticsVisitorId,
                 payment_status = "pending",
                 provider = "paystack",
                 currency = "ZAR",
@@ -390,6 +391,7 @@ public sealed class SupabaseStoreOrderService(
             PaidAt: row.PaidAt,
             CreatedAt: row.CreatedAt,
             UpdatedAt: row.UpdatedAt,
+            AnalyticsVisitorId: row.AnalyticsVisitorId,
             ShippedAt: row.ShippedAt);
 
     private static IReadOnlyList<StoreOrderItemRecord> MapItems(
@@ -613,5 +615,6 @@ public sealed class SupabaseStoreOrderService(
         [property: JsonPropertyName("paid_at")] DateTimeOffset? PaidAt,
         [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
         [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt,
+        [property: JsonPropertyName("analytics_visitor_id")] Guid? AnalyticsVisitorId,
         [property: JsonPropertyName("shipped_at")] DateTimeOffset? ShippedAt);
 }

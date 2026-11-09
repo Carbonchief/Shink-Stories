@@ -127,7 +127,7 @@ class OrderFixture(BaseHTTPRequestHandler):
             self.respond(self.preferences)
         elif parsed.path == "/_test/orders":
             self.respond([{"reference": reference, "status": row["payment_status"],
-                           "shipped_at": row.get("shipped_at")}
+                           "analytics_visitor_id": row.get("analytics_visitor_id"), "shipped_at": row.get("shipped_at")}
                           for reference, row in self.orders.items()])
         elif parsed.path == "/_test/order-page-paused":
             self.respond({"paused": self.server.order_page_paused.wait(timeout=5)})
@@ -240,6 +240,9 @@ class StorefrontBrowserTests(unittest.TestCase):
     def test_product_collections(self):
         self.run_scenarios("collections", 4)
 
+    def test_winkel_analytics(self):
+        self.run_scenarios("analytics", 1)
+
     def test_winkel_orders(self):
         self.run_scenarios("orders", 7)
 
@@ -296,6 +299,8 @@ class StorefrontBrowserTests(unittest.TestCase):
             "Geoapify__ApiKey": "", "PostHog__ProjectApiKey": "", "POSTHOG_PROJECT_API_KEY": "",
             "POSTHOG_API_KEY": "", "PostHog__HostUrl": "", "POSTHOG_HOST_URL": "", "POSTHOG_HOST": "",
         }}
+        if suite == "analytics":
+            env.update({"PostHog__ProjectApiKey": "phc_local_winkel_test", "PostHog__HostUrl": fixture_url})
         with (OUTPUT / "app.log").open("w") as log:
             app = subprocess.Popen(["dotnet", "run", "--project", str(ROOT / "Shink/Shink.csproj"),
                                     "--no-build", "--no-launch-profile"], cwd=ROOT, env=env,

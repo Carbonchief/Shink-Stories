@@ -287,6 +287,49 @@ let currentRoot;
 let currentView;
 let disposeCurrent;
 let enhancedNavigationBound = false;
+let lastAnalyticsView;
+let checkoutTracked = false;
+let lastAnalyticsTimestamp = 0;
+
+function winkelAnalytics() {
+    try {
+        const { posthogApiKey, posthogHostUrl, posthogEnvironment } = document.body.dataset;
+        if (!posthogApiKey?.startsWith("phc_") || !posthogHostUrl ||
+            navigator.globalPrivacyControl || window.posthog?.has_opted_out_capturing?.()) return null;
+        const endpoint = new URL(posthogHostUrl.replace(/\/+$/, "") + "/i/v0/e/");
+        if (endpoint.protocol !== "https:" &&
+            !(endpoint.protocol === "http:" && ["127.0.0.1", "localhost"].includes(endpoint.hostname))) return null;
+        const key = "schink.winkel.analytics.v1";
+        let visitorId = localStorage.getItem(key);
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(visitorId ?? "")) {
+            visitorId = crypto.randomUUID();
+            localStorage.setItem(key, visitorId);
+        }
+        return { endpoint, visitorId, apiKey: posthogApiKey, environment: posthogEnvironment };
+    } catch {
+        // Analytics is optional when browser storage or configuration is unavailable.
+        return null;
+    }
+}
+
+function captureWinkelEvent(event, properties) {
+    const analytics = winkelAnalytics();
+    if (!analytics) return;
+    lastAnalyticsTimestamp = Math.max(Date.now(), lastAnalyticsTimestamp + 1);
+    void fetch(analytics.endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "omit",
+        keepalive: true,
+        body: JSON.stringify({
+            api_key: analytics.apiKey,
+            distinct_id: `winkel:${analytics.visitorId}`,
+            event,
+            timestamp: new Date(lastAnalyticsTimestamp).toISOString(),
+            properties: { ...properties, environment: analytics.environment, source: "browser", $process_person_profile: false },
+        }),
+    }).catch(() => { /* Analytics must never interrupt shopping. */ });
+}
 
 function viewKey(root) {
     return `${location.pathname}${location.search}:${root?.dataset.storeView || ""}:${root?.dataset.storeCompletedReference || ""}`;
@@ -311,7 +354,23 @@ export function initialize() {
     currentView = key;
     let state = readState();
     updateBadges(state.items);
-    if (!root) return;
+    if (!root) {
+        lastAnalyticsView = null;
+        return;
+    }
+
+    const shouldTrackView = lastAnalyticsView !== key && !root.querySelector(".winkel-receipt");
+    if (lastAnalyticsView !== key) checkoutTracked = false;
+    lastAnalyticsView = key;
+    const page = root.dataset.storeView;
+    const track = (event, properties = {}) => captureWinkelEvent(event, { page, ...properties });
+    let searchTimer;
+    let pendingSearch;
+    const flushSearch = () => {
+        clearTimeout(searchTimer);
+        if (pendingSearch) track("winkel_searched", pendingSearch);
+        pendingSearch = null;
+    };
 
     const controller = new AbortController();
     const listen = (target, event, handler) =>
@@ -319,6 +378,7 @@ export function initialize() {
     const quickView = root.querySelector("[data-store-quick-view]");
     let selectedProduct = null;
     disposeCurrent = () => {
+        flushSearch();
         if (quickView?.open) quickView.close();
         document.body.classList.remove("winkel-quick-view-open");
         controller.abort();
@@ -330,6 +390,7 @@ export function initialize() {
         image: element.dataset.image,
         alt: element.dataset.alt,
         description: element.dataset.description,
+        collection: element.dataset.collection,
         collectionLabel: element.dataset.collectionLabel,
         freeDelivery: element.dataset.freeDelivery === "true",
     }));
@@ -451,6 +512,10 @@ export function initialize() {
         if (postedTotal) postedTotal.value = String(totals.total);
         const pay = root.querySelector("[data-store-pay]");
         if (pay) pay.disabled = totals.count === 0;
+        if (form && totals.count > 0 && !checkoutTracked) {
+            checkoutTracked = true;
+            track("winkel_checkout_started", { item_count: totals.count, total_cents: totals.total, currency: "ZAR" });
+        }
     }
 
     function change(slug, quantity, successMessage) {
@@ -462,6 +527,23 @@ export function initialize() {
         render();
         notice(result.error || successMessage || "Jou mandjie is opgedateer.");
         return result.error;
+    }
+
+    function trackProductView(product, viewType) {
+        track("winkel_product_viewed", {
+            product_slug: product.slug,
+            collection: product.collection,
+            view_type: viewType,
+        });
+    }
+
+    function trackBasketAdd(product, quantity, viewType) {
+        track("winkel_basket_added", {
+            product_slug: product.slug,
+            collection: product.collection,
+            quantity,
+            view_type: viewType,
+        });
     }
 
     function openProduct(slug) {
@@ -502,6 +584,7 @@ export function initialize() {
         quickView.querySelector("[data-store-quick-error]").hidden = true;
         quickView.showModal();
         document.body.classList.add("winkel-quick-view-open");
+        trackProductView(selectedProduct, "quick_view");
     }
 
     if (quickView) {
@@ -564,6 +647,7 @@ export function initialize() {
                     false;
                 return;
             }
+            trackBasketAdd(selectedProduct, quantity, button.hasAttribute("data-store-quick-buy") ? "buy_now" : "quick_view");
             quickView.close();
             if (button.hasAttribute("data-store-quick-buy"))
                 location.assign("/winkel/afreken");
@@ -582,11 +666,12 @@ export function initialize() {
                 notice("Kies 'n hoeveelheid van 1 tot 10.");
                 return;
             }
-            change(
+            const error = change(
                 slug,
                 existing + quantity,
                 `${product.name} is by jou mandjie. Gaan na jou mandjie wanneer jy gereed is.`,
             );
+            if (!error) trackBasketAdd(product, quantity, "detail");
         } else if (button.hasAttribute("data-store-remove")) {
             change(
                 button.dataset.storeRemove,
@@ -669,10 +754,29 @@ export function initialize() {
         );
         const empty = root.querySelector("[data-store-no-results]");
         if (empty) empty.hidden = count !== 0;
+        return count;
     };
     const filters = root.querySelector("[data-store-filters]");
     if (filters) {
-        listen(filters, "input", filterProducts);
+        listen(filters, "input", (event) => {
+            const resultCount = filterProducts();
+            const input = event.target;
+            if (input.matches("[data-store-search]")) {
+                clearTimeout(searchTimer);
+                const queryLength = input.value.trim().length;
+                pendingSearch = queryLength ? { query_length: queryLength, result_count: resultCount } : null;
+                if (pendingSearch) searchTimer = setTimeout(flushSearch, 400);
+            } else if (input.matches("[data-store-collection], [data-store-free-filter], [data-store-sort]")) {
+                flushSearch();
+                const filterType = input.matches("[data-store-collection]") ? "collection" :
+                    input.matches("[data-store-free-filter]") ? "delivery" : "sort";
+                track("winkel_filter_changed", {
+                    filter_type: filterType,
+                    filter_value: filterType === "delivery" ? String(input.checked) : input.value || "all",
+                    result_count: resultCount,
+                });
+            }
+        });
         listen(
             root.querySelector("[data-store-reset-filters]"),
             "click",
@@ -689,7 +793,8 @@ export function initialize() {
                     "select[data-store-sort]",
                 );
                 if (sortSelect) sortSelect.value = "featured";
-                filterProducts();
+                flushSearch();
+                track("winkel_filter_changed", { filter_type: "reset", result_count: filterProducts() });
             },
         );
         const filterToggle = root.querySelector("[data-store-filter-toggle]");
@@ -712,6 +817,7 @@ export function initialize() {
             );
         }
         filterProducts();
+        listen(window, "pagehide", flushSearch);
     }
 
     const form = root.querySelector("#winkel-order-form");
@@ -801,6 +907,7 @@ export function initialize() {
                 .join("");
             form.querySelector("[data-store-checkout-id]").value =
                 draftCheckoutId;
+            form.querySelector("[data-store-analytics-visitor]").value = winkelAnalytics()?.visitorId ?? "";
             state = captureCheckout(
                 { ...latestState, items: latest },
                 draftCheckoutId,
@@ -833,6 +940,11 @@ export function initialize() {
             notice("Jou mandjie is in 'n ander oortjie opgedateer.");
         }
     });
+    if (shouldTrackView) {
+        track("winkel_visited");
+        const detailProduct = products.find(product => product.slug === root.dataset.storeDetailSlug);
+        if (detailProduct) trackProductView(detailProduct, "detail");
+    }
     render();
     if (originalItems !== JSON.stringify(state.items) && !completedReference)
         notice(

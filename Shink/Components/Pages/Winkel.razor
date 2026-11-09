@@ -25,6 +25,7 @@
 </HeadContent>
 
 <section class="winkel-page" data-store data-store-view="@View" data-store-delivery-cents="@StoreCheckoutRules.ToCents(StoreCheckoutRules.DeliveryFeeZar)"
+         data-store-detail-slug="@(View == "product" ? Product?.Slug : null)"
          data-store-max-per-product="@StoreCheckoutRules.MaxPerProduct" data-store-max-items="@StoreCheckoutRules.MaxItems"
          data-store-completed-reference="@(IsVerifiedPaid ? VerifiedOrder!.OrderReference : null)"
          data-store-completed-checkout-id="@(IsVerifiedPaid ? CompletedCheckoutId : null)">

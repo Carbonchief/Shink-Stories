@@ -569,6 +569,61 @@ async (page) => {
             assert(warnings.length === beforeSave, "Switching a clean editor prompted to discard changes.");
         });
     }
+    currentSuite = "analytics";
+    await check("Winkel analytics connects discovery, basket and checkout without leaking personal data", async (tab, context) => {
+        const events = [];
+        const captureUrl = fixture + "/i/v0/e/";
+        await context.route(captureUrl, async route => {
+            if (route.request().method() === "POST") events.push(route.request().postDataJSON());
+            await route.fulfill({ status: 200, body: '{"status":1}', headers: {
+                "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS",
+                "Access-Control-Allow-Headers": "content-type",
+            } });
+        });
+        const captureDuring = async (name, action) => {
+            const [response] = await Promise.all([
+                tab.waitForResponse(response => response.url() === captureUrl && response.request().method() === "POST" &&
+                    response.request().postDataJSON().event === name),
+                action(),
+            ]);
+            assert(response.ok(), `Capture failed for ${name}.`);
+            return response.request().postDataJSON();
+        };
+        const visit = await captureDuring("winkel_visited", () => tab.reload());
+        const detail = await captureDuring("winkel_product_viewed", () => tab.locator('[data-store-card][data-slug="tiekie"] .winkel-product-media').click());
+        assert(detail.properties.view_type === "detail" && detail.properties.product_slug === "tiekie", "Detail view attribution is missing.");
+        await tab.locator(".winkel-home-link").click();
+        const privateSearch = "search-private@example.invalid";
+        const search = await captureDuring("winkel_searched", () => tab.locator("[data-store-search]").fill(privateSearch));
+        assert(search.properties.query_length === privateSearch.length && search.properties.result_count === 0, "Search counts are incorrect.");
+        const reset = await captureDuring("winkel_filter_changed", () => tab.locator("[data-store-reset-filters]").click());
+        assert(reset.properties.filter_type === "reset", "Resetting filters did not record a reset.");
+        const filter = await captureDuring("winkel_filter_changed", () => tab.locator('[data-store-collection][value="storietjommies"]').check());
+        assert(filter.properties.filter_type === "collection" && filter.properties.filter_value === "storietjommies", "Collection filter is missing.");
+        const quickView = await captureDuring("winkel_product_viewed", () => tab.locator('[data-store-open-product="tiekie"]').click());
+        assert(quickView.properties.view_type === "quick_view", "Quick views must be distinguishable from product details.");
+        await tab.locator("[data-store-quick-quantity]").fill("11");
+        await tab.locator("[data-store-quick-add]").click();
+        await tab.locator("[data-store-quick-error]").waitFor({ state: "visible" });
+        await tab.locator("[data-store-quick-quantity]").fill("2");
+        const added = await captureDuring("winkel_basket_added", () => tab.locator("[data-store-quick-add]").click());
+        assert(added.properties.quantity === 2 && added.properties.collection === "storietjommies", "Successful basket addition is incorrect.");
+        assert(events.filter(event => event.event === "winkel_basket_added").length === 1, "An invalid basket add counted as successful.");
+        const started = await captureDuring("winkel_checkout_started", () => checkout(tab));
+        assert(started.properties.item_count === 2 && started.properties.currency === "ZAR", "Checkout totals are missing.");
+        await details(tab);
+        const reference = await submit(tab);
+        const orders = await (await tab.request.get(fixture + "/_test/orders")).json();
+        assert(`winkel:${orders.find(order => order.reference === reference).analytics_visitor_id}` === visit.distinct_id,
+            "Checkout did not persist the browser analytics ID on the order.");
+        await pay(tab, reference);
+        assert(events.every(event => event.distinct_id === visit.distinct_id && event.properties.environment === "development" &&
+            event.properties.source === "browser" && event.properties.$process_person_profile === false), "Browser event identity or environment changed.");
+        assert(events.every(event => event.event !== "winkel_purchase_verified"), "The receipt generated a client-side purchase event.");
+        const payloads = JSON.stringify(events);
+        assert(![privateSearch, "review@example.invalid", "PUDO Toetslocker", "0821234567", reference].some(value => payloads.includes(value)),
+            "The analytics payload contains personal checkout or search data.");
+    });
     currentSuite = "orders";
     await check("admin can inspect guest orders and record one shipment from desktop or mobile", async (tab, context) => {
         await add(tab, "tiekie", 2);

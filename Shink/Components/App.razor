@@ -5,6 +5,7 @@
 @inject IConfiguration Configuration
 @inject IHttpContextAccessor HttpContextAccessor
 @inject NavigationManager NavigationManager
+@inject IWebHostEnvironment HostEnvironment
 <!DOCTYPE html>
 <html lang="af">
 
@@ -27,7 +28,8 @@
     <HeadOutlet />
 </head>
 
-<body data-posthog-api-key="@PostHogProjectApiKey" data-posthog-host-url="@PostHogHostUrl" data-posthog-user-email="@PostHogUserEmail">
+<body data-posthog-api-key="@PostHogProjectApiKey" data-posthog-host-url="@PostHogHostUrl" data-posthog-user-email="@PostHogUserEmail"
+      data-posthog-environment="@HostEnvironment.EnvironmentName.ToLowerInvariant()">
     <section id="unsupported-browser-fallback" class="unsupported-browser-fallback" hidden aria-live="polite">
         <div class="unsupported-browser-card">
             <img class="unsupported-browser-logo" src="/branding/schink-logo-text.png" alt="Schink Stories" />
