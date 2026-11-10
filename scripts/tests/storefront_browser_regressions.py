@@ -241,7 +241,7 @@ class StorefrontBrowserTests(unittest.TestCase):
         self.run_scenarios("collections", 4)
 
     def test_winkel_analytics(self):
-        self.run_scenarios("analytics", 1)
+        self.run_scenarios("analytics", 2)
 
     def test_winkel_orders(self):
         self.run_scenarios("orders", 7)

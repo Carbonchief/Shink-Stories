@@ -21,6 +21,7 @@ public partial class Winkel
     [SupplyParameterFromQuery(Name = "verwysing")] public string? OrderReference { get; set; }
     [SupplyParameterFromQuery(Name = "boodskap")] public string? Message { get; set; }
 
+    private readonly string _analyticsPageId = Guid.NewGuid().ToString("N");
     private IReadOnlyList<StoreProduct> Products { get; set; } = [];
     private StoreProduct? Product { get; set; }
     private StoreOrderRecord? VerifiedOrder { get; set; }

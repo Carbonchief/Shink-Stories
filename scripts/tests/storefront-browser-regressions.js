@@ -570,7 +570,7 @@ async (page) => {
         });
     }
     currentSuite = "analytics";
-    await check("Winkel analytics connects discovery, basket and checkout without leaking personal data", async (tab, context) => {
+    async function recordWinkelEvents(tab, context) {
         const events = [];
         const captureUrl = fixture + "/i/v0/e/";
         await context.route(captureUrl, async route => {
@@ -589,6 +589,11 @@ async (page) => {
             assert(response.ok(), `Capture failed for ${name}.`);
             return response.request().postDataJSON();
         };
+        return { events, captureDuring };
+    }
+
+    await check("Winkel analytics connects discovery, basket and checkout without leaking personal data", async (tab, context) => {
+        const { events, captureDuring } = await recordWinkelEvents(tab, context);
         const visit = await captureDuring("winkel_visited", () => tab.reload());
         const detail = await captureDuring("winkel_product_viewed", () => tab.locator('[data-store-card][data-slug="tiekie"] .winkel-product-media').click());
         assert(detail.properties.view_type === "detail" && detail.properties.product_slug === "tiekie", "Detail view attribution is missing.");
@@ -623,6 +628,46 @@ async (page) => {
         const payloads = JSON.stringify(events);
         assert(![privateSearch, "review@example.invalid", "PUDO Toetslocker", "0821234567", reference].some(value => payloads.includes(value)),
             "The analytics payload contains personal checkout or search data.");
+    });
+
+    await check("Winkel analytics counts rendered pages once during enhanced navigation", async (tab, context) => {
+        const { events, captureDuring } = await recordWinkelEvents(tab, context);
+        await captureDuring("winkel_visited", () => tab.reload());
+        const productUrl = base + "/winkel/produk/tiekie";
+        let releaseProduct;
+        const waitForProduct = new Promise(resolve => { releaseProduct = resolve; });
+        await tab.route(productUrl, async route => {
+            await waitForProduct;
+            await route.continue();
+        }, { times: 1 });
+        const openingProduct = captureDuring("winkel_product_viewed",
+            () => tab.locator('[data-store-card][data-slug="tiekie"] .winkel-product-media').click());
+        try {
+            await tab.waitForFunction(() => location.pathname === "/winkel/produk/tiekie" &&
+                document.querySelector('[data-store-view="catalog"]'));
+            // Exercise an unrelated DOM update while the URL points at the next page.
+            await tab.evaluate(() => document.body.appendChild(document.createComment("navigation in progress")));
+        } finally {
+            releaseProduct();
+        }
+        await openingProduct;
+        await captureDuring("winkel_visited", () => tab.locator(".winkel-home-link").click());
+        await tab.locator("[data-store-search]").waitFor();
+        await add(tab, "tiekie");
+        await captureDuring("winkel_checkout_started", () => checkout(tab));
+
+        const pages = events.filter(event => event.event === "winkel_visited").map(event => event.properties.page);
+        const expected = ["catalog", "product", "catalog", "cart", "checkout"];
+        assert(JSON.stringify(pages) === JSON.stringify(expected), `Unexpected tracked page sequence: ${pages.join(", ")}.`);
+        const detailViews = () => events.filter(event => event.event === "winkel_product_viewed" && event.properties.view_type === "detail");
+        assert(detailViews().length === 1, "Opening one product sent more than one detail view.");
+        assert(events.filter(event => event.event === "winkel_checkout_started").length === 1, "One checkout sent more than one start event.");
+
+        await captureDuring("winkel_visited", () => tab.goBack());
+        await captureDuring("winkel_checkout_started", () => tab.goForward());
+        const revisitedPages = events.filter(event => event.event === "winkel_visited").map(event => event.properties.page);
+        assert(JSON.stringify(revisitedPages) === JSON.stringify([...expected, "cart", "checkout"]),
+            `Back and forward did not count one visit each: ${revisitedPages.join(", ")}.`);
     });
     currentSuite = "orders";
     await check("admin can inspect guest orders and record one shipment from desktop or mobile", async (tab, context) => {

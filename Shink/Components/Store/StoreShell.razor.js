@@ -287,7 +287,7 @@ let currentRoot;
 let currentView;
 let disposeCurrent;
 let enhancedNavigationBound = false;
-let lastAnalyticsView;
+let lastAnalyticsRender;
 let checkoutTracked = false;
 let lastAnalyticsTimestamp = 0;
 
@@ -355,13 +355,16 @@ export function initialize() {
     let state = readState();
     updateBadges(state.items);
     if (!root) {
-        lastAnalyticsView = null;
+        lastAnalyticsRender = null;
         return;
     }
 
-    const shouldTrackView = lastAnalyticsView !== key && !root.querySelector(".winkel-receipt");
-    if (lastAnalyticsView !== key) checkoutTracked = false;
-    lastAnalyticsView = key;
+    // Enhanced navigation can change the address while the previous page is still rendered.
+    const renderId = root.dataset.storeRenderId;
+    const isNewRender = lastAnalyticsRender !== renderId;
+    const shouldTrackView = isNewRender && !root.querySelector(".winkel-receipt");
+    if (isNewRender) checkoutTracked = false;
+    lastAnalyticsRender = renderId;
     const page = root.dataset.storeView;
     const track = (event, properties = {}) => captureWinkelEvent(event, { page, ...properties });
     let searchTimer;
