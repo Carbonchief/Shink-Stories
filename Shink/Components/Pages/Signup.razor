@@ -57,6 +57,19 @@
                 <h1>Skep jou gratis rekening<br />en begin luister</h1>
             </header>
 
+            <div class="signup-free-social">
+                <a class="signup-free-provider signup-free-google" href="@GoogleSignInHref" @ref="_googleSignInLink" data-enhance-nav="false">
+                    <img class="signup-free-google-icon" src="/branding/google-g.png" alt="" width="20" height="20" />
+                    <span>Gaan voort met Google</span>
+                </a>
+                <a class="signup-free-provider signup-free-apple" href="@AppleSignInHref" data-enhance-nav="false">
+                    <i class="fa-brands fa-apple" aria-hidden="true"></i>
+                    <span>Gaan voort met Apple</span>
+                </a>
+            </div>
+
+            <div class="signup-free-divider"><span>of skep met e-pos</span></div>
+
             <div class="signup-free-fields">
                 <div class="signup-free-field">
                     <label class="sr-only" for="signup-first-name">Naam</label>
@@ -70,12 +83,28 @@
                 </div>
                 <div class="signup-free-field">
                     <label class="sr-only" for="signup-password">Wagwoord</label>
-                    <InputText id="signup-password" class="form-control" type="password" autocomplete="new-password" placeholder="Wagwoord" @bind-Value="SignUpForm.Password" />
+                    <div class="signup-password-control">
+                        @* Keep revealed passwords out of analytics and session recordings too. *@
+                        <InputText id="signup-password" class="form-control ph-no-capture" type="@(ShowPassword ? "text" : "password")" autocomplete="new-password" spellcheck="false" autocapitalize="none" aria-describedby="signup-password-help" placeholder="Wagwoord" @bind-Value="SignUpForm.Password" />
+                        <button type="button" class="signup-password-toggle" @onclick="TogglePasswordVisibility"
+                                aria-controls="signup-password" aria-label="@(ShowPassword ? "Versteek wagwoord" : "Wys wagwoord")">
+                            <i class="@(ShowPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye")" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <p id="signup-password-help" class="signup-password-help">Gebruik 6 tot 200 karakters.</p>
                     <ValidationMessage For="@(() => SignUpForm.Password)" />
                 </div>
                 <div class="signup-free-field">
                     <label class="sr-only" for="signup-password-confirm">Bevestig wagwoord</label>
-                    <InputText id="signup-password-confirm" class="form-control" type="password" autocomplete="new-password" placeholder="Bevestig wagwoord" @bind-Value="SignUpForm.ConfirmPassword" />
+                    <div class="signup-password-control">
+                        @* Keep revealed passwords out of analytics and session recordings too. *@
+                        <InputText id="signup-password-confirm" class="form-control ph-no-capture" type="@(ShowConfirmPassword ? "text" : "password")" autocomplete="new-password" spellcheck="false" autocapitalize="none" aria-describedby="signup-password-confirm-help" placeholder="Bevestig wagwoord" @bind-Value="SignUpForm.ConfirmPassword" />
+                        <button type="button" class="signup-password-toggle" @onclick="ToggleConfirmPasswordVisibility"
+                                aria-controls="signup-password-confirm" aria-label="@(ShowConfirmPassword ? "Versteek bevestigde wagwoord" : "Wys bevestigde wagwoord")">
+                            <i class="@(ShowConfirmPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye")" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <p id="signup-password-confirm-help" class="signup-password-help">Tik dieselfde wagwoord weer.</p>
                     <ValidationMessage For="@(() => SignUpForm.ConfirmPassword)" />
                 </div>
             </div>
@@ -94,19 +123,6 @@
                 <p class="@($"signup-status {(SignUpSucceeded ? "signup-status-success" : "signup-status-error")}")"
                    role="@(SignUpSucceeded ? "status" : "alert")" aria-live="polite">@StatusMessage</p>
             }
-
-            <div class="signup-free-divider"><span>of</span></div>
-
-            <div class="signup-free-social">
-                <a class="signup-free-provider signup-free-google" href="@GoogleSignInHref" @ref="_googleSignInLink" data-enhance-nav="false">
-                    <img class="signup-free-google-icon" src="/branding/google-g.png" alt="" width="20" height="20" />
-                    <span>Gaan voort met Google</span>
-                </a>
-                <a class="signup-free-provider signup-free-apple" href="@AppleSignInHref" data-enhance-nav="false">
-                    <i class="fa-brands fa-apple" aria-hidden="true"></i>
-                    <span>Gaan voort met Apple</span>
-                </a>
-            </div>
 
             <a class="signup-free-signin" href="@SignInHref">Ek het reeds 'n rekening</a>
         }
@@ -167,13 +183,29 @@
                 <div class="signup-grid signup-grid-security">
                     <div class="signup-field">
                         <label class="form-label" for="signup-password">Wagwoord <span class="required-indicator" aria-hidden="true">*</span></label>
-                        <InputText id="signup-password" class="form-control" type="password" autocomplete="new-password" placeholder="Wagwoord *" aria-label="Wagwoord" @bind-Value="SignUpForm.Password" />
+                        <div class="signup-password-control">
+                            @* Keep revealed passwords out of analytics and session recordings too. *@
+                            <InputText id="signup-password" class="form-control ph-no-capture" type="@(ShowPassword ? "text" : "password")" autocomplete="new-password" spellcheck="false" autocapitalize="none" aria-describedby="signup-password-help" placeholder="Wagwoord *" aria-label="Wagwoord" @bind-Value="SignUpForm.Password" />
+                            <button type="button" class="signup-password-toggle" @onclick="TogglePasswordVisibility"
+                                    aria-controls="signup-password" aria-label="@(ShowPassword ? "Versteek wagwoord" : "Wys wagwoord")">
+                                <i class="@(ShowPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye")" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <p id="signup-password-help" class="signup-password-help">Gebruik 6 tot 200 karakters.</p>
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.Password)" />
                     </div>
 
                     <div class="signup-field">
                         <label class="form-label" for="signup-password-confirm">Bevestig wagwoord <span class="required-indicator" aria-hidden="true">*</span></label>
-                        <InputText id="signup-password-confirm" class="form-control" type="password" autocomplete="new-password" placeholder="Bevestig wagwoord *" aria-label="Bevestig wagwoord" @bind-Value="SignUpForm.ConfirmPassword" />
+                        <div class="signup-password-control">
+                            @* Keep revealed passwords out of analytics and session recordings too. *@
+                            <InputText id="signup-password-confirm" class="form-control ph-no-capture" type="@(ShowConfirmPassword ? "text" : "password")" autocomplete="new-password" spellcheck="false" autocapitalize="none" aria-describedby="signup-password-confirm-help" placeholder="Bevestig wagwoord *" aria-label="Bevestig wagwoord" @bind-Value="SignUpForm.ConfirmPassword" />
+                            <button type="button" class="signup-password-toggle" @onclick="ToggleConfirmPasswordVisibility"
+                                    aria-controls="signup-password-confirm" aria-label="@(ShowConfirmPassword ? "Versteek bevestigde wagwoord" : "Wys bevestigde wagwoord")">
+                                <i class="@(ShowConfirmPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye")" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <p id="signup-password-confirm-help" class="signup-password-help">Tik dieselfde wagwoord weer.</p>
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.ConfirmPassword)" />
                     </div>
                 </div>
@@ -381,6 +413,8 @@
     [SupplyParameterFromQuery(Name = "ref")]
     public string? ReferralCode { get; set; }
 
+    private bool ShowPassword { get; set; }
+    private bool ShowConfirmPassword { get; set; }
     private bool IsSubmitting { get; set; }
     private bool SignUpSucceeded { get; set; }
     private bool ShowAccountCreatedPopup { get; set; }
@@ -607,8 +641,14 @@
         }
     }
 
+    private void TogglePasswordVisibility() => ShowPassword = !ShowPassword;
+
+    private void ToggleConfirmPasswordVisibility() => ShowConfirmPassword = !ShowConfirmPassword;
+
     private void ResetForm()
     {
+        ShowPassword = false;
+        ShowConfirmPassword = false;
         SignUpForm = new SignUpFormModel();
         FormEditContext = new EditContext(SignUpForm);
         DiscountPreview = null;
@@ -1175,7 +1215,7 @@
         public string MobileNumber { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Vul asseblief jou wagwoord in.")]
-        [StringLength(200, MinimumLength = 6, ErrorMessage = "Jou wagwoord moet ten minste 6 karakters wees.")]
+        [StringLength(200, MinimumLength = 6, ErrorMessage = "Jou wagwoord moet 6 tot 200 karakters lank wees.")]
         public string Password { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Bevestig asseblief jou wagwoord.")]

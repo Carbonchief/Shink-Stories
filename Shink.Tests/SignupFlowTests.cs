@@ -68,6 +68,62 @@ public class SignupFlowTests
         Assert.IsNotNull(document.QuerySelector("#signup-email-consent"), "Keep the existing email preference visible.");
         Assert.IsTrue(document.QuerySelector(".signup-free-divider")?.TextContent.Contains("of"));
         Assert.AreEqual(2, document.QuerySelectorAll(".signup-free-social a").Length);
+        CollectionAssert.AreEqual(
+            new[] { "a", "a", "input" },
+            document.QuerySelectorAll(".signup-free-social a, #signup-first-name").Select(element => element.LocalName).ToArray(),
+            "Offer both social providers before asking for email signup details.");
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("schink-stories-maandeliks")]
+    public async Task PasswordControlsStartMaskedWithAccessibleRequirements(string? plan)
+    {
+        using var document = new HtmlParser().ParseDocument(await RenderAsync(plan: plan));
+        foreach (var id in new[] { "signup-password", "signup-password-confirm" })
+        {
+            var input = document.QuerySelector($"#{id}")!;
+            Assert.AreEqual("password", input.GetAttribute("type"));
+            Assert.AreEqual("new-password", input.GetAttribute("autocomplete"));
+            Assert.IsTrue(input.ClassList.Contains("ph-no-capture"));
+            var help = document.GetElementById(input.GetAttribute("aria-describedby")!);
+            Assert.IsNotNull(help, "Instructions must be associated with the input.");
+            var toggle = document.QuerySelector($"button[aria-controls='{id}']")!;
+            Assert.AreEqual("button", toggle.GetAttribute("type"), "Revealing a password must never submit the form.");
+            StringAssert.StartsWith(toggle.GetAttribute("aria-label")!, "Wys ");
+        }
+
+        StringAssert.Contains(document.GetElementById("signup-password-help")!.TextContent, "6 tot 200");
+        StringAssert.Contains(document.GetElementById("signup-password-confirm-help")!.TextContent, "dieselfde wagwoord");
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("schink-stories-maandeliks")]
+    public async Task PasswordVisibilityTogglesIndependentlyWithoutChangingValues(string? plan)
+    {
+        using var document = new HtmlParser().ParseDocument(await RenderAsync(plan: plan, afterRender: signup =>
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var form = typeof(Signup).GetProperty("SignUpForm", flags)!.GetValue(signup)!;
+            form.GetType().GetProperty("Password")!.SetValue(form, "Voorbeeld123");
+            form.GetType().GetProperty("ConfirmPassword")!.SetValue(form, "Voorbeeld123");
+
+            // Reveal, then hide the original; leave confirmation revealed.
+            typeof(Signup).GetMethod("TogglePasswordVisibility", flags)!.Invoke(signup, null);
+            typeof(Signup).GetMethod("ToggleConfirmPasswordVisibility", flags)!.Invoke(signup, null);
+            typeof(Signup).GetMethod("TogglePasswordVisibility", flags)!.Invoke(signup, null);
+        }));
+
+        Assert.AreEqual("password", document.GetElementById("signup-password")!.GetAttribute("type"));
+        Assert.AreEqual("text", document.GetElementById("signup-password-confirm")!.GetAttribute("type"));
+        foreach (var id in new[] { "signup-password", "signup-password-confirm" })
+        {
+            var input = document.GetElementById(id)!;
+            Assert.AreEqual("Voorbeeld123", input.GetAttribute("value"));
+            Assert.IsTrue(input.ClassList.Contains("ph-no-capture"), "Revealing must preserve the analytics exclusion.");
+        }
+        Assert.AreEqual("Versteek bevestigde wagwoord", document.QuerySelector("button[aria-controls='signup-password-confirm']")!.GetAttribute("aria-label"));
     }
 
     [TestMethod]
@@ -123,7 +179,8 @@ public class SignupFlowTests
         string? plan = null,
         string? returnUrl = null,
         string? source = null,
-        string? discountCode = null)
+        string? discountCode = null,
+        Action<Signup>? afterRender = null)
     {
         var signup = new Signup { Plan = plan, ReturnUrl = returnUrl, Source = source, DiscountCode = discountCode };
         using var services = new ServiceCollection()
@@ -139,6 +196,11 @@ public class SignupFlowTests
         {
             var rendered = renderer.BeginRenderingComponent(typeof(Signup), ParameterView.Empty);
             await rendered.QuiescenceTask;
+            if (afterRender is not null)
+            {
+                afterRender(signup);
+                typeof(ComponentBase).GetMethod("StateHasChanged", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(signup, null);
+            }
             return rendered.ToHtmlString();
         });
     }
