@@ -58,7 +58,8 @@ internal sealed class PaywallHeroView : Grid
         _artwork = new AbsoluteLayout
         {
             SafeAreaEdges = SafeAreaEdges.None, IsClippedToBounds = true, HeightRequest = 180,
-            Children = { background, _skillie, _oortjies, _panda, foreground },
+            // Keep Oortjies above the book cutout so it cannot mask his legs.
+            Children = { background, _skillie, _panda, foreground, _oortjies },
             AutomationId = "paywall-original-character-artwork"
         };
         AbsoluteLayout.SetLayoutFlags(background, Microsoft.Maui.Layouts.AbsoluteLayoutFlags.All);
