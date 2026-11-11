@@ -4223,12 +4223,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     }
 
     public Task<SubscriptionPersistResult> RecordPaystackEventAsync(string payloadJson, CancellationToken cancellationToken = default) =>
-        RecordPaystackEventCoreAsync(payloadJson, deferCardUpdates: true, cancellationToken);
+        RecordPaystackEventCoreAsync(payloadJson, deferCardUpdates: true, sendSubscriptionConfirmation: true, cancellationToken);
+
+    // Replaying an already-paid checkout restores access without announcing a new payment.
+    // Keep the same event claim so a later callback/webhook cannot confirm it again.
+    public Task<SubscriptionPersistResult> RecordRecoveredPaystackEventAsync(string payloadJson, CancellationToken cancellationToken = default) =>
+        RecordPaystackEventCoreAsync(payloadJson, deferCardUpdates: true, sendSubscriptionConfirmation: false, cancellationToken);
 
     internal Task<SubscriptionPersistResult> ProcessQueuedPaystackCardUpdateAsync(string payloadJson, CancellationToken cancellationToken = default) =>
-        RecordPaystackEventCoreAsync(payloadJson, deferCardUpdates: false, cancellationToken);
+        RecordPaystackEventCoreAsync(payloadJson, deferCardUpdates: false, sendSubscriptionConfirmation: true, cancellationToken);
 
-    private async Task<SubscriptionPersistResult> RecordPaystackEventCoreAsync(string payloadJson, bool deferCardUpdates, CancellationToken cancellationToken)
+    private async Task<SubscriptionPersistResult> RecordPaystackEventCoreAsync(
+        string payloadJson,
+        bool deferCardUpdates,
+        bool sendSubscriptionConfirmation,
+        CancellationToken cancellationToken)
     {
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
@@ -4647,21 +4656,24 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     await TryResolvePaymentRecoveryAfterSuccessfulChargeAsync(baseUri, apiKey, paystackContext, nowUtc, cancellationToken: cancellationToken);
                 }
 
-                var plan = await ResolvePaystackPlanAsync(baseUri, apiKey, data, cancellationToken);
-                var subscribedAtUtc = TryParseDateTimeOffset(
-                    TryReadString(data, "paid_at") ??
-                    TryReadString(data, "transaction_date")) ?? nowUtc;
-                await TrySendSubscriptionConfirmationAsync(
-                    subscriptionId,
-                    TryReadNestedString(data, "customer", "email"),
-                    TryReadNestedString(data, "customer", "first_name"),
-                    TryReadNestedString(data, "customer", "display_name"),
-                    plan,
-                    provider: "Paystack",
-                    paymentReference: providerTransactionId ?? providerPaymentId,
-                    nextRenewalAtUtc: plan is null ? null : subscribedAtUtc.AddMonths(plan.BillingPeriodMonths),
-                    occurredAtUtc: nowUtc,
-                    cancellationToken);
+                if (sendSubscriptionConfirmation)
+                {
+                    var plan = await ResolvePaystackPlanAsync(baseUri, apiKey, data, cancellationToken);
+                    var subscribedAtUtc = TryParseDateTimeOffset(
+                        TryReadString(data, "paid_at") ??
+                        TryReadString(data, "transaction_date")) ?? nowUtc;
+                    await TrySendSubscriptionConfirmationAsync(
+                        subscriptionId,
+                        TryReadNestedString(data, "customer", "email"),
+                        TryReadNestedString(data, "customer", "first_name"),
+                        TryReadNestedString(data, "customer", "display_name"),
+                        plan,
+                        provider: "Paystack",
+                        paymentReference: providerTransactionId ?? providerPaymentId,
+                        nextRenewalAtUtc: plan is null ? null : subscribedAtUtc.AddMonths(plan.BillingPeriodMonths),
+                        occurredAtUtc: nowUtc,
+                        cancellationToken);
+                }
             }
             else if (ShouldSchedulePaystackCancellation(eventType, eventStatus) &&
                      !string.IsNullOrWhiteSpace(providerPaymentId))

@@ -12,6 +12,7 @@ public class AbandonedCartPaymentCleanupSourceTests
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
 
         var paystackCallback = Slice(program, "app.MapGet(\"/betaal/paystack/callback\"", "app.MapPost(\"/api/payfast/notify\"");
+        StringAssert.Contains(paystackCallback, "RecordPaystackEventAsync(payload, httpContext.RequestAborted)");
         StringAssert.Contains(paystackCallback, "ResolveByCheckoutReferenceAsync(");
         StringAssert.Contains(paystackCallback, "ResolveSubscriptionRecoveriesAsync(");
         StringAssert.Contains(paystackCallback, "CancellationToken.None");
@@ -32,6 +33,8 @@ public class AbandonedCartPaymentCleanupSourceTests
         StringAssert.Contains(paystackWebhook, "CancellationToken.None");
 
         var recoveredCheckout = Slice(program, "static async Task<IResult?> TryRedirectRecoveredPaystackSubscriptionAsync", "static string ResolveSuccessfulSubscriptionPaymentReturnPath");
+        StringAssert.Contains(recoveredCheckout, "RecordRecoveredPaystackEventAsync(payload, httpContext.RequestAborted)");
+        Assert.DoesNotContain("RecordPaystackEventAsync(", recoveredCheckout);
         StringAssert.Contains(recoveredCheckout, "ResolveByCheckoutReferenceAsync(");
         StringAssert.Contains(recoveredCheckout, "ResolveSubscriptionRecoveriesAsync(");
         StringAssert.Contains(recoveredCheckout, "CancellationToken.None");

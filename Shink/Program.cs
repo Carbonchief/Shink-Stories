@@ -6444,7 +6444,7 @@ static async Task<IResult?> TryRedirectRecoveredPaystackSubscriptionAsync(
         return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan.Slug, returnUrl));
     }
 
-    var persistResult = await subscriptionLedgerService.RecordPaystackEventAsync(payload, httpContext.RequestAborted);
+    var persistResult = await subscriptionLedgerService.RecordRecoveredPaystackEventAsync(payload, httpContext.RequestAborted);
     if (!persistResult.IsSuccess)
     {
         logger.LogWarning(

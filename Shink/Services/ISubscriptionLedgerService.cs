@@ -5,6 +5,7 @@ public interface ISubscriptionLedgerService
     Task<SubscriptionPersistResult> RecordPayFastEventAsync(IFormCollection formCollection, CancellationToken cancellationToken = default);
     Task RecordPayFastWebhookFailureAsync(IFormCollection? formCollection, string failureStage, string errorMessage, CancellationToken cancellationToken = default);
     Task<SubscriptionPersistResult> RecordPaystackEventAsync(string payloadJson, CancellationToken cancellationToken = default);
+    Task<SubscriptionPersistResult> RecordRecoveredPaystackEventAsync(string payloadJson, CancellationToken cancellationToken = default);
     Task RecordPaystackWebhookFailureAsync(string? payloadJson, string failureStage, string errorMessage, CancellationToken cancellationToken = default);
     Task<SubscriptionPersistResult> RecordVerifiedStoreSubscriptionAsync(
         string? email,
