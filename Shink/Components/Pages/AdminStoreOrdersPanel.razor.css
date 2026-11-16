@@ -1,9 +1,65 @@
 .store-orders {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: .75rem;
     margin-top: 1.25rem;
+    padding: .8rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 16px;
+    background: var(--admin-surface);
 }
 
-.store-orders ::deep tbody tr {
+.store-orders-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .55rem;
+}
+
+.store-orders-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.store-orders-header ::deep .mud-button-outlined:not(:disabled) {
+    border: 1px solid var(--admin-border-strong);
+    border-radius: 10px;
+    color: var(--admin-text);
+}
+
+.store-orders-header ::deep .mud-button-outlined:not(:disabled):hover {
+    background: var(--admin-row-hover);
+}
+
+.store-orders ::deep .mud-table {
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--admin-surface-soft);
+}
+
+.store-orders ::deep .mud-table-cell {
+    padding: .58rem .5rem;
+    color: var(--admin-text);
+    overflow-wrap: anywhere;
+}
+
+.store-orders ::deep .mud-table-head .mud-table-cell {
+    background: var(--admin-grid-header);
+    font-weight: 700;
+}
+
+.store-orders ::deep .store-orders-reference-heading {
+    width: 30%;
+}
+
+.store-orders ::deep .mud-table-body .mud-table-row {
     cursor: pointer;
+}
+
+.store-orders ::deep .mud-table-body .mud-table-row:hover > .mud-table-cell {
+    background: var(--admin-row-hover);
 }
 
 .store-orders ::deep .mud-table-toolbar {
@@ -13,8 +69,8 @@
 }
 
 .store-orders-error {
-    margin: 0 0 .75rem;
-    color: var(--mud-palette-error-darken);
+    margin: .75rem;
+    color: #ffd7db;
 }
 
 .store-orders-pager {
@@ -41,7 +97,7 @@
     padding: .25rem 0;
     border: 0;
     background: transparent;
-    color: var(--mud-palette-primary);
+    color: inherit;
     font: inherit;
     font-weight: 700;
     text-align: start;
@@ -50,8 +106,12 @@
     cursor: pointer;
 }
 
+.store-orders-amount {
+    white-space: nowrap;
+}
+
 .store-shipping-status.is-shipped {
-    color: var(--mud-palette-success-darken);
+    color: var(--admin-toggle-on);
     font-weight: 700;
 }
 
@@ -105,7 +165,32 @@
     font-weight: 700;
 }
 
+@media (max-width: 960px) {
+    .store-orders ::deep .mud-sm-table .mud-table-cell {
+        align-items: flex-start;
+        gap: .7rem;
+    }
+
+    .store-orders ::deep .mud-sm-table .mud-table-body .mud-table-cell:not(:last-child) {
+        border: 0;
+    }
+
+    .store-orders ::deep .mud-sm-table .mud-table-cell::before {
+        padding-right: 0;
+        color: var(--admin-muted);
+    }
+
+    .store-order-reference {
+        padding: 0;
+    }
+}
+
 @media (max-width: 600px) {
+    .store-orders {
+        padding: .75rem;
+        border-radius: 14px;
+    }
+
     .store-order-details {
         grid-template-columns: minmax(0, 1fr);
     }

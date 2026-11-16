@@ -1,5 +1,5 @@
-<section class="admin-section store-orders ph-no-capture" aria-labelledby="store-orders-heading">
-    <div class="admin-section-head">
+<section class="store-orders ph-no-capture" aria-labelledby="store-orders-heading">
+    <div class="store-orders-header">
         <h2 id="store-orders-heading">@T("Bestellings", "Orders")</h2>
         <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RefreshOrdersAsync" Disabled="@_shipping">
             @T("Herlaai bestellings", "Refresh orders")
@@ -16,7 +16,7 @@
             }
         </ToolBarContent>
         <HeaderContent>
-            <MudTh>@T("Verwysing", "Reference")</MudTh>
+            <MudTh Class="store-orders-reference-heading">@T("Verwysing", "Reference")</MudTh>
             <MudTh>@T("Klant", "Customer")</MudTh>
             <MudTh>@T("Datum", "Date")</MudTh>
             <MudTh>@T("Totaal", "Total")</MudTh>
@@ -31,7 +31,9 @@
             </MudTd>
             <MudTd DataLabel='@T("Klant", "Customer")'>@context.CustomerName</MudTd>
             <MudTd DataLabel='@T("Datum", "Date")'>@FormatDate(context.CreatedAt)</MudTd>
-            <MudTd DataLabel='@T("Totaal", "Total")'>@StoreCheckoutRules.FormatZar(context.TotalPriceZar)</MudTd>
+            <MudTd DataLabel='@T("Totaal", "Total")'>
+                <span class="store-orders-amount">@StoreCheckoutRules.FormatZar(context.TotalPriceZar)</span>
+            </MudTd>
             <MudTd DataLabel='@T("Betaling", "Payment")'>@PaymentLabel(context.PaymentStatus)</MudTd>
             <MudTd DataLabel='@T("Versending", "Shipping")'>
                 <span class="store-shipping-status @(context.ShippedAt.HasValue ? "is-shipped" : null)">

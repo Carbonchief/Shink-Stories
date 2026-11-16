@@ -6,19 +6,40 @@ namespace Shink.Mobile.Pages;
 
 public sealed partial class PlansPage
 {
+    private Label? _headline;
+    private VerticalStackLayout? _benefits;
+    private readonly List<Border> _benefitBadges = [];
+
+    private void UpdateIntroLayout()
+    {
+        if (_headline is null || _benefits is null) return;
+
+        var compact = Height > 0 && Height <= 700 && Width > 0 && Width < 500;
+        var veryShort = compact && Height <= 640;
+        _headline.Text = compact ? "Klein ore. Groot avonture." : "Klein ore.\nGroot avonture.";
+        _headline.FontSize = compact ? 25 : 36;
+        _body.Spacing = veryShort ? 2 : compact ? 4 : 6;
+        _hero.SetCompactHeader(veryShort);
+        _benefits.Spacing = veryShort ? 2 : 6;
+        _benefits.Margin = veryShort ? new Thickness(12, 1, 4, 2) : new Thickness(12, 4, 4, 5);
+        foreach (var badge in _benefitBadges)
+            badge.WidthRequest = badge.HeightRequest = veryShort ? 22 : 30;
+    }
+
     private void RenderIntro()
     {
         _body.Children.Clear();
+        _benefitBadges.Clear();
         _planControls.Clear();
         _purchaseButton = null;
         _renewalDisclosure = null;
         var title = new Label
         {
-            Text = "Klein ore.\nGroot avonture.", FontFamily = "SchinkOnboardingRounded",
-            FontSize = 36, FontAttributes = FontAttributes.Bold, LineHeight = 0.97,
+            FontFamily = "SchinkOnboardingRounded", FontAttributes = FontAttributes.Bold, LineHeight = 0.97,
             TextColor = AccentColor, HorizontalTextAlignment = TextAlignment.Center,
             Margin = new Thickness(0, 0, 0, 0), AutomationId = "paywall-headline"
         };
+        _headline = title;
         SemanticProperties.SetHeadingLevel(title, SemanticHeadingLevel.Level1);
         _body.Children.Add(title);
         _body.Children.Add(new Label
@@ -27,19 +48,24 @@ public sealed partial class PlansPage
             FontAttributes = FontAttributes.Bold, TextColor = TextColor,
             HorizontalTextAlignment = TextAlignment.Center
         });
-        var benefits = new VerticalStackLayout { Spacing = 6, Margin = new Thickness(12, 4, 4, 5) };
-        benefits.Children.Add(BuildBenefit("\uf518", "Onbeperkte stories en reekse"));
-        benefits.Children.Add(BuildBenefit("\uf3ed", "Veilig en advertensievry"));
-        benefits.Children.Add(BuildBenefit("\uf019", "Laai af en luister vanlyn"));
-        _body.Children.Add(benefits);
+        _benefits = new VerticalStackLayout
+        {
+            Children =
+            {
+                BuildBenefit("\uf518", "Onbeperkte stories en reekse"),
+                BuildBenefit("\uf3ed", "Veilig en advertensievry"),
+                BuildBenefit("\uf019", "Laai af en luister vanlyn")
+            }
+        };
+        _body.Children.Add(_benefits);
+        UpdateIntroLayout();
     }
 
-    private static View BuildBenefit(string icon, string text)
+    private View BuildBenefit(string icon, string text)
     {
         var badge = new Border
         {
-            WidthRequest = 30, HeightRequest = 30, StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 15 },
+            StrokeThickness = 0, StrokeShape = new Ellipse(),
             BackgroundColor = Color.FromArgb("#B8EBDF"),
             Content = new Label
             {
@@ -48,6 +74,7 @@ public sealed partial class PlansPage
                 VerticalTextAlignment = TextAlignment.Center
             }
         };
+        _benefitBadges.Add(badge);
         var row = new Grid
         {
             ColumnDefinitions = { new(GridLength.Auto), new(GridLength.Star) }, ColumnSpacing = 12

@@ -17,6 +17,7 @@ public sealed partial class PlansPage : ContentPage
     private readonly IMobileStoreBillingService _storeBilling;
     private readonly VerticalStackLayout _content;
     private readonly VerticalStackLayout _body;
+    private readonly PaywallHeroView _hero;
     private readonly NavigationGate _navigationGate = new();
     private readonly Dictionary<string, MobileStoreProduct> _storeProducts = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (Border Card, RadioButton Radio)> _planControls = new(StringComparer.Ordinal);
@@ -43,12 +44,13 @@ public sealed partial class PlansPage : ContentPage
         Shell.SetTabBarIsVisible(this, false);
 
         _body = new VerticalStackLayout { Padding = new Thickness(16, 0, 16, 12), Spacing = 6, SafeAreaEdges = SafeAreaEdges.None };
+        _hero = new PaywallHeroView(() => _navigationGate.RunAsync(ClosePaywallAsync), PageBackgroundColor);
         _content = new VerticalStackLayout
         {
             Spacing = 0, SafeAreaEdges = SafeAreaEdges.None,
             BackgroundColor = PageBackgroundColor, MaximumWidthRequest = 580,
             HorizontalOptions = LayoutOptions.Center,
-            Children = { new PaywallHeroView(() => _navigationGate.RunAsync(ClosePaywallAsync)), _body }
+            Children = { _hero, _body }
         };
         var scrollView = new ScrollView
         {
@@ -56,7 +58,11 @@ public sealed partial class PlansPage : ContentPage
             SafeAreaEdges = SafeAreaEdges.None, HorizontalScrollBarVisibility = ScrollBarVisibility.Never
         };
         Content = PersistentPlaybackHost.Wrap(scrollView, storyPlaybackSession);
-        SizeChanged += (_, _) => _content.WidthRequest = Math.Min(580, Math.Max(0, Width));
+        SizeChanged += (_, _) =>
+        {
+            _content.WidthRequest = Math.Min(580, Math.Max(0, Width));
+            UpdateIntroLayout();
+        };
         RenderIntro();
     }
 

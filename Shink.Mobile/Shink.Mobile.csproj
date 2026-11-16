@@ -142,7 +142,8 @@
                Link="Resources/Images/profile_avatar_%(Filename)%(Extension)"
                Resize="False" />
     <Compile Include="../Shink/Shared/ProfileAvatarOptions.cs" Link="Shared/ProfileAvatarOptions.cs" />
-    <MauiImage Update="Resources/Images/paywall_*.png" Resize="False" />
+    <MauiImage Remove="Resources/Images/paywall_book.png;Resources/Images/paywall_forest.png;Resources/Images/paywall_oortjies.png;Resources/Images/paywall_prinses_panda.png;Resources/Images/paywall_skillie.png" />
+    <MauiImage Update="Resources/Images/paywall_valley.png" Resize="False" />
     <MauiImage Update="Resources/Images/schink_onboarding_*.jpg" Resize="False" />
     <MauiImage Include="Resources/Splash/schink_stories_full_splash.png"
                Link="Resources/Images/schink_stories_full_splash_runtime.png"

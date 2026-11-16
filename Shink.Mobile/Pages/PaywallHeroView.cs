@@ -1,15 +1,15 @@
-using Microsoft.Maui.Controls.Shapes;
-
 namespace Shink.Mobile.Pages;
 
 internal sealed class PaywallHeroView : Grid
 {
-    private readonly AbsoluteLayout _artwork;
-    private readonly Image _skillie;
-    private readonly Image _oortjies;
-    private readonly Image _panda;
+    private const double ArtworkPixelWidth = 589;
+    private const double ArtworkPixelHeight = 512;
+    // Keep the bottom 330 source rows, including all three characters.
+    private const double VisibleArtworkPixelHeight = 330;
+    private readonly Grid _header;
+    private readonly Image _logo;
 
-    public PaywallHeroView(Func<Task> close)
+    public PaywallHeroView(Func<Task> close, Color pageBackground)
     {
         BackgroundColor = Color.FromArgb("#00474E");
         SafeAreaEdges = SafeAreaEdges.None;
@@ -23,13 +23,13 @@ internal sealed class PaywallHeroView : Grid
         };
         var parentLabel = new Label { Text = "Vir ouers", FontSize = 12, TextColor = Colors.White, VerticalTextAlignment = TextAlignment.Center };
         var parent = new HorizontalStackLayout { Spacing = 7, VerticalOptions = LayoutOptions.Center, Children = { lockLabel, parentLabel } };
-        var logo = new Image
+        _logo = new Image
         {
             Source = ImageSource.FromStream(_ => FileSystem.OpenAppPackageFileAsync("schink_stories_logo_white_raw.png")),
             Aspect = Aspect.AspectFit, HeightRequest = 58, WidthRequest = 142,
             HorizontalOptions = LayoutOptions.Center, BackgroundColor = Colors.Transparent
         };
-        SemanticProperties.SetDescription(logo, "Schink Stories");
+        SemanticProperties.SetDescription(_logo, "Schink Stories");
         var closeButton = new Button
         {
             Text = "\uf00d", FontFamily = "FontAwesomeSolid", FontSize = 22,
@@ -41,54 +41,47 @@ internal sealed class PaywallHeroView : Grid
         };
         SemanticProperties.SetDescription(closeButton, "Sluit intekeningopsies");
         closeButton.Clicked += async (_, _) => await close();
-        var header = new Grid
+        _header = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
             Padding = new Thickness(16, 3, 16, 0), HeightRequest = 64,
             ColumnDefinitions = { new(GridLength.Star), new(GridLength.Star), new(GridLength.Star) }
         };
-        header.Add(parent); header.Add(logo, 1); header.Add(closeButton, 2);
-        Children.Add(header);
+        _header.Add(parent);
+        _header.Add(_logo, 1);
+        _header.Add(closeButton, 2);
+        Children.Add(_header);
 
-        _skillie = Artwork("paywall_skillie.png");
-        _oortjies = Artwork("paywall_oortjies.png");
-        _panda = Artwork("paywall_prinses_panda.png");
-        var background = Artwork("paywall_forest.png");
-        var foreground = Artwork("paywall_book.png");
-        _artwork = new AbsoluteLayout
+        var illustration = new Image
         {
-            SafeAreaEdges = SafeAreaEdges.None, IsClippedToBounds = true, HeightRequest = 180,
-            // Keep Oortjies above the book cutout so it cannot mask his legs.
-            Children = { background, _skillie, _panda, foreground, _oortjies },
+            Source = "paywall_valley.png", Aspect = Aspect.AspectFit, InputTransparent = true
+        };
+        var artwork = new AbsoluteLayout
+        {
+            SafeAreaEdges = SafeAreaEdges.None, BackgroundColor = pageBackground,
+            HeightRequest = 225, IsClippedToBounds = true,
+            Children = { illustration },
             AutomationId = "paywall-original-character-artwork"
         };
-        AbsoluteLayout.SetLayoutFlags(background, Microsoft.Maui.Layouts.AbsoluteLayoutFlags.All);
-        AbsoluteLayout.SetLayoutBounds(background, new Rect(0, 0, 1, 1));
-        AbsoluteLayout.SetLayoutFlags(foreground, Microsoft.Maui.Layouts.AbsoluteLayoutFlags.All);
-        AbsoluteLayout.SetLayoutBounds(foreground, new Rect(0, 0, 1, 1));
-        _artwork.SizeChanged += (_, _) => ResizeArtwork();
-        Children.Add(_artwork);
-        Grid.SetRow(_artwork, 1);
-        SemanticProperties.SetDescription(_artwork, "Skillie, Oortjies en Prinses Panda by 'n oop storieboek.");
+        artwork.SizeChanged += (_, _) =>
+        {
+            if (artwork.Width <= 0) return;
+
+            var scale = artwork.Width / ArtworkPixelWidth;
+            var visibleHeight = VisibleArtworkPixelHeight * scale;
+            var fullHeight = ArtworkPixelHeight * scale;
+            artwork.HeightRequest = visibleHeight;
+            AbsoluteLayout.SetLayoutBounds(illustration,
+                new Rect(0, visibleHeight - fullHeight, artwork.Width, fullHeight));
+        };
+        Children.Add(artwork);
+        Grid.SetRow(artwork, 1);
+        SemanticProperties.SetDescription(artwork, "Prinses Panda, Oortjies en Skillie in 'n sonnige vallei.");
     }
 
-    private static Image Artwork(string source) => new()
+    public void SetCompactHeader(bool compact)
     {
-        Source = source, Aspect = Aspect.AspectFit, InputTransparent = true,
-        HorizontalOptions = LayoutOptions.Start, VerticalOptions = LayoutOptions.Start
-    };
-
-    private void ResizeArtwork()
-    {
-        if (_artwork.Width <= 0) return;
-        var scale = _artwork.Width / 514d;
-        _artwork.HeightRequest = 241 * scale;
-        // Original, unmodified 1080px PNGs. Positions account for their transparent margins.
-        Place(_skillie, 171 - 111 - 153 * (150d / 914), 179 - 159 - 12 * (150d / 914), 1080 * (150d / 914), scale);
-        Place(_oortjies, 284 - 111 - 17 * (209d / 1033), 172 - 159 - 93 * (209d / 1033), 1080 * (209d / 1033), scale);
-        Place(_panda, 443 - 111 - 106 * (159d / 896), 186 - 159 - 18 * (159d / 896), 1080 * (159d / 896), scale);
+        _header.HeightRequest = compact ? 50 : 64;
+        _logo.HeightRequest = compact ? 44 : 58;
     }
-
-    private static void Place(View image, double x, double y, double size, double scale) =>
-        AbsoluteLayout.SetLayoutBounds(image, new Rect(x * scale, y * scale, size * scale, size * scale));
 }

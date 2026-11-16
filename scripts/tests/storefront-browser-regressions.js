@@ -689,6 +689,12 @@ async (page) => {
         await tab.goto(base + "/admin");
         await tab.getByRole("tab", { name: "Winkel", exact: true }).click();
         const orders = tab.locator(".store-orders");
+        const ordersBackground = await orders.evaluate(element => getComputedStyle(element).backgroundColor);
+        const productsBackground = await tab.locator(".store-admin-section").evaluate(element => getComputedStyle(element).backgroundColor);
+        assert(ordersBackground === productsBackground, "The orders panel does not match the shop admin surface.");
+        const tableBackground = await orders.locator(".mud-table").evaluate(element => getComputedStyle(element).backgroundColor);
+        const pagerBackground = await orders.locator(".mud-table-pagination").evaluate(element => getComputedStyle(element).backgroundColor);
+        assert(tableBackground === pagerBackground, "The order rows and pagination do not share the same dark background.");
         const paidRow = orders.getByRole("row").filter({ hasText: paidReference });
         await paidRow.getByText("Versending nie aangeteken nie", { exact: true }).waitFor();
         await paidRow.getByText("Paid Guest", { exact: true }).click();
@@ -730,6 +736,8 @@ async (page) => {
             "An unpaid order can be marked as shipped.");
         await mobileDialog.getByRole("button", { name: "Close", exact: true }).click();
         await other.setViewportSize({ width: 320, height: 844 });
+        assert(await mobileOrders.locator(".mud-table-container").evaluate(element => element.scrollWidth <= element.clientWidth + 1),
+            "The orders grid overflows horizontally on a narrow screen.");
         await mobileOrders.getByRole("button", { name: "Next page", exact: true }).click();
         const legacyOrder = mobileOrders.getByRole("row").filter({ hasText: "fixture-older-00" });
         await legacyOrder.getByText("Shipment not recorded", { exact: true }).waitFor();

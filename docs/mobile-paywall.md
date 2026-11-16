@@ -4,15 +4,7 @@ The native `PlansPage` follows the approved 21 October 2026 paywall concept. It 
 
 ## Artwork
 
-The forest/book background comes from the approved background-only design plate. Characters are separate native image layers, with byte-identical packaged copies of the original assets:
-
-| Packaged image | Original source |
-| --- | --- |
-| `paywall_skillie.png` | `Shink/wwwroot/branding/characters/skillie.png` |
-| `paywall_oortjies.png` | `Shink.Mobile/Resources/Images/oortjies_02.png` |
-| `paywall_prinses_panda.png` | `Shink/wwwroot/branding/characters/prinses-panda.png` |
-
-No character artwork was generated or edited for this implementation. `PaywallHeroView` scales and positions the original transparent PNGs. `paywall_book.png` is a foreground cutout of the background plate. The existing white logo, rounded brand font, and Font Awesome icons are reused.
+The hero uses `paywall_valley.png`, the top 512 rows of the supplied 589-pixel-wide illustration with the blank area below removed. The crop retains the original pixels, and the view displays it at its original aspect ratio.
 
 ## Behavior
 

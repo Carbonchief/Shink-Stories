@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shink.Mobile.Services;
 
@@ -64,16 +63,4 @@ public sealed class PaywallPresentationTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new PaywallParentChallenge(10, 1, 2, 3));
     }
 
-    [TestMethod]
-    [DataRow("Shink/wwwroot/branding/characters/skillie.png", "paywall_skillie.png")]
-    [DataRow("Shink.Mobile/Resources/Images/oortjies_02.png", "paywall_oortjies.png")]
-    [DataRow("Shink/wwwroot/branding/characters/prinses-panda.png", "paywall_prinses_panda.png")]
-    public void PackagedCharactersAreTheOriginalArtwork(string original, string packaged)
-    {
-        CollectionAssert.AreEqual(File.ReadAllBytes(Repo(original)),
-            File.ReadAllBytes(Repo("Shink.Mobile/Resources/Images/" + packaged)));
-    }
-
-    private static string Repo(string relative, [CallerFilePath] string source = "") =>
-        Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "..", relative));
 }
