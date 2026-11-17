@@ -71,7 +71,7 @@ jobs:
   publish:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     permissions:
       id-token: write
       contents: read
@@ -244,23 +244,40 @@ jobs:
             --file "$GITHUB_WORKSPACE/Shink/Database/tests/account_personal_data_deletion.sql"
 
       - name: Package verified publish output
+        id: package
         if: steps.publish_check.outputs.should_publish == 'true'
         working-directory: ${{ env.PUBLISH_DIR }}
-        run: zip -q -r "$GITHUB_WORKSPACE/webapp.zip" .
+        run: |
+          release_id="$(dotnet Shink.dll --deployment-id)"
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+          zip -q -r "$GITHUB_WORKSPACE/webapp.zip" .
 
       - name: Stage, validate, and activate with automatic rollback
+        id: activation
         if: steps.publish_check.outputs.should_publish == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.preflight_only)
-        timeout-minutes: 25
-        run: bash scripts/deploy-webapp-quiesced.sh "$AZURE_WEBAPP_RESOURCE_GROUP" "$AZURE_WEBAPP_NAME" "$GITHUB_WORKSPACE/webapp.zip" --state-file "$RUNNER_TEMP/schink-deployment-job.json"
+        # The required recovery step below decides success if the runner loses
+        # its reply after the candidate has started.
+        continue-on-error: true
+        timeout-minutes: 30
+        env:
+          RELEASE_ID: ${{ steps.package.outputs.release_id }}
+        run: bash scripts/deploy-webapp-quiesced.sh "$AZURE_WEBAPP_RESOURCE_GROUP" "$AZURE_WEBAPP_NAME" "$GITHUB_WORKSPACE/webapp.zip" --release-id "$RELEASE_ID" --state-file "$RUNNER_TEMP/schink-deployment-job.json"
 
       - name: Recover interrupted activation
-        if: always() && steps.publish_check.outputs.should_publish == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.preflight_only)
+        if: always() && steps.publish_check.outputs.should_publish == 'true' && steps.activation.outcome != 'skipped' && !(github.event_name == 'workflow_dispatch' && inputs.preflight_only)
         timeout-minutes: 15
-        run: python3 scripts/deploy_webapp.py --recover "$RUNNER_TEMP/schink-deployment-job.json"
+        run: python3 scripts/deploy_webapp.py --recover "$RUNNER_TEMP/schink-deployment-job.json" --require-activation
 
       - name: Verify public service health
         if: success() && steps.publish_check.outputs.should_publish == 'true'
+        env:
+          EXPECTED_RELEASE: ${{ steps.activation.conclusion == 'success' && steps.package.outputs.release_id || '' }}
         run: |
           response="$(curl --fail --silent --show-error --max-time 30 --retry 3 --retry-all-errors \
+            --dump-header "$RUNNER_TEMP/schink-health-headers.txt" \
             -H 'Cache-Control: no-cache' -A 'Schink-Deployment-Health/1.0' https://www.schink.co.za/healthz)"
           test "$response" = ok
+          if [ -n "$EXPECTED_RELEASE" ]; then
+            served_release="$(awk 'tolower($1) == "x-schink-release:" {gsub(/\r/, "", $2); release = $2} END {print release}' "$RUNNER_TEMP/schink-health-headers.txt")"
+            test "$served_release" = "$EXPECTED_RELEASE"
+          fi

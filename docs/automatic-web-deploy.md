@@ -49,7 +49,11 @@ next scheduled release to be mistaken for an already-deployed commit.
 An explicitly approved immediate deployment uses `preflight_only=false`.
 Scheduled runs use the deployment path automatically. Azure authentication is
 checked before applying SQL. Activation retains automatic rollback and a final
-public health check.
+public health check. The Azure-side worker verifies the release files and
+records a startup checkpoint. The runner starts the app through Azure Resource
+Manager and verifies the published assembly's release ID on the origin and
+public health endpoints. See [deployment recovery](azure-deployment-recovery.md)
+for the checkpoints and hosting constraints.
 
 The workflow planner, migration preflight shell and deployment transaction have
 regression tests under `scripts/tests/`. The migration shell tests execute the

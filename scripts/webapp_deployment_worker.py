@@ -20,6 +20,7 @@ import zipfile
 
 
 TERMINAL = {"succeeded", "rolled_back", "failed_preparation", "recovery_failed"}
+START_CHECKPOINTS = {"candidate_ready", "rollback_ready"}
 REQUIRED = {"Shink.dll", "Shink.deps.json", "Shink.runtimeconfig.json",
             "Shink.staticwebassets.endpoints.json"}
 
@@ -175,7 +176,9 @@ class AzureApp:
         self.arm("/stop")
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
-            if self.arm()["properties"]["state"] == "Stopped":
+            # ARM can report Stopped before the previous container stops
+            # serving traffic. Wait for both before changing its files.
+            if self.arm()["properties"]["state"] == "Stopped" and self.healthy_release() is None:
                 return
             time.sleep(3)
         raise TimeoutError("App did not confirm Stopped; files were not changed")
@@ -196,22 +199,31 @@ class AzureApp:
                     raise
                 time.sleep(5)
 
-    def check_health(self):
+    def healthy_release(self):
+        request = urllib.request.Request(self.health_url, headers={
+            "User-Agent": "Schink-Deployment-Health/1.0", "Cache-Control": "no-cache"})
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                if response.status == 200 and response.read(16).strip() == b"ok":
+                    # Releases before this deployment protocol had no header.
+                    return response.headers.get("X-Schink-Release", "")
+        except urllib.error.HTTPError as error:
+            error.close()
+        except OSError:
+            pass
+        return None
+
+    def check_health(self, expected_release=None):
         deadline = time.monotonic() + 240
         while time.monotonic() < deadline:
-            try:
-                request = urllib.request.Request(self.health_url, headers={
-                    "User-Agent": "Schink-Deployment-Health/1.0", "Cache-Control": "no-cache"})
-                with urllib.request.urlopen(request, timeout=10) as response:
-                    if response.status == 200 and response.read(16).strip() == b"ok":
-                        return
-            except (OSError, urllib.error.URLError):
-                pass
+            release = self.healthy_release()
+            if release is not None and (expected_release is None or release == expected_release):
+                return release
             time.sleep(5)
-        raise TimeoutError("Application did not pass /healthz after startup")
+        raise TimeoutError("Expected release did not pass /healthz after startup")
 
 
-def rollback(job, root, journal, app):
+def restore_files(job, root, journal, app):
     # Verify every backup before touching wwwroot. Never restart a mixture.
     backup = job / "backup"
     verify_files(backup, {name: value for name, value in journal["previous"].items() if value is not None})
@@ -224,9 +236,6 @@ def rollback(job, root, journal, app):
             copy_stopped_file(safe_path(backup, name), target, previous)
     verify_files(root, journal["previous"])
     verify_static_assets(root)
-    if journal["original_state"] == "Running":
-        app.start()
-        app.check_health()
 
 
 def transaction(job, root, app, recover=False):
@@ -235,6 +244,7 @@ def transaction(job, root, app, recover=False):
     state_path, journal_path = job / "state.json", job / "journal.json"
     journal = None
     stop_attempted = False
+    handing_off = False
     scratch = None
 
     def phase(value, **details):
@@ -247,6 +257,24 @@ def transaction(job, root, app, recover=False):
             # A full disk or a failed status write must not prevent restoration.
             print("Could not persist deployment recovery status: " + value, flush=True)
 
+    def handoff(value, **details):
+        nonlocal handing_off
+        # A lost status write may still have published the checkpoint. Once
+        # attempted, only the coordinator can decide whether to start or recover.
+        handing_off = True
+        phase(value, **details)
+
+    def roll_back(error):
+        recovery_phase("rolling_back", error=error)
+        restore_files(job, root, journal, app)
+        if journal["original_state"] == "Running":
+            if "previous_release" in journal:
+                handoff("rollback_ready", release_id=journal["previous_release"], error=error)
+                return
+            app.start()
+            app.check_health()
+        recovery_phase("rolled_back", error=error)
+
     with (job.parent / ".activation.lock").open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -256,18 +284,22 @@ def transaction(job, root, app, recover=False):
             existing = json.loads(state_path.read_text())["phase"]
             if existing in TERMINAL and not (recover and existing == "recovery_failed"):
                 return 0
+            if existing in START_CHECKPOINTS:
+                return 0  # The coordinator owns startup once files are verified.
         try:
             if recover:
-                last_phase = json.loads(state_path.read_text())["phase"] if state_path.exists() else "uploaded"
-                if last_phase in {"uploaded", "validating"} or not journal_path.exists():
+                previous_state = json.loads(state_path.read_text()) if state_path.exists() else {"phase": "uploaded"}
+                if previous_state["phase"] in {"uploaded", "validating"} or not journal_path.exists():
                     phase("failed_preparation", error="Interrupted before any app stop")
                     return 1
                 journal = json.loads(journal_path.read_text())
-                recovery_phase("rolling_back")
-                rollback(job, root, journal, app)
-                recovery_phase("rolled_back", error="Recovered an interrupted deployment")
+                roll_back(previous_state.get("error", "Recovered an interrupted deployment"))
                 return 1
 
+            for other in job_directories(job.parent):
+                if other != job and json.loads((other / "state.json").read_text())["phase"] in (
+                        START_CHECKPOINTS | {"candidate_unhealthy"}):
+                    raise ValueError("Resolve the pending startup in deployment " + other.name)
             phase("validating")
             scratch = Path(tempfile.mkdtemp(prefix="schink-release-" + job.name + "-"))
             package = scratch / "candidate.zip"
@@ -310,11 +342,16 @@ def transaction(job, root, app, recover=False):
                     previous[name] = None
             verify_files(backup, {k: v for k, v in previous.items() if v is not None})
             journal = {"previous": previous, "original_state": settings["original_state"]}
+            if settings.get("release_id") and settings["original_state"] == "Running" and previous:
+                journal["previous_release"] = app.check_health()
             write_json(journal_path, journal)
             if not previous:
                 verify_files(root, files)
                 if settings["original_state"] == "Running":
-                    app.check_health()
+                    if settings.get("release_id"):
+                        app.check_health(settings["release_id"])
+                    else:
+                        app.check_health()
                 phase("succeeded")
                 return 0
             app.ensure_credentials()
@@ -334,22 +371,29 @@ def transaction(job, root, app, recover=False):
             verify_files(root, files)
             verify_static_assets(root)
             if settings["original_state"] == "Running":
+                if settings.get("release_id"):
+                    # The Kudu process can disappear during ARM start. Hand
+                    # off before starting once the entire release is verified.
+                    handoff("candidate_ready", release_id=settings["release_id"])
+                    return 0
                 phase("starting")
                 app.start()
                 app.check_health()
             phase("succeeded")
             return 0
         except BaseException as error:
+            if handing_off:
+                raise
             if recover:
                 recovery_phase("recovery_failed", error=str(error))
             elif stop_attempted:
                 try:
                     if journal is None:
                         raise ValueError("Recovery journal is missing")
-                    recovery_phase("rolling_back", error=str(error))
-                    rollback(job, root, journal, app)
-                    recovery_phase("rolled_back", error=str(error))
+                    roll_back(str(error))
                 except BaseException as recovery_error:
+                    if handing_off:
+                        raise
                     recovery_phase("recovery_failed", error=str(error), recovery_error=str(recovery_error))
             else:
                 phase("failed_preparation", error=str(error))
@@ -359,14 +403,17 @@ def transaction(job, root, app, recover=False):
                 shutil.rmtree(scratch, ignore_errors=True)
 
 
-def prune_completed_jobs(parent, current, keep=3):
-    completed = []
+def job_directories(parent):
     for directory in parent.iterdir():
         if (len(directory.name) == 32 and all(c in "0123456789abcdef" for c in directory.name)
                 and directory.is_dir() and not directory.is_symlink() and (directory / "state.json").exists()):
-            if json.loads((directory / "state.json").read_text())["phase"] in {
-                    "succeeded", "rolled_back", "failed_preparation"}:
-                completed.append(directory)
+            yield directory
+
+
+def prune_completed_jobs(parent, current, keep=3):
+    completed = [directory for directory in job_directories(parent)
+                 if json.loads((directory / "state.json").read_text())["phase"] in {
+                     "succeeded", "rolled_back", "failed_preparation"}]
     for directory in sorted(completed, key=lambda path: path.stat().st_mtime, reverse=True)[keep:]:
         if directory != current:
             shutil.rmtree(directory)
@@ -393,12 +440,13 @@ def main():
     result = transaction(args.job, Path("/home/site/wwwroot"), app, args.recover)
     state_path = args.job / "state.json"
     phase = json.loads(state_path.read_text())["phase"] if state_path.exists() else None
-    if result != 2 and phase in {"succeeded", "rolled_back", "failed_preparation"}:
+    if result != 2:
         try:
             # The verified snapshot and journal are sufficient for recovery.
             # Avoid retaining multiple copies of large native dependencies.
-            shutil.rmtree(args.job / "candidate", ignore_errors=True)
-            (args.job / "candidate.zip").unlink(missing_ok=True)
+            if phase in {"succeeded", "rolled_back", "failed_preparation"}:
+                shutil.rmtree(args.job / "candidate", ignore_errors=True)
+                (args.job / "candidate.zip").unlink(missing_ok=True)
             prune_completed_jobs(args.job.parent, args.job)
         except (OSError, ValueError):
             pass  # Cleanup must not undo an already healthy deployment.

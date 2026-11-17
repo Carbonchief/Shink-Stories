@@ -54,8 +54,8 @@ entry point. It now invokes `deploy_webapp.py`:
 5. Stop the app, then copy only changed application files directly, checking each
    source and destination against its expected checksum. This avoids temporary-file
    renames over served files during both activation and rollback. Verify all
-   deployed checksums, restore its original running state and require
-   HTTP 200 with body `ok` from `/healthz`. Intentionally stopped apps stay stopped.
+   deployed checksums before restoring its original running state. The startup
+   handoff below verifies `/healthz`. Intentionally stopped apps stay stopped.
 6. On a copy, verification, startup or health failure, stop before restoring the
    verified snapshot, remove only newly introduced package files, verify the old
    application, start it if originally running, and check health again. The
@@ -93,6 +93,38 @@ The workflow also runs an independent `always()` recovery step. If a worker
 process itself dies during activation, its durable journal can restore the old
 package without guessing which files were replaced. The normal activation lock
 prevents a recovery process from racing a worker that is still running.
+
+## Startup handoff after the 17 November 2026 failure
+
+The [scheduled release](https://github.com/Carbonchief/Shink-Stories/actions/runs/44037704231)
+compiled, passed its tests and verified the replacement files. Azure's activity
+log recorded the start request succeeding at 09:25:45 SAST. The container logs
+recorded a successful warm-up and site startup at 09:28:12. Kudu's trace resumed
+with a startup event at 09:29:14, and the worker's durable phase remained
+`starting`. At 09:42 the recovery step restored the predecessor based on that
+phase. The replacement had already started. The underlying reason for Kudu's
+restart is unavailable in the captured logs.
+
+New jobs save a startup checkpoint after verifying the complete candidate or
+restored files. The runner then uses Azure Resource Manager to start the app
+and checks the app origin directly. The published assembly's
+`--deployment-id` and the running assembly's `X-Schink-Release` header must
+match before the runner records a successful activation. A rollback verifies
+the captured predecessor identity. Releases predating the header are identified
+by an HTTP 200 with body `ok` and no release header.
+
+Recovery resumes from the same checkpoint if the runner or Kudu loses the
+status write. It checks an already running app before recording completion.
+An unhealthy candidate goes through the verified backup and the same startup
+handoff. Worker and recovery output use separate logs. A new activation
+cannot proceed while a different job has an unresolved startup checkpoint.
+GitHub requires recovery to confirm the candidate actually activated before
+checking the public endpoint. A successful rollback keeps the workflow failed.
+
+The Basic B1 plan uses an in-place deployment. This path still stops the app
+while replacing verified files. Azure App Service deployment slots require
+Standard or higher and allow warm-up before routing production traffic to the
+new version. [Azure deployment slots](https://learn.microsoft.com/en-us/azure/app-service/deploy-staging-slots)
 
 ## Manual recovery
 

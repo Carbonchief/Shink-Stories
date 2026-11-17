@@ -70,10 +70,13 @@ class FakeApp:
             raise OSError('Start failed')
         self.current_state = 'Running'
 
-    def check_health(self):
+    def check_health(self, expected_release=None):
         self.events.append(('health', self.version()))
         if self.fail_health and self.version() == 'new':
             raise TimeoutError('New release unhealthy')
+        if expected_release is not None and self.version() != expected_release:
+            raise TimeoutError('Wrong release is serving')
+        return self.version()
 
 
 class DeploymentTests(unittest.TestCase):
@@ -116,6 +119,97 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual([('stop', 'old'), ('start', 'new'), ('health', 'new')], self.app.events)
         worker.verify_files(self.root, self.settings['files'])
         self.assertEqual('Running', self.app.state())
+
+    def prepare_start_handoff(self):
+        self.settings['release_id'] = 'new'
+        (self.job / 'settings.json').write_text(json.dumps(self.settings))
+        self.assertEqual(0, worker.transaction(self.job, self.root, self.app))
+        return json.loads((self.job / 'state.json').read_text())
+
+    def test_startup_after_kudu_recycle_verifies_the_candidate_without_restarting_it(self):
+        checkpoint = self.prepare_start_handoff()
+        self.assertEqual({'phase': 'candidate_ready', 'release_id': 'new'}, checkpoint)
+        self.assertEqual([('health', 'old'), ('stop', 'old')], self.app.events)
+        # The first runner started and verified the candidate while Kudu was
+        # recycling. The next runner must resume from the saved checkpoint.
+        class KuduRestart:
+            writes = []
+            def record_start_result(self, job, result):
+                self.writes.append(result)
+                if len(self.writes) == 1:
+                    raise TimeoutError('Kudu restarted')
+        kudu = KuduRestart()
+        with self.assertRaises(TimeoutError):
+            coordinator.complete_start(kudu, self.job.name, self.app, checkpoint)
+        self.assertEqual('Running', self.app.state())
+        self.assertEqual({'phase': 'succeeded'},
+                         coordinator.complete_start(kudu, self.job.name, self.app, checkpoint))
+        self.assertEqual([('health', 'old'), ('stop', 'old'), ('start', 'new'),
+                          ('health', 'new'), ('health', 'new')], self.app.events)
+
+    def test_unhealthy_candidate_restores_and_verifies_old_release_outside_kudu(self):
+        checkpoint = self.prepare_start_handoff()
+        state_path = self.job / 'state.json'
+        class StateFile:
+            def record_start_result(self, job, result):
+                state_path.write_text(json.dumps(result))
+        kudu = StateFile()
+        self.app.fail_health = True
+        candidate = coordinator.complete_start(kudu, self.job.name, self.app, checkpoint)
+        self.assertEqual({'phase': 'candidate_unhealthy', 'error': 'New release unhealthy'}, candidate)
+        self.assertEqual(1, worker.transaction(self.job, self.root, self.app, recover=True))
+        restored = json.loads(state_path.read_text())
+        self.assertEqual({'phase': 'rollback_ready', 'release_id': 'old',
+                          'error': 'New release unhealthy'}, restored)
+        self.assertEqual('Stopped', self.app.state())
+        self.assertEqual(self.before, tree(self.root))
+        result = coordinator.complete_start(kudu, self.job.name, self.app, restored)
+        self.assertEqual({'phase': 'rolled_back', 'error': 'New release unhealthy'}, result)
+        self.assertEqual([('start', 'old'), ('health', 'old')], self.app.events[-2:])
+
+    def test_checkpoint_write_interruption_cannot_roll_back_after_handoff(self):
+        self.settings['release_id'] = 'new'
+        (self.job / 'settings.json').write_text(json.dumps(self.settings))
+        write_json = worker.write_json
+        def lose_checkpoint_reply(path, data):
+            write_json(path, data)
+            if data.get('phase') == 'candidate_ready':
+                raise InterruptedError('Interrupted after publishing startup checkpoint')
+        with patch.object(worker, 'write_json', side_effect=lose_checkpoint_reply):
+            with self.assertRaises(InterruptedError):
+                worker.transaction(self.job, self.root, self.app)
+        self.assertEqual('candidate_ready', self.phase())
+        self.assertEqual([('health', 'old'), ('stop', 'old')], self.app.events)
+        self.assertEqual('new', self.app.version())
+
+    def test_pending_startup_blocks_a_different_job_before_it_stops_the_site(self):
+        sibling = self.job.parent / ('b' * 32)
+        sibling.mkdir()
+        (sibling / 'state.json').write_text(json.dumps({'phase': 'rollback_ready'}))
+        self.assertEqual(1, worker.transaction(self.job, self.root, self.app))
+        self.assertEqual('failed_preparation', self.phase())
+        self.assertEqual([], self.app.events)
+        self.assertEqual(self.before, tree(self.root))
+
+    def test_ci_recovery_only_reports_success_for_an_activated_candidate(self):
+        locator = self.base / 'locator.json'
+        locator.write_text(json.dumps({'job': self.job.name, 'app_name': 'fixture',
+                                       'resource_group': 'fixture'}))
+        site = {'id': '/subscriptions/test/providers/Microsoft.Web/sites/fixture',
+                'defaultHostName': 'fixture.azurewebsites.net',
+                'hostNameSslStates': [{'name': 'fixture.scm', 'hostType': 'Repository'}]}
+        access = {'accessToken': 'fixture', 'expires_on': 9999999999}
+        args = ['deploy_webapp.py', '--recover', str(locator), '--require-activation']
+        with patch.object(sys, 'argv', args), patch.object(coordinator, 'az', side_effect=[site, access] * 3), \
+                patch.object(coordinator, 'Kudu') as kudu, \
+                patch.object(coordinator, 'complete_start', return_value={'phase': 'succeeded'}) as complete:
+            kudu.return_value.state.side_effect = [
+                {'phase': 'rolled_back'}, {'phase': 'failed_preparation'},
+                {'phase': 'candidate_ready', 'release_id': 'new'}]
+            self.assertEqual(1, coordinator.main())
+            self.assertEqual(1, coordinator.main())
+            self.assertEqual(0, coordinator.main())
+        complete.assert_called_once()
 
     def reject_website_renames(self):
         replace = worker.os.replace
@@ -501,6 +595,25 @@ w.transaction(Path(sys.argv[2]), root, App())
         with self.assertRaisesRegex(ValueError, '30 minutes'):
             app.ensure_credentials()
 
+    def test_stop_waits_until_the_origin_stops_serving_even_after_arm_says_stopped(self):
+        app = worker.AzureApp('/subscriptions/test/resourceGroups/test/providers/Microsoft.Web/sites/test',
+                              'https://example.azurewebsites.net/healthz', 'fixture', 0)
+        with patch.object(app, 'arm', return_value={'properties': {'state': 'Stopped'}}) as arm, \
+                patch.object(app, 'healthy_release', side_effect=['', None]), \
+                patch.object(worker.time, 'sleep') as sleep:
+            app.stop()
+        self.assertEqual([('/stop',), (), ()], [call.args for call in arm.call_args_list])
+        sleep.assert_called_once_with(3)
+
+    def test_health_waits_for_the_expected_release_and_accepts_legacy_rollback(self):
+        app = worker.AzureApp('/subscriptions/test/resourceGroups/test/providers/Microsoft.Web/sites/test',
+                              'https://example.azurewebsites.net/healthz', 'fixture', 0)
+        with patch.object(app, 'healthy_release', side_effect=['old', None, 'new', 'new', '']), \
+                patch.object(worker.time, 'sleep') as sleep:
+            self.assertEqual('new', app.check_health('new'))
+            self.assertEqual('', app.check_health(''))
+        self.assertEqual(3, sleep.call_count)
+
     def test_partial_copy_preserves_previously_stopped_state_on_rollback(self):
         self.settings['original_state'] = 'Stopped'
         (self.job / 'settings.json').write_text(json.dumps(self.settings))
@@ -654,6 +767,21 @@ class KuduRequestTests(unittest.TestCase):
             urlopen.side_effect = [urllib.error.URLError('Connection reset'), response]
             self.assertEqual({'phase': 'succeeded'}, self.kudu.state('a' * 32))
         self.assertEqual(2, urlopen.call_count)
+        sleep.assert_called_once_with(5)
+
+    def test_retries_only_the_exact_result_write_after_a_lost_reply(self):
+        with patch.object(coordinator.urllib.request, 'urlopen') as urlopen, \
+                patch.object(coordinator.time, 'sleep') as sleep:
+            response = urlopen.return_value
+            response.__enter__.return_value.read.return_value = b''
+            urlopen.side_effect = [TimeoutError('Reply lost'), response]
+            self.kudu.record_start_result('a' * 32, {'phase': 'succeeded'})
+        self.assertEqual(2, urlopen.call_count)
+        self.assertEqual(urlopen.call_args_list[0], urlopen.call_args_list[1])
+        request = urlopen.call_args.args[0]
+        self.assertEqual('PUT', request.get_method())
+        self.assertEqual({'phase': 'succeeded'}, json.loads(request.data))
+        self.assertTrue(request.full_url.endswith('/state.json'))
         sleep.assert_called_once_with(5)
 
     def test_retries_transient_http_errors(self):

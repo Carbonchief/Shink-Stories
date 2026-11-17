@@ -17,12 +17,20 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Mail;
+using System.Reflection;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using System.Xml.Linq;
+
+var deploymentRelease = Assembly.GetExecutingAssembly().ManifestModule.ModuleVersionId.ToString("D");
+if (args is ["--deployment-id"])
+{
+    Console.WriteLine(deploymentRelease);
+    return;
+}
 
 if (args is ["--verify-static-assets", var publishDirectory])
 {
@@ -591,6 +599,7 @@ app.Use(async (httpContext, next) =>
 app.MapGet("/healthz", (HttpContext httpContext) =>
 {
     httpContext.Response.Headers.CacheControl = "no-store";
+    httpContext.Response.Headers["X-Schink-Release"] = deploymentRelease;
     return Results.Text("ok", "text/plain; charset=utf-8");
 });
 
