@@ -68,7 +68,7 @@ public static class ProfileAvatarEndpoints
 
         var form = await context.Request.ReadFormAsync(context.RequestAborted);
         var isEditing = string.Equals(form["mode"], "edit", StringComparison.Ordinal);
-        var returnPath = isEditing ? ProfileAvatarCatalog.SafeReturnPath(form["returnUrl"]) : "/luister";
+        var returnPath = ProfileAvatarCatalog.ContinueAfterSelection(form["returnUrl"], isEditing);
         var requestedAvatarId = form["avatarId"].ToString();
         var avatar = ProfileAvatarCatalog.Find(requestedAvatarId);
         if (!isEditing && string.IsNullOrWhiteSpace(requestedAvatarId))

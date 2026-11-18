@@ -220,8 +220,34 @@
 
                 <div class="signup-actions">
                     <p class="signup-selected-option" aria-live="polite">
-                        Gekose opsie:
-                        <strong>@GetSelectedOptionLabel()</strong>
+                        @if (IsPreviewingDiscount)
+                        {
+                            <strong>@SelectedPlan?.Name</strong>
+                            <span class="signup-selected-option-detail">Ons bevestig jou aanbod…</span>
+                        }
+                        else if (HasValidFreeAccessCode)
+                        {
+                            <strong>@(DiscountPreview!.ResolvedTierName ?? SelectedPlan?.Name ?? "Schink Stories")</strong>
+                            <span class="signup-selected-option-detail">Gratis toegang met jou kode</span>
+                        }
+                        else if (SelectedPlan is { } selectedPlan && HasValidPercentageDiscount)
+                        {
+                            <span>@selectedPlan.Name</span>
+                            <strong class="signup-selected-option-detail">@GetDiscountedPlanLabel(selectedPlan)</strong>
+                            @if (IsFirstMonthOffer(selectedPlan))
+                            {
+                                <span class="signup-selected-option-detail">Daarna @FormatCurrency(DiscountPreview!.OriginalAmountZar) per maand</span>
+                            }
+                        }
+                        else
+                        {
+                            <text>Gekose opsie:</text>
+                            <strong>@GetSelectedOptionLabel()</strong>
+                            @if (DiscountPreview?.IsValid == false)
+                            {
+                                <span class="signup-selected-option-detail">Geen promosie toegepas nie.</span>
+                            }
+                        }
                     </p>
                     <button type="submit" class="signup-submit" disabled="@IsSubmitting">
                         @(IsSubmitting ? "Besig..." : "Skep rekening")
@@ -283,7 +309,7 @@
                 <span class="membership-plan-gratis-copy">Geniet 3 Gratis stories op ons</span>
             </button>
 
-            @if (SelectedPlan is not null)
+            @if (SelectedPlan is not null && !IsPreviewingDiscount)
             {
                 <p class="membership-total">Totaal om vandag te betaal: <strong>@GetSelectedPlanPriceDisplay()</strong></p>
             }
@@ -296,6 +322,7 @@
                            placeholder="Voer promosiekode in"
                            aria-label="Kode of voucher"
                            @bind-Value="SignUpForm.DiscountCode"
+                           @bind-Value:after="ClearDiscountPreview"
                            @onblur="PreviewDiscountCodeAsync" />
                 <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.DiscountCode)" />
                 <p class="signup-discount-code-help">
@@ -397,6 +424,9 @@
     private IJSObjectReference? _authModule;
     private ElementReference _googleSignInLink;
     private string? _configuredGoogleSignInHref;
+    private SignupDiscountPreviewRequest? _lastLinkDiscount;
+    private SignupDiscountPreviewRequest? _pendingLinkPreview;
+    private SignupDiscountPreviewRequest? _activeDiscountPreview;
 
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrl { get; set; }
@@ -419,7 +449,7 @@
     private bool SignUpSucceeded { get; set; }
     private bool ShowAccountCreatedPopup { get; set; }
     private bool IsSchoolOptionsSignupFlow { get; set; }
-    private bool IsPreviewingDiscount { get; set; }
+    private bool IsPreviewingDiscount => _pendingLinkPreview is not null || _activeDiscountPreview is not null;
     private string? StatusMessage { get; set; }
     private PaymentPlan? SelectedPlan { get; set; }
     private SignupDiscountPreviewResponse? DiscountPreview { get; set; }
@@ -459,10 +489,15 @@
     {
         SelectedPlan = ResolveSelectedPlan();
         IsSchoolOptionsSignupFlow = IsSchoolOptionsSource(Source) || SelectedPlan?.IsSchoolPlan == true;
-        if (!string.IsNullOrWhiteSpace(DiscountCode) &&
-            string.IsNullOrWhiteSpace(SignUpForm.DiscountCode))
+        var linkDiscount = string.IsNullOrWhiteSpace(DiscountCode)
+            ? null
+            : new SignupDiscountPreviewRequest(DiscountCode.Trim(), SelectedPlan?.TierCode);
+        if (linkDiscount != _lastLinkDiscount)
         {
-            SignUpForm.DiscountCode = DiscountCode.Trim();
+            _lastLinkDiscount = linkDiscount;
+            ClearDiscountPreview();
+            SignUpForm.DiscountCode = linkDiscount?.DiscountCode ?? string.Empty;
+            _pendingLinkPreview = linkDiscount;
         }
 
         if (!string.IsNullOrWhiteSpace(ReferralCode) &&
@@ -480,6 +515,13 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_pendingLinkPreview is { } request)
+        {
+            _pendingLinkPreview = null;
+            await LoadDiscountPreviewAsync(request);
+            StateHasChanged();
+        }
+
         if (!IsFreeSignup)
         {
             _configuredGoogleSignInHref = null;
@@ -651,7 +693,7 @@
         ShowConfirmPassword = false;
         SignUpForm = new SignUpFormModel();
         FormEditContext = new EditContext(SignUpForm);
-        DiscountPreview = null;
+        ClearDiscountPreview();
     }
 
     private void CloseAccountCreatedPopup()
@@ -663,19 +705,19 @@
     {
         if (IsSelectedPlan(plan))
         {
-            SelectedPlan = null;
-            DiscountPreview = null;
+            SelectGratisPlan();
             return;
         }
 
         SelectedPlan = plan;
+        ClearDiscountPreview();
         await PreviewDiscountCodeAsync();
     }
 
     private void SelectGratisPlan()
     {
         SelectedPlan = null;
-        DiscountPreview = null;
+        ClearDiscountPreview();
     }
 
     private async Task PreviewDiscountCodeAsync()
@@ -683,34 +725,52 @@
         await SyncSignUpInputsFromDomAsync();
         if (string.IsNullOrWhiteSpace(SignUpForm.DiscountCode))
         {
-            DiscountPreview = null;
+            ClearDiscountPreview();
             return;
         }
 
-        IsPreviewingDiscount = true;
+        await LoadDiscountPreviewAsync(new SignupDiscountPreviewRequest(SignUpForm.DiscountCode.Trim(), SelectedPlan?.TierCode));
+    }
+
+    private async Task LoadDiscountPreviewAsync(SignupDiscountPreviewRequest request)
+    {
+        if (request == _activeDiscountPreview)
+        {
+            return;
+        }
+
+        _activeDiscountPreview = request;
+        DiscountPreview = null;
+        SignupDiscountPreviewResponse? preview;
         try
         {
             var authModule = await EnsureAuthModuleAsync();
-            DiscountPreview = await authModule.InvokeAsync<SignupDiscountPreviewResponse>(
-                "postJson",
-                "/api/auth/signup/discount-preview",
-                new SignupDiscountPreviewRequest(SignUpForm.DiscountCode.Trim(), SelectedPlan?.TierCode));
+            preview = await authModule.InvokeAsync<SignupDiscountPreviewResponse>("postJson", "/api/auth/signup/discount-preview", request);
         }
         catch
         {
-            DiscountPreview = new SignupDiscountPreviewResponse(
+            preview = new SignupDiscountPreviewResponse(
                 IsValid: false,
-                Message: "Kon nie die kode nou kontroleer nie. Die prys bly onveranderd.");
+                Message: "Ons kon nie jou kode nou kontroleer nie. Probeer asseblief weer.");
         }
-        finally
+
+        if (ReferenceEquals(_activeDiscountPreview, request))
         {
-            IsPreviewingDiscount = false;
+            DiscountPreview = preview;
+            _activeDiscountPreview = null;
         }
     }
 
     private void RemoveDiscountCode()
     {
         SignUpForm.DiscountCode = string.Empty;
+        ClearDiscountPreview();
+    }
+
+    private void ClearDiscountPreview()
+    {
+        _pendingLinkPreview = null;
+        _activeDiscountPreview = null;
         DiscountPreview = null;
     }
 
@@ -1116,6 +1176,23 @@
         SelectedPlan is null
             ? "Gratis stories"
             : $"{SelectedPlan.Name} ({FormatPlanAmount(SelectedPlan)} {GetPlanBillingLabel(SelectedPlan)})";
+
+    private bool IsFirstMonthOffer(PaymentPlan plan) =>
+        plan.IsSubscription && plan.BillingPeriodMonths == 1 &&
+        DiscountPreview is { DiscountDuration: SubscriptionDiscountDurations.FirstPayments, DiscountPaymentCount: 1 };
+
+    private string GetDiscountedPlanLabel(PaymentPlan plan)
+    {
+        var price = GetSelectedPlanPriceDisplay();
+        if (IsFirstMonthOffer(plan))
+        {
+            return $"{price} vir jou eerste maand";
+        }
+
+        return DiscountPreview?.DiscountDuration == SubscriptionDiscountDurations.Lifetime && plan.IsSubscription
+            ? $"{price} {GetPlanBillingLabel(plan)}"
+            : $"{price} vir jou eerste betaling";
+    }
 
     private bool IsSelectedPlan(PaymentPlan plan) =>
         SelectedPlan is not null &&

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.WebUtilities;
+using Shink.Components.Content;
 
 namespace Shink.Services;
 
@@ -58,4 +59,20 @@ public static class ProfileAvatarCatalog
             ["returnUrl"] = SafeReturnPath(returnPath),
             ["mode"] = isEditing ? "edit" : null
         });
+
+    public static string ContinueAfterSelection(string? returnPath, bool isEditing)
+    {
+        var safeReturnPath = SafeReturnPath(returnPath);
+        if (isEditing)
+        {
+            return safeReturnPath;
+        }
+
+        const string checkoutPrefix = "/betaal/";
+        var path = safeReturnPath.Split('?', '#')[0];
+        return path.StartsWith(checkoutPrefix, StringComparison.OrdinalIgnoreCase) &&
+               PaymentPlanCatalog.FindBySlug(path[checkoutPrefix.Length..]) is { IsAdminOnly: false }
+            ? safeReturnPath
+            : "/luister";
+    }
 }

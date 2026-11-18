@@ -36,7 +36,7 @@
                         ? "Kies asseblief ’n prentjie vir jou profiel."
                         : "Ons kon nie jou prentjie stoor nie. Probeer asseblief weer.")</p>
                 }
-                <button type="submit" class="avatar-continue">@(IsEditing ? "Save" : "Begin luister")</button>
+                <button type="submit" class="avatar-continue">@ContinueLabel</button>
             </form>
         }
         else
@@ -63,7 +63,9 @@
     private bool IsSignedIn { get; set; }
     private string? SelectedAvatarId { get; set; }
     private bool IsEditing => string.Equals(Mode, "edit", StringComparison.Ordinal);
-    private string ContinuePath => IsEditing ? ProfileAvatarCatalog.SafeReturnPath(ReturnUrl) : "/luister";
+    private string ContinuePath => ProfileAvatarCatalog.ContinueAfterSelection(ReturnUrl, IsEditing);
+    private string ContinueLabel => IsEditing ? "Save" :
+        ContinuePath == "/luister" ? "Begin luister" : "Gaan voort na betaling";
     private string SignInPath => "/teken-in?returnUrl=" + Uri.EscapeDataString(ProfileAvatarCatalog.SelectionPath(ContinuePath, IsEditing));
 
     protected override async Task OnParametersSetAsync()

@@ -16,6 +16,7 @@ using Shink.Services;
 using Shink.Components.Content;
 using Signup = Shink.Components.Pages.Signup;
 using Login = Shink.Components.Pages.Login;
+using ProfileAvatarPage = Shink.Components.Pages.ProfileAvatar;
 
 namespace Shink.Tests;
 
@@ -78,6 +79,26 @@ public sealed class ProfileAvatarTests
             Assert.AreEqual("panda", store.Avatar.Id);
         }
         Assert.AreEqual(store.Avatar.ImageUrl, auth.SignedInPrincipal?.FindFirst("profile_image_url")?.Value);
+    }
+
+    [TestMethod]
+    [DataRow("/betaal/schink-stories-maandeliks?provider=paystack&discountCode=EERSTEMAAND26",
+             "/betaal/schink-stories-maandeliks?provider=paystack&discountCode=EERSTEMAAND26")]
+    [DataRow("/betaal/paystack/callback", "/luister")]
+    [DataRow("//elsewhere.example/betaal/schink-stories-maandeliks", "/luister")]
+    public async Task Onboarding_PreservesOnlyValidCheckoutContinuations(string target, string expected)
+    {
+        var page = new ProfileAvatarPage { ReturnUrl = target };
+        var continuePath = (string)typeof(ProfileAvatarPage)
+            .GetProperty("ContinuePath", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page)!;
+        Assert.AreEqual(expected, continuePath);
+
+        var principal = Listener();
+        var auth = new TestAuthentication(principal, new());
+        var context = Context(principal, auth, "panda", target, isEditing: false);
+        var result = (RedirectHttpResult)await ProfileAvatarEndpoints.SaveAsync(
+            context, new TestAntiforgery(), new AvatarStore());
+        Assert.AreEqual(expected, result.Url);
     }
 
     [TestMethod]

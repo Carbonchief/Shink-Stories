@@ -485,6 +485,11 @@
     color: #133f4f;
 }
 
+.signup-selected-option-detail {
+    display: block;
+    margin-top: 0.16rem;
+}
+
 .signup-submit {
     width: 100%;
     border: 0;

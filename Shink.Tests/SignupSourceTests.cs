@@ -68,7 +68,8 @@ public class SignupSourceTests
         StringAssert.Contains(opsies, "signUpQuery[\"discountCode\"] = normalizedDiscountCode;");
 
         StringAssert.Contains(signup, "[SupplyParameterFromQuery(Name = \"discountCode\")]");
-        StringAssert.Contains(signup, "SignUpForm.DiscountCode = DiscountCode.Trim();");
+        StringAssert.Contains(signup, "new SignupDiscountPreviewRequest(DiscountCode.Trim(), SelectedPlan?.TierCode)");
+        StringAssert.Contains(signup, "SignUpForm.DiscountCode = linkDiscount?.DiscountCode ?? string.Empty;");
         StringAssert.Contains(signup, "query[\"discountCode\"] = SignUpForm.DiscountCode.Trim();");
 
         StringAssert.Contains(program, "PreviewSignupDiscountCodeAsync(");
