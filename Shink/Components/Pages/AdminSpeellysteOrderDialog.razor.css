@@ -1,0 +1,108 @@
+.speellyste-cover-toggle {
+    grid-area: shape;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 44px;
+    cursor: pointer;
+}
+
+.speellyste-cover-toggle input {
+    width: 1.12rem;
+    height: 1.12rem;
+    margin: 0;
+    accent-color: #f3a13f;
+}
+
+.speellyste-order-note {
+    margin: 0;
+    color: #b4c6d7;
+}
+
+.speellyste-order-list {
+    display: grid;
+    gap: 0.4rem;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.speellyste-order-item {
+    display: grid;
+    grid-template-columns: 3ch minmax(0, 1fr) auto auto;
+    grid-template-areas: "position title shape moves";
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid #3f5a72;
+    border-radius: 8px;
+    background: #223447;
+}
+
+.speellyste-order-position {
+    grid-area: position;
+    text-align: center;
+    color: #b4c6d7;
+    font-variant-numeric: tabular-nums;
+}
+
+.speellyste-order-title {
+    grid-area: title;
+    overflow-wrap: anywhere;
+}
+
+.speellyste-order-controls {
+    grid-area: moves;
+    display: flex;
+}
+
+@media (max-width: 440px) {
+    .speellyste-order-item {
+        grid-template-columns: 3ch minmax(0, 1fr) auto;
+        grid-template-areas:
+            "position title moves"
+            ". shape moves";
+        row-gap: 0;
+    }
+
+    .speellyste-cover-toggle {
+        justify-self: start;
+    }
+}
+
+.speellyste-order-controls ::deep .mud-icon-button {
+    min-width: 44px;
+    min-height: 44px;
+    color: inherit;
+}
+
+.speellyste-order-controls ::deep .mud-icon-button:disabled {
+    opacity: 0.35;
+}
+
+.speellyste-order-cancel,
+.speellyste-order-save {
+    min-height: 44px;
+    padding: 0.45rem 0.85rem;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.speellyste-order-cancel {
+    background: transparent;
+    color: inherit;
+}
+
+.speellyste-order-save {
+    background: #f3a13f;
+    color: #111820;
+}
+
+.speellyste-order-cancel:disabled,
+.speellyste-order-save:disabled {
+    opacity: 0.5;
+    cursor: default;
+}

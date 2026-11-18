@@ -434,19 +434,11 @@ public sealed class SupabaseStoryCatalogService(
         Uri baseUri,
         string apiKey,
         CancellationToken cancellationToken,
-        bool includeGradientEndColor = true,
-        bool includeFontColor = true)
+        string[]? optionalColumns = null)
     {
-        var playlistColumns = "playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex";
-        if (includeGradientEndColor)
-        {
-            playlistColumns += ",accent_color_end_hex";
-        }
-
-        if (includeFontColor)
-        {
-            playlistColumns += ",font_color_hex";
-        }
+        const string requiredColumns = "playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex";
+        optionalColumns ??= ["accent_color_end_hex", "font_color_hex", "speellyste_carousel_order", "speellyste_square_playlist_ids"];
+        var playlistColumns = string.Join(',', optionalColumns.Prepend(requiredColumns));
 
         var requestUri = new Uri(
             baseUri,
@@ -472,18 +464,12 @@ public sealed class SupabaseStoryCatalogService(
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                if (includeGradientEndColor &&
-                    body.Contains("accent_color_end_hex", StringComparison.OrdinalIgnoreCase))
+                var missingColumn = Array.Find(optionalColumns, column => body.Contains(column, StringComparison.OrdinalIgnoreCase));
+                if (missingColumn is not null)
                 {
-                    _logger.LogInformation("Supabase playlist gradient color lookup skipped: column accent_color_end_hex is not available yet.");
-                    return await FetchStoryPlaylistRowsAsync(baseUri, apiKey, cancellationToken, includeGradientEndColor: false, includeFontColor);
-                }
-
-                if (includeFontColor &&
-                    body.Contains("font_color_hex", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogInformation("Supabase playlist font color lookup skipped: column font_color_hex is not available yet.");
-                    return await FetchStoryPlaylistRowsAsync(baseUri, apiKey, cancellationToken, includeGradientEndColor, includeFontColor: false);
+                    _logger.LogInformation("Supabase playlist lookup skipped column {Column}; it is not available yet.", missingColumn);
+                    return await FetchStoryPlaylistRowsAsync(
+                        baseUri, apiKey, cancellationToken, optionalColumns.Where(column => column != missingColumn).ToArray());
                 }
 
                 _logger.LogWarning(
@@ -612,7 +598,10 @@ public sealed class SupabaseStoryCatalogService(
             IncludeInSpeellysteCarousel: favouritesConfig.IncludeInSpeellysteCarousel,
             IsSystemPlaylist: true,
             SystemKey: NormalizeSystemKey(favouritesConfig.SystemKey),
-            ShowcaseStorySlug: null);
+            ShowcaseStorySlug: null)
+        {
+            PlaylistId = favouritesConfig.PlaylistId
+        };
 
         return snapshot.LuisterPlaylists
             .Where(playlist => !(playlist.IsSystemPlaylist &&
@@ -1255,7 +1244,10 @@ public sealed class SupabaseStoryCatalogService(
                 IncludeInSpeellysteCarousel: playlistRow.IncludeInSpeellysteCarousel,
                 IsSystemPlaylist: playlistRow.IsSystemPlaylist,
                 SystemKey: NormalizeSystemKey(playlistRow.SystemKey),
-                ShowcaseStorySlug: showcaseStorySlug));
+                ShowcaseStorySlug: showcaseStorySlug)
+            {
+                PlaylistId = playlistRow.PlaylistId
+            });
         }
 
         var unassignedStories = luisterRows
@@ -1290,7 +1282,10 @@ public sealed class SupabaseStoryCatalogService(
                 IncludeInSpeellysteCarousel: allStoriesConfig?.IncludeInSpeellysteCarousel ?? false,
                 IsSystemPlaylist: allStoriesConfig?.IsSystemPlaylist ?? false,
                 SystemKey: NormalizeSystemKey(allStoriesConfig?.SystemKey),
-                ShowcaseStorySlug: null));
+                ShowcaseStorySlug: null)
+            {
+                PlaylistId = allStoriesConfig?.PlaylistId ?? Guid.Empty
+            });
         }
 
         return playlists
@@ -1317,7 +1312,12 @@ public sealed class SupabaseStoryCatalogService(
             IncludeInSpeellysteCarousel: false,
             IsSystemPlaylist: true,
             SystemKey: SpeellysteSystemKey,
-            ShowcaseStorySlug: null);
+            ShowcaseStorySlug: null)
+        {
+            PlaylistId = playlistRow.PlaylistId,
+            SpeellysteCarouselOrder = playlistRow.SpeellysteCarouselOrder,
+            SpeellysteSquarePlaylistIds = playlistRow.SpeellysteSquarePlaylistIds?.ToHashSet()
+        };
 
     private static IReadOnlyList<StoryPlaylist> BuildDefaultLuisterPlaylists(IReadOnlyList<StoryCatalogRow> storyRows)
     {
@@ -1822,6 +1822,12 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("include_in_speellyste_carousel")]
         public bool IncludeInSpeellysteCarousel { get; set; }
+
+        [JsonPropertyName("speellyste_carousel_order")]
+        public Guid[]? SpeellysteCarouselOrder { get; set; }
+
+        [JsonPropertyName("speellyste_square_playlist_ids")]
+        public Guid[]? SpeellysteSquarePlaylistIds { get; set; }
 
         [JsonPropertyName("show_showcase_image_on_luister_page")]
         public bool ShowShowcaseImageOnLuisterPage { get; set; }

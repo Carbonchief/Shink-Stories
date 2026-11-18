@@ -81,7 +81,9 @@ public class MobileAbsoluteUrlSourceTests
 
         StringAssert.Contains(models, "public sealed record MobileLuisterSection(");
         StringAssert.Contains(program, "IsMobileSpeellysteSystemPlaylist");
-        StringAssert.Contains(program, "item.Playlist.IncludeInSpeellysteCarousel");
+        StringAssert.Contains(program, "displayEntries.Where(entry => entry.Source.IncludeInSpeellysteCarousel)");
+        StringAssert.Contains(program, "SpeellysteCarouselOrderPolicy.Apply(");
+        StringAssert.Contains(program, "speellysteConfig?.SpeellysteCarouselOrder");
         StringAssert.Contains(program, "MobileLuisterSectionKinds.Speellyste");
         StringAssert.Contains(program, ".OrderBy(section => section.SortOrder)");
         StringAssert.Contains(luisterPage, "FilterSections(_sections, _searchEntry.Text)");

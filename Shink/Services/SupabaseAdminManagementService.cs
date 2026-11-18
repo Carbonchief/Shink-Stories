@@ -30,6 +30,7 @@ public sealed partial class SupabaseAdminManagementService(
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const string StoryCatalogSnapshotCacheKey = "stories:catalog:v2";
+    private const string SpeellystePlaylistPath = "rest/v1/story_playlists?playlist_type=eq.system&system_key=eq.speellyste";
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
@@ -2123,6 +2124,85 @@ public sealed partial class SupabaseAdminManagementService(
         InvalidateStoryCatalogCache();
         return new AdminOperationResult(true);
     }
+
+    public async Task<AdminSpeellysteCarouselSettings?> GetSpeellysteCarouselSettingsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken) ||
+            !TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return null;
+        }
+
+        return await FetchSpeellysteCarouselSettingsAsync(baseUri, ResolveApiKey(), cancellationToken);
+    }
+
+    public async Task<AdminSpeellysteSettingsSaveResult> SaveSpeellysteCarouselSettingsAsync(
+        string? adminEmail,
+        AdminSpeellysteCarouselSettings expected,
+        AdminSpeellysteCarouselSettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken) ||
+            !TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return AdminSpeellysteSettingsSaveResult.Failed;
+        }
+
+        var apiKey = ResolveApiKey();
+        var orderedIds = settings.PlaylistOrder.Where(id => id != Guid.Empty).Distinct().ToArray();
+        var squareIds = settings.SquarePlaylistIds.Where(id => id != Guid.Empty).Distinct().Order().ToArray();
+        var uri = new Uri(baseUri, SpeellystePlaylistPath +
+            $"&speellyste_carousel_order=eq.{EncodeUuidArray(expected.PlaylistOrder)}" +
+            $"&speellyste_square_playlist_ids=eq.{EncodeUuidArray(expected.SquarePlaylistIds)}&select=playlist_id");
+        var payload = new
+        {
+            speellyste_carousel_order = orderedIds,
+            speellyste_square_playlist_ids = squareIds
+        };
+        using var request = CreateJsonRequest(HttpMethod.Patch, uri, apiKey, payload, "return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Speellyste settings update failed. Status={StatusCode} Body={Body}", (int)response.StatusCode, body);
+            return AdminSpeellysteSettingsSaveResult.Failed;
+        }
+
+        if (TryReadFirstGuidProperty(body, "playlist_id") is null)
+        {
+            // Another save won the race, or an earlier request already saved these settings.
+            var current = await FetchSpeellysteCarouselSettingsAsync(baseUri, apiKey, cancellationToken);
+            if (current is null)
+            {
+                return AdminSpeellysteSettingsSaveResult.Failed;
+            }
+
+            if (!current.PlaylistOrder.SequenceEqual(orderedIds) || !squareIds.ToHashSet().SetEquals(current.SquarePlaylistIds))
+            {
+                return AdminSpeellysteSettingsSaveResult.Conflict;
+            }
+        }
+
+        InvalidateStoryCatalogCache();
+        return AdminSpeellysteSettingsSaveResult.Saved;
+    }
+
+    private async Task<AdminSpeellysteCarouselSettings?> FetchSpeellysteCarouselSettingsAsync(
+        Uri baseUri,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(baseUri, SpeellystePlaylistPath + "&select=speellyste_carousel_order,speellyste_square_playlist_ids");
+        var rows = await FetchRowsAsync<PlaylistRow>(uri, apiKey, cancellationToken);
+        return rows.FirstOrDefault() is { SpeellysteCarouselOrder: { } order, SpeellysteSquarePlaylistIds: { } squareIds }
+            ? new AdminSpeellysteCarouselSettings(order, squareIds)
+            : null;
+    }
+
+    private static string EncodeUuidArray(IReadOnlyList<Guid> ids) =>
+        Uri.EscapeDataString("{" + string.Join(",", ids) + "}");
 
     public async Task<AdminOperationResult> SavePlaylistStoriesAsync(
         string? adminEmail,
@@ -8059,6 +8139,12 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("include_in_speellyste_carousel")]
         public bool IncludeInSpeellysteCarousel { get; set; }
+
+        [JsonPropertyName("speellyste_carousel_order")]
+        public Guid[]? SpeellysteCarouselOrder { get; set; }
+
+        [JsonPropertyName("speellyste_square_playlist_ids")]
+        public Guid[]? SpeellysteSquarePlaylistIds { get; set; }
 
         [JsonPropertyName("show_showcase_image_on_luister_page")]
         public bool ShowShowcaseImageOnLuisterPage { get; set; }

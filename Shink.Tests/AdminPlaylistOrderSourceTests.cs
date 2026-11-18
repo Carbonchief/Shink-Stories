@@ -40,7 +40,7 @@ public class AdminPlaylistOrderSourceTests
     }
 
     [TestMethod]
-    public void PlaylistGridIncludesSpeellysteAsOrderOnlySystemPlaylist()
+    public void PlaylistGridGivesSpeellysteItsOwnCardOrderAction()
     {
         var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
         var migration = File.ReadAllText(GetRepoPath(
@@ -50,12 +50,12 @@ public class AdminPlaylistOrderSourceTests
             "20260522_speellyste_system_playlist_order.sql"));
 
         StringAssert.Contains(markup, "IsSpeellysteSystemPlaylist(context)");
-        StringAssert.Contains(markup, "BuildSpeellysteSystemPlaylistNotice()");
         StringAssert.Contains(markup, "BuildPlaylistRowDisplayTitle(context)");
         StringAssert.Contains(markup, "\"Speellyste (Sisteem)\"");
         StringAssert.Contains(markup, "\"Speellyste section (System)\"");
-        StringAssert.Contains(markup, "\"Hierdie ry beheer net waar die Speellyste blok op die Luister blad wys. Playlist items word deur die individuele playlists beheer.\"");
-        StringAssert.Contains(markup, "\"This row only controls where the Speellyste block appears on the Luister page. Playlist items are managed by the individual playlists.\"");
+        StringAssert.Contains(markup, "@onclick=\"OpenSpeellysteOrderDialogAsync\"");
+        StringAssert.Contains(markup, "ShowAsync<AdminSpeellysteOrderDialog>");
+        StringAssert.Contains(markup, "\"Wysig kaartvolgorde\", \"Edit card order\"");
 
         StringAssert.Contains(migration, "coalesce(old.system_key, '') = 'speellyste'");
         StringAssert.Contains(migration, "'speellyste'");

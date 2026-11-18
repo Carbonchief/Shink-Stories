@@ -20,6 +20,7 @@
 @inject IJSRuntime JSRuntime
 @inject ILogger<Admin> Logger
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject IOptions<CloudflareR2Options> CloudflareR2OptionsAccessor
 
 <PageTitle>@AdminMetaTitle</PageTitle>
@@ -1429,7 +1430,14 @@
                         <div class="admin-table-actions admin-playlist-actions">
                             @if (IsSpeellysteSystemPlaylist(context))
                             {
-                                <span class="admin-form-note">@BuildSpeellysteSystemPlaylistNotice()</span>
+                                <button type="button"
+                                        class="admin-btn admin-btn-secondary"
+                                        disabled="@(IsSavingPlaylistsOrder || IsSpeellysteOrderDialogOpen)"
+                                        aria-haspopup="dialog"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="OpenSpeellysteOrderDialogAsync">
+                                    @T("Wysig kaartvolgorde", "Edit card order")
+                                </button>
                             }
                             else if (!string.IsNullOrWhiteSpace(playlistPlayerPath))
                             {
@@ -5057,6 +5065,7 @@
     private bool IsStoryDialogOpen { get; set; }
     private bool IsNewStoryDialogOpen { get; set; }
     private bool IsPlaylistDialogOpen { get; set; }
+    private bool IsSpeellysteOrderDialogOpen { get; set; }
     private bool IsEditModalOpening { get; set; }
     private bool ClearModalLoadingOnNextRender { get; set; }
     private HashSet<Guid> TogglingPlaylistIds { get; } = [];
@@ -8443,13 +8452,46 @@
 
     private string BuildSpeellysteSystemPlaylistNotice() =>
         T(
-            "Hierdie ry beheer net waar die Speellyste blok op die Luister blad wys. Playlist items word deur die individuele playlists beheer.",
-            "This row only controls where the Speellyste block appears on the Luister page. Playlist items are managed by the individual playlists.");
+            "Gebruik Posisie om die Speellyste-afdeling te skuif en Wysig kaartvolgorde om die kaarte se volgorde en voorblaaie te stel.",
+            "Use Position to move the Speellyste section and Edit card order to set the card order and cover shape.");
 
     private static bool IsSpeellysteSystemPlaylist(AdminPlaylistRecord playlist) =>
         playlist.IsSystemPlaylist &&
         (string.Equals(playlist.SystemKey, "speellyste", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(playlist.Slug, "speellyste", StringComparison.OrdinalIgnoreCase));
+
+    private async Task OpenSpeellysteOrderDialogAsync()
+    {
+        if (IsSpeellysteOrderDialogOpen)
+        {
+            return;
+        }
+
+        IsSpeellysteOrderDialogOpen = true;
+        try
+        {
+            var parameters = new DialogParameters<AdminSpeellysteOrderDialog>
+            {
+                { dialog => dialog.AdminEmail, CurrentAdminEmail },
+                { dialog => dialog.LanguageCode, CurrentLanguageCode },
+                { dialog => dialog.Playlists, Playlists
+                    .Where(playlist => playlist.IsEnabled && playlist.IncludeInSpeellysteCarousel && !IsSpeellysteSystemPlaylist(playlist))
+                    .ToArray() }
+            };
+            var dialog = await DialogService.ShowAsync<AdminSpeellysteOrderDialog>(
+                T("Speellyste-instellings", "Speellyste settings"),
+                parameters,
+                new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, BackdropClick = false });
+            if (await dialog.Result is { Canceled: false })
+            {
+                SetStatus(T("Die Speellyste-instellings is gestoor.", "Speellyste settings saved."));
+            }
+        }
+        finally
+        {
+            IsSpeellysteOrderDialogOpen = false;
+        }
+    }
 
     private async Task TogglePlaylistEnabledAsync(AdminPlaylistRecord playlist, bool isEnabled)
     {

@@ -4242,11 +4242,11 @@ app.MapGet("/api/mobile/luister", async (
     var displayPlaylists = playlists
         .Where(playlist => !IsMobileSpeellysteSystemPlaylist(playlist))
         .ToArray();
-    var mappedPlaylists = GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
-            displayPlaylists.Select(MapPlaylist).ToArray(),
-            access.IsAuthenticated && !access.HasPaidSubscription,
-            static playlist => playlist.Slug)
-        .ToArray();
+    var displayEntries = GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
+        displayPlaylists.Select(playlist => (Source: playlist, Response: MapPlaylist(playlist))).ToArray(),
+        access.IsAuthenticated && !access.HasPaidSubscription,
+        static entry => entry.Source.Slug);
+    var mappedPlaylists = displayEntries.Select(entry => entry.Response).ToArray();
     var speellysteConfig = playlists.FirstOrDefault(IsMobileSpeellysteSystemPlaylist);
     var sections = mappedPlaylists
         .Select((playlist, index) => new MobileLuisterSectionResponse(
@@ -4256,10 +4256,11 @@ app.MapGet("/api/mobile/luister", async (
             Playlist: playlist,
             Playlists: Array.Empty<MobilePlaylistResponse>()))
         .ToList();
-    var speellystePlaylists = displayPlaylists
-        .Select((playlist, index) => new { Playlist = playlist, Mapped = mappedPlaylists[index] })
-        .Where(item => item.Playlist.IncludeInSpeellysteCarousel)
-        .Select(item => item.Mapped)
+    var speellystePlaylists = SpeellysteCarouselOrderPolicy.Apply(
+            displayEntries.Where(entry => entry.Source.IncludeInSpeellysteCarousel),
+            speellysteConfig?.SpeellysteCarouselOrder,
+            static entry => entry.Source.PlaylistId)
+        .Select(entry => entry.Response)
         .ToArray();
     if (speellystePlaylists.Length > 0)
     {

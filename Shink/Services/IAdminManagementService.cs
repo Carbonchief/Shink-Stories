@@ -125,6 +125,16 @@ public interface IAdminManagementService
         IReadOnlyList<Guid> orderedPlaylistIds,
         CancellationToken cancellationToken = default);
 
+    Task<AdminSpeellysteCarouselSettings?> GetSpeellysteCarouselSettingsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminSpeellysteSettingsSaveResult> SaveSpeellysteCarouselSettingsAsync(
+        string? adminEmail,
+        AdminSpeellysteCarouselSettings expected,
+        AdminSpeellysteCarouselSettings settings,
+        CancellationToken cancellationToken = default);
+
     Task<AdminOperationResult> SavePlaylistStoriesAsync(
         string? adminEmail,
         Guid playlistId,
@@ -632,6 +642,17 @@ public sealed record AdminPlaylistStoryItem(
 public sealed record AdminPlaylistStorySaveItem(
     Guid StoryId,
     bool IsShowcase);
+
+public sealed record AdminSpeellysteCarouselSettings(
+    IReadOnlyList<Guid> PlaylistOrder,
+    IReadOnlyList<Guid> SquarePlaylistIds);
+
+public enum AdminSpeellysteSettingsSaveResult
+{
+    Failed,
+    Saved,
+    Conflict
+}
 
 public sealed record AdminPlaylistUpdateRequest(
     Guid? PlaylistId,

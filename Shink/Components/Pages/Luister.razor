@@ -109,7 +109,7 @@ else
     {
         @if (section.Kind == LuisterSectionKind.Speellyste)
         {
-            @RenderSpeellysteSection(section.SpeellystePlaylists)
+            @RenderSpeellysteSection(section.SpeellystePlaylists, section.SquarePlaylistIds)
             continue;
         }
 
@@ -537,8 +537,11 @@ else
 
     private IReadOnlyList<LuisterSection> BuildOrderedLuisterSections()
     {
-        var speellystePlaylists = GetSpeellysteCarouselPlaylists();
         var speellysteConfig = LuisterPlaylists.FirstOrDefault(IsSpeellysteSystemPlaylist);
+        var speellystePlaylists = SpeellysteCarouselOrderPolicy.Apply(
+            FilteredLuisterPlaylists.Where(playlist => playlist.IncludeInSpeellysteCarousel && !IsSpeellysteSystemPlaylist(playlist)),
+            speellysteConfig?.SpeellysteCarouselOrder,
+            static playlist => playlist.PlaylistId);
         var sections = FilteredLuisterPlaylists
             .Where(playlist => !IsSpeellysteSystemPlaylist(playlist))
             .Select(playlist => new LuisterSection(
@@ -556,7 +559,8 @@ else
                 Playlist: null,
                 SpeellystePlaylists: speellystePlaylists,
                 SortOrder: speellysteConfig?.SortOrder ?? int.MinValue,
-                Title: speellysteConfig is null ? "Speellyste" : GetPlaylistTitle(speellysteConfig)));
+                Title: speellysteConfig is null ? "Speellyste" : GetPlaylistTitle(speellysteConfig),
+                SquarePlaylistIds: speellysteConfig?.SpeellysteSquarePlaylistIds));
         }
 
         var orderedSections = sections
@@ -569,7 +573,7 @@ else
             static section => section.Playlist?.Slug);
     }
 
-    private RenderFragment RenderSpeellysteSection(IReadOnlyList<StoryPlaylist> speellysteCarouselPlaylists) => @<text>
+    private RenderFragment RenderSpeellysteSection(IReadOnlyList<StoryPlaylist> speellysteCarouselPlaylists, IReadOnlySet<Guid>? squarePlaylistIds) => @<text>
         @if (speellysteCarouselPlaylists.Count > 0)
         {
             <section class="section-block stories-carousel-section luister-speellyste-section" aria-labelledby="luister-speellyste-heading">
@@ -583,8 +587,10 @@ else
                             var playlistSlug = GetPlaylistSlug(playlist);
                             var playlistShowcasePath = GetPlaylistShowcaseHref(playlistSlug);
                             var playlistImagePath = GetPlaylistCarouselImagePath(playlist);
+                            var useSquareCover = squarePlaylistIds?.Contains(playlist.PlaylistId) == true;
 
-                            <article class="story-carousel-item luister-speellyste-item" role="listitem">
+                            <article @key="playlist.Slug" class="story-carousel-item luister-speellyste-item"
+                                     data-cover-shape='@(useSquareCover ? "square" : "full")' role="listitem">
                                 <a class="story-carousel-link luister-speellyste-link"
                                    href="@playlistShowcasePath"
                                    data-enhance-nav="false"
@@ -614,12 +620,6 @@ else
             </section>
         }
     </text>;
-
-    private IReadOnlyList<StoryPlaylist> GetSpeellysteCarouselPlaylists() =>
-        FilteredLuisterPlaylists
-            .Where(playlist => !IsSpeellysteSystemPlaylist(playlist))
-            .Where(playlist => playlist.IncludeInSpeellysteCarousel)
-            .ToArray();
 
     private static bool IsSpeellysteSystemPlaylist(StoryPlaylist playlist) =>
         string.Equals(playlist.SystemKey, "speellyste", StringComparison.OrdinalIgnoreCase) ||
@@ -1151,7 +1151,8 @@ else
         StoryPlaylist? Playlist,
         IReadOnlyList<StoryPlaylist> SpeellystePlaylists,
         int SortOrder,
-        string Title);
+        string Title,
+        IReadOnlySet<Guid>? SquarePlaylistIds = null);
 
     private sealed record PendingCharacterUnlockPopupPayload(
         string? Type,

@@ -1,0 +1,61 @@
+<MudDialog Class="admin-solid-dialog" ContentClass="admin-solid-dialog-content">
+    <DialogContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+        }
+
+        @if (_isLoading)
+        {
+            <p role="status">@T("Laai Speellyste-instellings…", "Loading Speellyste settings…")</p>
+        }
+        else if (_draft.Count > 0)
+        {
+            <p class="speellyste-order-note">
+                @T("Skuif kaarte met die pyltjies. Merk Vierkant vir ’n uitsnit uit die middel. Laat die blokkie ongemerk om die hele beeld te wys.",
+                   "Use the arrows to reorder the cards. Check Square for a center crop. Clear it to show the full image.")
+            </p>
+            <ol class="speellyste-order-list" role="list">
+                @for (var index = 0; index < _draft.Count; index++)
+                {
+                    var playlist = _draft[index];
+                    <li @key="playlist.PlaylistId" class="speellyste-order-item">
+                        <span class="speellyste-order-position" aria-hidden="true">@(index + 1)</span>
+                        <span class="speellyste-order-title">@playlist.Title</span>
+                        <label class="speellyste-cover-toggle">
+                            <input type="checkbox"
+                                   checked="@_squarePlaylistIds.Contains(playlist.PlaylistId)"
+                                   disabled="@IsEditingDisabled"
+                                   @onchange="args => SetSquareCover(playlist.PlaylistId, args.Value is true)"
+                                   aria-label='@T($"Vierkantige voorblad vir {playlist.Title}", $"Square cover for {playlist.Title}")' />
+                            @T("Vierkant", "Square")
+                        </label>
+                        <div class="speellyste-order-controls">
+                            <MudIconButton Icon="@Icons.Material.Filled.KeyboardArrowUp"
+                                           Disabled="@(IsEditingDisabled || index == 0)"
+                                           OnClick="@(() => MovePlaylist(playlist.PlaylistId, -1))"
+                                           aria-label='@T($"Skuif {playlist.Title} op", $"Move {playlist.Title} up")' />
+                            <MudIconButton Icon="@Icons.Material.Filled.KeyboardArrowDown"
+                                           Disabled="@(IsEditingDisabled || index == _draft.Count - 1)"
+                                           OnClick="@(() => MovePlaylist(playlist.PlaylistId, 1))"
+                                           aria-label='@T($"Skuif {playlist.Title} af", $"Move {playlist.Title} down")' />
+                        </div>
+                    </li>
+                }
+            </ol>
+        }
+        else if (_error is null)
+        {
+            <p>@T("Daar is geen aktiewe playlists in die Speellyste-karrousel nie.",
+                  "There are no active playlists in the Speellyste carousel.")</p>
+        }
+    </DialogContent>
+    <DialogActions>
+        <button type="button" class="speellyste-order-cancel" disabled="@_isSaving" @onclick="Cancel">
+            @T("Kanselleer", "Cancel")
+        </button>
+        <button type="button" class="speellyste-order-save" disabled="@(!CanSave)" @onclick="SaveAsync">
+            @(_isSaving ? T("Stoor tans…", "Saving…") : T("Stoor veranderinge", "Save changes"))
+        </button>
+    </DialogActions>
+</MudDialog>

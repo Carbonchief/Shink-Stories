@@ -22,6 +22,10 @@ public sealed record StoryPlaylist(
     public const string DefaultLogoImagePath = "/branding/Storie_Hoekie_Logo_Banner.png";
     public const string DefaultBackdropImagePath = "/branding/Storie_Hoekie_Logo_Banner_Backdrop.png";
 
+    public Guid PlaylistId { get; init; }
+    public IReadOnlyList<Guid>? SpeellysteCarouselOrder { get; init; }
+    public IReadOnlySet<Guid>? SpeellysteSquarePlaylistIds { get; init; }
+
     public string ResolvedLogoImagePath => ResolveImagePath(LogoImagePath, DefaultLogoImagePath);
 
     public string ResolvedBackdropImagePath => ResolveImagePath(BackdropImagePath, DefaultBackdropImagePath);

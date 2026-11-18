@@ -376,12 +376,16 @@ h1 {
 
 .luister-speellyste-carousel {
     --luister-speellyste-base-card-width: 220px;
-    grid-auto-columns: calc(var(--luister-speellyste-base-card-width) * 64 / 27);
+    --luister-speellyste-full-ratio: 11 / 6;
 }
 
-.luister-speellyste-cover,
-.luister-speellyste-image {
-    aspect-ratio: 16 / 9;
+.luister-speellyste-item {
+    --luister-speellyste-card-ratio: var(--luister-speellyste-full-ratio);
+    width: calc(var(--luister-speellyste-cover-height) * var(--luister-speellyste-card-ratio));
+}
+
+.luister-speellyste-item[data-cover-shape="square"] {
+    --luister-speellyste-card-ratio: 1 / 1;
 }
 
 .luister-speellyste-link h3 {
@@ -447,10 +451,11 @@ h1 {
 
 .stories-carousel.luister-speellyste-carousel {
     --luister-speellyste-viewport-cap: calc(100vw - (var(--luister-carousel-edge-space, 15px) * 2));
-    grid-auto-columns: min(
-        calc(var(--luister-speellyste-base-card-width) * 64 / 27),
-        var(--luister-speellyste-viewport-cap)
+    --luister-speellyste-cover-height: min(
+        calc(var(--luister-speellyste-base-card-width) * 4 / 3),
+        calc(var(--luister-speellyste-viewport-cap) / (var(--luister-speellyste-full-ratio)))
     );
+    grid-auto-columns: max-content;
 }
 
 .luister-stories-section .stories-carousel,
@@ -605,13 +610,21 @@ h1 {
 }
 
 .luister-speellyste-link .story-carousel-cover {
-    aspect-ratio: 16 / 9;
+    aspect-ratio: auto;
     width: 100%;
     height: auto;
 }
 
 .luister-speellyste-link .story-carousel-image {
-    aspect-ratio: 16 / 9;
+    height: auto;
+    aspect-ratio: auto var(--luister-speellyste-card-ratio);
+    object-fit: contain;
+    object-position: center;
+}
+
+.luister-speellyste-item[data-cover-shape="square"] .luister-speellyste-image {
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
 }
 
 .story-carousel-item.is-navigating .story-carousel-image {
@@ -649,6 +662,10 @@ h1 {
 .story-carousel-link:focus-visible .story-carousel-image {
     transform: scale(1.03);
     filter: brightness(0.8);
+}
+
+.luister-speellyste-item[data-cover-shape="full"] .story-carousel-link:is(:hover, :focus-visible) .story-carousel-image {
+    transform: none;
 }
 
 .story-carousel-link:hover .story-cover-play,
