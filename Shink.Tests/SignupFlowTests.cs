@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.HtmlRendering.Infrastructure;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
@@ -21,16 +22,21 @@ public class SignupFlowTests
     [TestMethod]
     public void SwitchingFromPaidToFreeClearsCheckoutFromSignInAndSocialLinks()
     {
-        var signup = new Signup { ReturnUrl = "/betaal/schink-stories-maandeliks" };
+        const string plan = "schink-stories-maandeliks";
+        const string checkoutPath = "/betaal/" + plan;
+        var signup = new Signup { Plan = plan, ReturnUrl = checkoutPath };
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        typeof(Signup).GetProperty("NavigationManager", flags)!
+            .SetValue(signup, new SignupNavigationManager(checkoutPath, plan, method: null));
         typeof(Signup).GetProperty("SelectedPlan", flags)!
-            .SetValue(signup, PaymentPlanCatalog.FindBySlug("schink-stories-maandeliks"));
+            .SetValue(signup, PaymentPlanCatalog.FindBySlug(plan));
         typeof(Signup).GetMethod("SelectGratisPlan", flags)!.Invoke(signup, null);
 
         Assert.IsTrue((bool)typeof(Signup).GetProperty("IsFreeSignup", flags)!.GetValue(signup)!);
         Assert.AreEqual("/teken-in?returnUrl=%2Fluister", typeof(Signup).GetProperty("SignInHref", flags)!.GetValue(signup));
         Assert.AreEqual("/api/auth/google/start?returnUrl=%2Fluister", typeof(Signup).GetProperty("GoogleSignInHref", flags)!.GetValue(signup));
         Assert.AreEqual("/api/auth/apple/start?returnUrl=%2Fluister", typeof(Signup).GetProperty("AppleSignInHref", flags)!.GetValue(signup));
+        Assert.AreEqual("https://schink.example/teken-op", typeof(Signup).GetProperty("SignupChoicesHref", flags)!.GetValue(signup));
     }
 
     [TestMethod]
@@ -54,24 +60,42 @@ public class SignupFlowTests
     [DataRow(null)]
     [DataRow("/luister")]
     [DataRow("/luister/suurlemoentjie")]
-    public async Task NoSelectedPlanRendersCompactFreeForm(string? returnUrl)
+    public async Task FreeSignupOffersThreeMethodsBeforeShowingTheEmailForm(string? returnUrl)
     {
-        using var document = new HtmlParser().ParseDocument(await RenderAsync(returnUrl: returnUrl));
+        var parser = new HtmlParser();
+        using var choices = parser.ParseDocument(await RenderAsync(returnUrl: returnUrl));
+        using var emailForm = parser.ParseDocument(await RenderAsync(returnUrl: returnUrl, selectEmail: true));
 
-        Assert.IsNotNull(document.QuerySelector(".signup-free-card"));
-        Assert.IsNull(document.QuerySelector(".signup-card-membership"));
-        Assert.AreEqual("Volgende", document.QuerySelector("button[type=submit]")?.TextContent.Trim());
+        Assert.IsNotNull(choices.QuerySelector(".signup-free-card"));
+        Assert.IsNull(choices.QuerySelector(".signup-card-membership"));
+        CollectionAssert.AreEqual(
+            new[] { "Gaan voort met Google", "Gaan voort met Apple", "Gaan voort met e-pos" },
+            choices.QuerySelectorAll(".signup-free-methods .signup-free-provider").Select(method => method.TextContent.Trim()).ToArray());
+        var emailLink = choices.QuerySelector("a.signup-free-email");
+        Assert.IsNotNull(emailLink);
+        var emailUri = new Uri(emailLink.GetAttribute("href")!);
+        Assert.AreEqual("/teken-op", emailUri.AbsolutePath);
+        var emailQuery = QueryHelpers.ParseQuery(emailUri.Query);
+        Assert.AreEqual("email", emailQuery["method"].ToString());
+        Assert.AreEqual(returnUrl ?? string.Empty, emailQuery.GetValueOrDefault("returnUrl").ToString());
+        Assert.IsNull(choices.QuerySelector("input:not([type=hidden]), button[type=submit]"));
+        Assert.IsNull(choices.QuerySelector(".signup-free-back"));
+
+        Assert.IsNull(emailForm.QuerySelector(".signup-free-provider"));
+        var backLink = emailForm.QuerySelector("a.signup-free-back");
+        Assert.IsNotNull(backLink);
+        Assert.AreEqual("Terug", backLink.TextContent.Trim());
+        var backUri = new Uri(backLink.GetAttribute("href")!);
+        Assert.AreEqual("/teken-op", backUri.AbsolutePath);
+        var backQuery = QueryHelpers.ParseQuery(backUri.Query);
+        Assert.IsFalse(backQuery.ContainsKey("method"));
+        Assert.AreEqual(returnUrl ?? string.Empty, backQuery.GetValueOrDefault("returnUrl").ToString());
+        Assert.AreEqual("Volgende", emailForm.QuerySelector("button[type=submit]")?.TextContent.Trim());
         CollectionAssert.AreEqual(
             new[] { "signup-first-name", "signup-email", "signup-password", "signup-password-confirm" },
-            document.QuerySelectorAll("input:not([type=checkbox]):not([type=hidden])")
+            emailForm.QuerySelectorAll("input:not([type=checkbox]):not([type=hidden])")
                 .Select(input => input.Id).ToArray());
-        Assert.IsNotNull(document.QuerySelector("#signup-email-consent"), "Keep the existing email preference visible.");
-        Assert.IsTrue(document.QuerySelector(".signup-free-divider")?.TextContent.Contains("of"));
-        Assert.AreEqual(2, document.QuerySelectorAll(".signup-free-social a").Length);
-        CollectionAssert.AreEqual(
-            new[] { "a", "a", "input" },
-            document.QuerySelectorAll(".signup-free-social a, #signup-first-name").Select(element => element.LocalName).ToArray(),
-            "Offer both social providers before asking for email signup details.");
+        Assert.IsNotNull(emailForm.QuerySelector("#signup-email-consent"), "Keep the existing email preference visible.");
     }
 
     [TestMethod]
@@ -79,7 +103,7 @@ public class SignupFlowTests
     [DataRow("schink-stories-maandeliks")]
     public async Task PasswordControlsStartMaskedWithAccessibleRequirements(string? plan)
     {
-        using var document = new HtmlParser().ParseDocument(await RenderAsync(plan: plan));
+        using var document = new HtmlParser().ParseDocument(await RenderAsync(plan: plan, selectEmail: plan is null));
         foreach (var id in new[] { "signup-password", "signup-password-confirm" })
         {
             var input = document.QuerySelector($"#{id}")!;
@@ -102,7 +126,7 @@ public class SignupFlowTests
     [DataRow("schink-stories-maandeliks")]
     public async Task PasswordVisibilityTogglesIndependentlyWithoutChangingValues(string? plan)
     {
-        using var document = new HtmlParser().ParseDocument(await RenderAsync(plan: plan, afterRender: signup =>
+        using var document = new HtmlParser().ParseDocument(await RenderAsync(plan: plan, selectEmail: plan is null, afterRender: signup =>
         {
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
             var form = typeof(Signup).GetProperty("SignUpForm", flags)!.GetValue(signup)!;
@@ -180,12 +204,20 @@ public class SignupFlowTests
         string? returnUrl = null,
         string? source = null,
         string? discountCode = null,
+        bool selectEmail = false,
         Action<Signup>? afterRender = null)
     {
-        var signup = new Signup { Plan = plan, ReturnUrl = returnUrl, Source = source, DiscountCode = discountCode };
+        var signup = new Signup
+        {
+            Plan = plan,
+            ReturnUrl = returnUrl,
+            Source = source,
+            DiscountCode = discountCode,
+            SignupMethod = selectEmail ? "email" : null
+        };
         using var services = new ServiceCollection()
             .AddLogging()
-            .AddSingleton<NavigationManager, SignupNavigationManager>()
+            .AddSingleton<NavigationManager>(new SignupNavigationManager(returnUrl, plan, signup.SignupMethod))
             .AddSingleton<AuthenticationStateProvider, SignedOutAuthenticationStateProvider>()
             .AddSingleton<IJSRuntime, NoPrerenderJsRuntime>()
             .AddSingleton(DispatchProxy.Create<ISubscriptionLedgerService, UnusedLedger>())
@@ -222,7 +254,18 @@ public class SignupFlowTests
 
     private sealed class SignupNavigationManager : NavigationManager
     {
-        public SignupNavigationManager() => Initialize("https://schink.example/", "https://schink.example/teken-op");
+        public SignupNavigationManager(string? returnUrl, string? plan, string? method)
+        {
+            const string signupUrl = "https://schink.example/teken-op";
+            var query = new Dictionary<string, string?>
+            {
+                ["returnUrl"] = returnUrl,
+                ["plan"] = plan,
+                ["method"] = method
+            };
+            Initialize("https://schink.example/", QueryHelpers.AddQueryString(signupUrl, query));
+        }
+
         protected override void NavigateToCore(string uri, bool forceLoad) => throw new InvalidOperationException("Signed-out rendering must not redirect.");
     }
 

@@ -15,6 +15,7 @@
 }
 
 .signup-free-card {
+    position: relative;
     padding: 16px 30px 24px;
     border: 1px solid #e3e6dd;
     border-radius: 22px;
@@ -177,24 +178,7 @@
     cursor: wait;
 }
 
-.signup-free-divider {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 10px 0;
-    color: #45616a;
-    font-size: 13px;
-}
-
-.signup-free-divider::before,
-.signup-free-divider::after {
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: #cbd6d2;
-}
-
-.signup-free-social {
+.signup-free-methods {
     display: grid;
     gap: 8px;
 }
@@ -210,6 +194,7 @@
     border-radius: 8px;
     color: #173f4f;
     background: #ffffff;
+    font-family: inherit;
     font-size: 14px;
     font-weight: 500;
     text-decoration: none;
@@ -245,6 +230,34 @@
     background: #3b3b3b;
 }
 
+.signup-free-email:hover {
+    background: #f4f8f7;
+}
+
+.signup-free-back {
+    position: absolute;
+    top: 8px;
+    left: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 44px;
+    padding-inline: 6px;
+    color: #45616a;
+    font-size: 12px;
+    text-decoration: none;
+}
+
+.signup-free-back i {
+    font-size: 10px;
+}
+
+.signup-free-back:hover {
+    color: #173f4f;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
 .signup-free-signin {
     display: block;
     width: fit-content;
@@ -257,6 +270,7 @@
 
 .signup-free-submit:focus-visible,
 .signup-free-provider:focus-visible,
+.signup-free-back:focus-visible,
 .signup-free-signin:focus-visible {
     outline: 3px solid #173f4f;
     outline-offset: 3px;
