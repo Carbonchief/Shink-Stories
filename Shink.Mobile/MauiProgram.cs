@@ -47,6 +47,8 @@ public static class MauiProgram
         builder.ConfigureImageSources(sources => sources.AddService<
             Shink.Mobile.Platforms.iOS.IpadStoryImageSource,
             Shink.Mobile.Platforms.iOS.IpadStoryImageSourceService>());
+        builder.Services.ConfigureHttpClientDefaults(client => client.ConfigurePrimaryHttpMessageHandler(
+            Shink.Mobile.Platforms.iOS.IosHttpHandler.Create));
 #endif
 
         var mobileAppSettings = new MobileAppSettings();

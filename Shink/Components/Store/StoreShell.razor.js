@@ -532,12 +532,19 @@ export function initialize() {
         return result.error;
     }
 
-    function trackProductView(product, viewType) {
-        track("winkel_product_viewed", {
+    function trackProductInteraction(event, product, viewType) {
+        track(event, {
             product_slug: product.slug,
             collection: product.collection,
             view_type: viewType,
         });
+    }
+
+    function trackProductLinkClick(event) {
+        const link = event.target.closest("[data-store-product-link]");
+        if (!link) return;
+        const product = products.find((product) => product.slug === link.dataset.storeProductLink);
+        if (product) trackProductInteraction("winkel_product_clicked", product, "detail");
     }
 
     function trackBasketAdd(product, quantity, viewType) {
@@ -552,6 +559,7 @@ export function initialize() {
     function openProduct(slug) {
         selectedProduct = products.find((product) => product.slug === slug);
         if (!selectedProduct || !quickView) return;
+        trackProductInteraction("winkel_product_clicked", selectedProduct, "quick_view");
         if (typeof quickView.showModal !== "function") {
             location.assign(`/winkel/produk/${encodeURIComponent(slug)}`);
             return;
@@ -587,7 +595,7 @@ export function initialize() {
         quickView.querySelector("[data-store-quick-error]").hidden = true;
         quickView.showModal();
         document.body.classList.add("winkel-quick-view-open");
-        trackProductView(selectedProduct, "quick_view");
+        trackProductInteraction("winkel_product_viewed", selectedProduct, "quick_view");
     }
 
     if (quickView) {
@@ -616,6 +624,7 @@ export function initialize() {
     }
 
     listen(root, "click", (event) => {
+        trackProductLinkClick(event);
         const button = event.target.closest("button");
         if (!button) return;
         if (button.hasAttribute("data-store-open-product")) {
@@ -943,10 +952,13 @@ export function initialize() {
             notice("Jou mandjie is in 'n ander oortjie opgedateer.");
         }
     });
+    listen(root, "auxclick", (event) => {
+        if (event.button === 1) trackProductLinkClick(event);
+    });
     if (shouldTrackView) {
         track("winkel_visited");
         const detailProduct = products.find(product => product.slug === root.dataset.storeDetailSlug);
-        if (detailProduct) trackProductView(detailProduct, "detail");
+        if (detailProduct) trackProductInteraction("winkel_product_viewed", detailProduct, "detail");
     }
     render();
     if (originalItems !== JSON.stringify(state.items) && !completedReference)

@@ -336,7 +336,7 @@ public sealed class OnboardingPage : ContentPage
         back.Swiped += (_, _) => MoveBack();
         composition.GestureRecognizers.Add(forward);
         composition.GestureRecognizers.Add(back);
-        composition.ShowSlide(_slideIndex);
+        composition.ShowSlide(_slideIndex, DescribeSlide(_slideIndex));
         _stage.Children.Add(composition);
         return composition;
     }
@@ -394,8 +394,9 @@ public sealed class OnboardingPage : ContentPage
         _hasShownSlide = true;
         _slideIndex = index;
         _artwork.Source = Slides[index].Image;
-        _tabletComposition?.ShowSlide(index);
-        SemanticProperties.SetDescription(_artwork, $"Skerm {index + 1} van {Slides.Length}. {Slides[index].Description}");
+        var description = DescribeSlide(index);
+        _tabletComposition?.ShowSlide(index, description);
+        SemanticProperties.SetDescription(_artwork, description);
         SemanticProperties.SetHint(_artwork, "Vee links of regs, of gebruik die navigasieknoppies.");
         _backButton.IsEnabled = index > 0;
         _backButton.IsVisible = index > 0;
@@ -411,6 +412,9 @@ public sealed class OnboardingPage : ContentPage
         UpdateSystemBackHandling();
         _ = _artworkViewport.ScrollToAsync(0, 0, false);
     }
+
+    private static string DescribeSlide(int index) =>
+        $"Skerm {index + 1} van {Slides.Length}. {Slides[index].Description}";
 
     private bool MoveBack()
     {

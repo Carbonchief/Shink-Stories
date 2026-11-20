@@ -661,6 +661,10 @@ async (page) => {
         assert(JSON.stringify(pages) === JSON.stringify(expected), `Unexpected tracked page sequence: ${pages.join(", ")}.`);
         const detailViews = () => events.filter(event => event.event === "winkel_product_viewed" && event.properties.view_type === "detail");
         assert(detailViews().length === 1, "Opening one product sent more than one detail view.");
+        const clicks = events.filter(event => event.event === "winkel_product_clicked");
+        assert(clicks.length === 2 && clicks.every(event => event.properties.product_slug === "tiekie") &&
+            new Set(clicks.map(event => event.properties.view_type)).size === 2,
+            "Product links and quick view buttons should record one attributed click each.");
         assert(events.filter(event => event.event === "winkel_checkout_started").length === 1, "One checkout sent more than one start event.");
 
         await captureDuring("winkel_visited", () => tab.goBack());
@@ -669,6 +673,64 @@ async (page) => {
         assert(JSON.stringify(revisitedPages) === JSON.stringify([...expected, "cart", "checkout"]),
             `Back and forward did not count one visit each: ${revisitedPages.join(", ")}.`);
     });
+
+    currentSuite = "shop-analytics";
+    await check("admin shop analytics filters traffic and paid sales and remains usable if PostHog fails", async (tab) => {
+        const getQueries = async () => (await tab.request.get(fixture + "/_test/shop-queries")).json();
+        const login = await tab.request.post(base + "/api/auth/login", {
+            data: { email: "admin@example.invalid", password: "Local-checkout-test-123!" },
+        });
+        assert(login.ok(), "Local admin sign-in failed.");
+        await tab.goto(base + "/admin");
+        await tab.getByRole("tab", { name: "Analitika", exact: true }).click();
+        assert((await getQueries()).length === 0, "Opening general analytics requested the shop report.");
+        await tab.locator(".admin-analytics-tabs").getByRole("tab", { name: "Winkel", exact: true }).click();
+
+        const panel = tab.locator(".admin-shop-analytics");
+        const period = panel.locator("#shop-analytics-period");
+        const card = label => panel.locator(".admin-analytics-card").filter({ hasText: label }).locator(".admin-analytics-value");
+        const expectValue = async (label, value) => {
+            await card(label).filter({ hasText: new RegExp(`^${value}$`) }).waitFor();
+        };
+        assert(await period.inputValue() === "30", "The report did not default to 30 days.");
+        await expectValue("Unieke besoekers", "18");
+        await expectValue("Betaalde bestellings", "2");
+        assert((await card("Bruto verkope").innerText()).includes("940"), "Paid sales must include delivery charges.");
+        await panel.locator(".admin-shop-analytics-chart svg").first().waitFor();
+        const product = panel.getByRole("row").filter({ hasText: "Toetsboek" });
+        const cells = (await product.locator("td").allInnerTexts()).map(value => value.trim());
+        assert(JSON.stringify(cells) === JSON.stringify(["Toetsboek", "7", "11", "3", "2"]),
+            `Unexpected product figures: ${cells.join(", ")}.`);
+        const legacy = panel.getByRole("row").filter({ hasText: "Toetspakket" });
+        assert(await legacy.locator("td").last().innerText() === "1", "Legacy paid product quantities were omitted.");
+        assert(await panel.getByText("Delivery", { exact: true }).count() === 0, "Delivery appeared as a product.");
+        assert(!(await tab.content()).includes("local-winkel-query-key"), "The server query key appeared in the browser.");
+
+        assert((await tab.request.post(fixture + "/_test/fail-shop-query")).ok(), "Could not simulate a PostHog outage.");
+        await period.selectOption("7");
+        await panel.getByText("PostHog se winkelaktiwiteit kon nie laai nie.", { exact: false }).waitFor();
+        await expectValue("Unieke besoekers", "—");
+        await expectValue("Betaalde bestellings", "1");
+        await tab.getByRole("button", { name: "Verfris analitika", exact: true }).click();
+        await expectValue("Unieke besoekers", "5");
+        assert((await getQueries()).some(query => query.days === 7 && query.refresh === "force_blocking"),
+            "Refresh did not request fresh PostHog results for the selected period.");
+
+        await period.selectOption("90");
+        await panel.getByText("Geen winkelbesoeke is in hierdie tydperk aangeteken nie.").waitFor();
+        await expectValue("Unieke besoekers", "0");
+        await expectValue("Betaalde bestellings", "2");
+
+        await tab.setViewportSize({ width: 390, height: 844 });
+        await tab.locator(".admin-language .mud-input-control").click();
+        await tab.locator(".mud-popover-open").getByText("English", { exact: true }).click();
+        await panel.getByRole("heading", { name: "Shop analytics", exact: true }).waitFor();
+        await period.selectOption("7");
+        await expectValue("Unique visitors", "5");
+        assert(await panel.evaluate(element => element.scrollWidth <= element.clientWidth + 1),
+            "Shop analytics overflows on a mobile screen.");
+    });
+
     currentSuite = "orders";
     await check("admin can inspect guest orders and record one shipment from desktop or mobile", async (tab, context) => {
         await add(tab, "tiekie", 2);

@@ -26,6 +26,8 @@ public sealed partial class SupabaseAdminManagementService(
     ISubscriptionPaymentRecoveryEmailService subscriptionPaymentRecoveryEmailService,
     PaystackCheckoutService paystackCheckoutService,
     PayFastCheckoutService payFastCheckoutService,
+    PostHogStoreAnalytics postHogStoreAnalytics,
+    IStoreProductCatalogService storeProductCatalog,
     ILogger<SupabaseAdminManagementService> logger) : IAdminManagementService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -2153,13 +2155,16 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         var orderedIds = settings.PlaylistOrder.Where(id => id != Guid.Empty).Distinct().ToArray();
         var squareIds = settings.SquarePlaylistIds.Where(id => id != Guid.Empty).Distinct().Order().ToArray();
+        var featuredFilter = expected.FeaturedPlaylistId is Guid featuredId ? $"eq.{featuredId:D}" : "is.null";
         var uri = new Uri(baseUri, SpeellystePlaylistPath +
             $"&speellyste_carousel_order=eq.{EncodeUuidArray(expected.PlaylistOrder)}" +
-            $"&speellyste_square_playlist_ids=eq.{EncodeUuidArray(expected.SquarePlaylistIds)}&select=playlist_id");
+            $"&speellyste_square_playlist_ids=eq.{EncodeUuidArray(expected.SquarePlaylistIds)}" +
+            $"&speellyste_featured_playlist_id={featuredFilter}&select=playlist_id");
         var payload = new
         {
             speellyste_carousel_order = orderedIds,
-            speellyste_square_playlist_ids = squareIds
+            speellyste_square_playlist_ids = squareIds,
+            speellyste_featured_playlist_id = settings.FeaturedPlaylistId
         };
         using var request = CreateJsonRequest(HttpMethod.Patch, uri, apiKey, payload, "return=representation");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -2179,7 +2184,9 @@ public sealed partial class SupabaseAdminManagementService(
                 return AdminSpeellysteSettingsSaveResult.Failed;
             }
 
-            if (!current.PlaylistOrder.SequenceEqual(orderedIds) || !squareIds.ToHashSet().SetEquals(current.SquarePlaylistIds))
+            if (current.FeaturedPlaylistId != settings.FeaturedPlaylistId ||
+                !current.PlaylistOrder.SequenceEqual(orderedIds) ||
+                !squareIds.ToHashSet().SetEquals(current.SquarePlaylistIds))
             {
                 return AdminSpeellysteSettingsSaveResult.Conflict;
             }
@@ -2194,10 +2201,10 @@ public sealed partial class SupabaseAdminManagementService(
         string apiKey,
         CancellationToken cancellationToken)
     {
-        var uri = new Uri(baseUri, SpeellystePlaylistPath + "&select=speellyste_carousel_order,speellyste_square_playlist_ids");
+        var uri = new Uri(baseUri, SpeellystePlaylistPath + "&select=speellyste_carousel_order,speellyste_square_playlist_ids,speellyste_featured_playlist_id");
         var rows = await FetchRowsAsync<PlaylistRow>(uri, apiKey, cancellationToken);
-        return rows.FirstOrDefault() is { SpeellysteCarouselOrder: { } order, SpeellysteSquarePlaylistIds: { } squareIds }
-            ? new AdminSpeellysteCarouselSettings(order, squareIds)
+        return rows.FirstOrDefault() is { SpeellysteCarouselOrder: { } order, SpeellysteSquarePlaylistIds: { } squareIds } row
+            ? new AdminSpeellysteCarouselSettings(order, squareIds, row.SpeellysteFeaturedPlaylistId)
             : null;
     }
 
@@ -8145,6 +8152,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("speellyste_square_playlist_ids")]
         public Guid[]? SpeellysteSquarePlaylistIds { get; set; }
+
+        [JsonPropertyName("speellyste_featured_playlist_id")]
+        public Guid? SpeellysteFeaturedPlaylistId { get; set; }
 
         [JsonPropertyName("show_showcase_image_on_luister_page")]
         public bool ShowShowcaseImageOnLuisterPage { get; set; }

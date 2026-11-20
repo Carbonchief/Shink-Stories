@@ -1520,8 +1520,8 @@
                             <h2>@T("Analitika", "Analytics")</h2>
                             <p class="admin-form-note">
                                 @T(
-                                    "Hier wys ons intekenaar-, inkomste- en gebruiksanalitika wat tans reeds nagespoor word.",
-                                    "This shows the subscriber, revenue, and usage analytics that are currently being tracked.")
+                                    "Intekenaar-, inkomste-, gebruiks- en winkelanalitika.",
+                                    "Subscriber, revenue, usage, and shop analytics.")
                             </p>
                         </div>
                         <MudButton Class="admin-icon-btn admin-action-btn admin-mobile-cta admin-icon-only"
@@ -3437,6 +3437,169 @@
                                 </section>
                             </section>
                             }
+                        </MudTabPanel>
+                        <MudTabPanel Text='@T("Winkel", "Shop")'>
+                            <section class="admin-analytics-panel admin-shop-analytics" aria-labelledby="shop-analytics-heading">
+                                <div class="admin-analytics-panel-head">
+                                    <div>
+                                        <h3 id="shop-analytics-heading">@T("Winkelanalitika", "Shop analytics")</h3>
+                                        @if (_shopAnalytics is { } report)
+                                        {
+                                            <p>@FormatShopAnalyticsPeriod(report)</p>
+                                        }
+                                    </div>
+                                    <div class="admin-shop-analytics-period">
+                                        <label class="admin-header-filter-label" for="shop-analytics-period">@T("Tydperk", "Period")</label>
+                                        <select id="shop-analytics-period" class="admin-header-filter-select"
+                                                @bind="_shopAnalyticsDays" @bind:after="ChangeShopAnalyticsPeriodAsync"
+                                                disabled="@IsLoadingShopAnalytics">
+                                            <option value="7">@T("Laaste 7 dae", "Last 7 days")</option>
+                                            <option value="30">@T("Laaste 30 dae", "Last 30 days")</option>
+                                            <option value="90">@T("Laaste 90 dae", "Last 90 days")</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                @if (IsLoadingShopAnalytics || _shopAnalytics is null)
+                                {
+                                    <p role="@(_shopAnalyticsLoadFailed ? "alert" : "status")" class="admin-analytics-footnote">
+                                        @(_shopAnalyticsLoadFailed
+                                            ? T("Kon nie winkelanalitika laai nie. Kies Verfris om weer te probeer.", "Could not load shop analytics. Select Refresh to try again.")
+                                            : T("Laai winkelanalitika...", "Loading shop analytics..."))
+                                    </p>
+                                }
+                                else
+                                {
+                                    var engagement = _shopAnalytics.Engagement;
+                                    var sales = _shopAnalytics.Sales;
+                                    <div class="admin-analytics-grid admin-shop-analytics-kpis">
+                                        <article class="admin-analytics-card">
+                                            <p class="admin-analytics-label">@T("Unieke besoekers", "Unique visitors")</p>
+                                            <p class="admin-analytics-value">@FormatShopAnalyticsCount(engagement?.Visitors)</p>
+                                            <div class="admin-analytics-meta">
+                                                <span>@T("Winkelbladbesoeke", "Shop page views")</span>
+                                                <strong>@FormatShopAnalyticsCount(engagement?.Visits)</strong>
+                                            </div>
+                                        </article>
+                                        <article class="admin-analytics-card">
+                                            <p class="admin-analytics-label">@T("Het by mandjie gevoeg", "Added to basket")</p>
+                                            <p class="admin-analytics-value">@FormatShopAnalyticsCount(engagement?.BasketVisitors)</p>
+                                        </article>
+                                        <article class="admin-analytics-card">
+                                            <p class="admin-analytics-label">@T("Het begin afreken", "Started checkout")</p>
+                                            <p class="admin-analytics-value">@FormatShopAnalyticsCount(engagement?.CheckoutVisitors)</p>
+                                        </article>
+                                        <article class="admin-analytics-card">
+                                            <p class="admin-analytics-label">@T("Betaalde bestellings", "Paid orders")</p>
+                                            <p class="admin-analytics-value">@FormatShopAnalyticsCount(sales?.PaidOrders)</p>
+                                            <div class="admin-analytics-meta">
+                                                <span>@T("Gem. bestelwaarde", "Avg. order value")</span>
+                                                <strong>@(sales is { PaidOrders: > 0 } ? FormatCurrency(sales.GrossRevenueZar / sales.PaidOrders) : "—")</strong>
+                                            </div>
+                                        </article>
+                                        <article class="admin-analytics-card">
+                                            <p class="admin-analytics-label">@T("Bruto verkope", "Gross sales")</p>
+                                            <p class="admin-analytics-value">@(sales is null ? "—" : FormatCurrency(sales.GrossRevenueZar))</p>
+                                            <p class="admin-analytics-footnote">@T("Sluit betaalde aflewering in.", "Includes delivery charges.")</p>
+                                        </article>
+                                    </div>
+
+                                    @if (engagement is null)
+                                    {
+                                        <p class="admin-analytics-footnote" role="status">@(_shopAnalytics.EngagementConfigured
+                                            ? T("PostHog se winkelaktiwiteit kon nie laai nie. Kies Verfris om weer te probeer.", "PostHog shop activity could not load. Select Refresh to try again.")
+                                            : T("PostHog se verslaggewingsleutel is nodig om winkelaktiwiteit te wys.", "A PostHog reporting key is required to show shop activity."))</p>
+                                    }
+                                    @if (sales is null)
+                                    {
+                                        <p class="admin-analytics-footnote" role="status">@T("Verkoopdata kon nie laai nie. Kies Verfris om weer te probeer.", "Sales data could not load. Select Refresh to try again.")</p>
+                                    }
+
+                                    @if (engagement is not null)
+                                    {
+                                        <section class="admin-report-chart-card">
+                                            <div class="admin-analytics-copy">
+                                                <h3>@T("Daaglikse winkelbesoekers", "Daily shop visitors")</h3>
+                                                <p>@T("PostHog tel unieke blaaiers uit aangetekende aktiwiteit.", "Visitor counts are distinct browsers from recorded PostHog activity.")</p>
+                                            </div>
+                                            @if (engagement.Visits > 0)
+                                            {
+                                                <div class="admin-shop-analytics-chart" role="img"
+                                                     aria-label='@T("Unieke winkelbesoekers per dag", "Unique shop visitors by day")'>
+                                                    <MudChart T="double" ChartType="ChartType.Line" Width="100%" Height="100%" MatchBoundsToSize="true"
+                                                              ChartOptions="ShopAnalyticsChartOptions"
+                                                              ChartSeries="ShopAnalyticsChartSeries(_shopAnalytics)"
+                                                              ChartLabels="ShopAnalyticsChartLabels(_shopAnalytics)" />
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <p class="admin-analytics-footnote">@T("Geen winkelbesoeke is in hierdie tydperk aangeteken nie.", "No shop visits were recorded in this period.")</p>
+                                            }
+                                        </section>
+                                    }
+
+                                    @if (engagement is not null || sales is not null)
+                                    {
+                                        <section class="admin-report-chart-card">
+                                            <div class="admin-analytics-copy">
+                                                <h3>@T("Produkaktiwiteit", "Product activity")</h3>
+                                                @if (engagement is not null)
+                                                {
+                                                    <p>@T("Vroeë klikke kom uit vinnige kyke. Produkkyke sluit direkte besoeke aan produkbladsye in.",
+                                                         "Earlier clicks come from quick views. Product opens include direct visits to product pages.")</p>
+                                                }
+                                            </div>
+                                            <div class="admin-report-table-wrap">
+                                                <MudTable T="AdminStoreProductAnalytics" Items="_shopAnalytics.Products"
+                                                          Class="admin-report-table admin-shop-product-table" Dense="true" Hover="true"
+                                                          Bordered="true" Elevation="0" Breakpoint="Breakpoint.Sm" RowsPerPage="10"
+                                                          SortLabel='@T("Sorteer volgens", "Sort by")'>
+                                                    <HeaderContent>
+                                                        <MudTh>@T("Produk", "Product")</MudTh>
+                                                        <MudTh>
+                                                            <MudTableSortLabel T="AdminStoreProductAnalytics" SortBy="@(product => product.Clickers)">
+                                                                @T("Unieke klikkers", "Unique clickers")
+                                                            </MudTableSortLabel>
+                                                        </MudTh>
+                                                        <MudTh>
+                                                            <MudTableSortLabel T="AdminStoreProductAnalytics" SortBy="@(product => product.Opens)">
+                                                                @T("Produkkyke", "Product opens")
+                                                            </MudTableSortLabel>
+                                                        </MudTh>
+                                                        <MudTh>
+                                                            <MudTableSortLabel T="AdminStoreProductAnalytics" SortBy="@(product => product.BasketVisitors)">
+                                                                @T("Het by mandjie gevoeg", "Added to basket")
+                                                            </MudTableSortLabel>
+                                                        </MudTh>
+                                                        <MudTh>
+                                                            <MudTableSortLabel T="AdminStoreProductAnalytics" SortBy="@(product => product.UnitsSold)">
+                                                                @T("Eenhede verkoop", "Units sold")
+                                                            </MudTableSortLabel>
+                                                        </MudTh>
+                                                    </HeaderContent>
+                                                    <RowTemplate Context="product">
+                                                        <MudTd DataLabel='@T("Produk", "Product")'><strong>@product.Name</strong></MudTd>
+                                                        <MudTd DataLabel='@T("Unieke klikkers", "Unique clickers")'>@FormatShopAnalyticsCount(engagement is null ? null : product.Clickers)</MudTd>
+                                                        <MudTd DataLabel='@T("Produkkyke", "Product opens")'>@FormatShopAnalyticsCount(engagement is null ? null : product.Opens)</MudTd>
+                                                        <MudTd DataLabel='@T("Het by mandjie gevoeg", "Added to basket")'>@FormatShopAnalyticsCount(engagement is null ? null : product.BasketVisitors)</MudTd>
+                                                        <MudTd DataLabel='@T("Eenhede verkoop", "Units sold")'>@FormatShopAnalyticsCount(sales is null ? null : product.UnitsSold)</MudTd>
+                                                    </RowTemplate>
+                                                    <NoRecordsContent>@T("Geen produkte beskikbaar nie.", "No products available.")</NoRecordsContent>
+                                                    <PagerContent>
+                                                        @if (_shopAnalytics.Products.Count > 10)
+                                                        {
+                                                            <MudTablePager PageSizeOptions="@(new[] { 10, 25, 50 })"
+                                                                           RowsPerPageString='@T("Rye per bladsy", "Rows per page")'
+                                                                           InfoFormat='@T("{first_item}–{last_item} van {all_items}", "{first_item}–{last_item} of {all_items}")' />
+                                                        }
+                                                    </PagerContent>
+                                                </MudTable>
+                                            </div>
+                                        </section>
+                                    }
+                                }
+                            </section>
                         </MudTabPanel>
                     </MudTabs>
                 </section>
@@ -5818,6 +5981,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _shopAnalyticsLoadCancellation?.Cancel();
         AdminLocationChangingRegistration?.Dispose();
 
         if (AdminGridModule is not null && PlaylistOrderBeforeUnloadGuardEnabled)
@@ -5893,9 +6057,12 @@
     private Task? UsageAnalyticsLoadTask;
     private bool SubscriberReportsLoadFailed;
     private bool HasLoadedSubscriberEngagementReports;
-    private bool IsRefreshingActiveAnalyticsPanel =>
-        _activeAnalyticsTabIndex <= 2 ? IsRefreshingSubscriberReports :
-        IsRefreshingAnalytics || (_activeAnalyticsTabIndex == 5 && IsLoadingStoryCatalog);
+    private bool IsRefreshingActiveAnalyticsPanel => _activeAnalyticsTabIndex switch
+    {
+        ShopAnalyticsTabIndex => IsLoadingShopAnalytics,
+        <= 2 => IsRefreshingSubscriberReports,
+        _ => IsRefreshingAnalytics || (_activeAnalyticsTabIndex == 5 && IsLoadingStoryCatalog)
+    };
     private bool HasLoadedStories;
     private bool HasLoadedPlaylists;
     private bool HasLoadedAnalytics;
@@ -5940,6 +6107,7 @@
     {
         0 or 1 or 2 => EnsureSubscriberAnalyticsAsync(forceRefresh),
         5 => Task.WhenAll(EnsureUsageAnalyticsAsync(forceRefresh), EnsureStoryCatalogAsync()),
+        ShopAnalyticsTabIndex => EnsureShopAnalyticsAsync(forceRefresh),
         _ => EnsureUsageAnalyticsAsync(forceRefresh)
     };
 
@@ -8452,8 +8620,8 @@
 
     private string BuildSpeellysteSystemPlaylistNotice() =>
         T(
-            "Gebruik Posisie om die Speellyste-afdeling te skuif en Wysig kaartvolgorde om die kaarte se volgorde en voorblaaie te stel.",
-            "Use Position to move the Speellyste section and Edit card order to set the card order and cover shape.");
+            "Gebruik Posisie om die Speellyste-afdeling te skuif. Gebruik Wysig kaartvolgorde om die volgorde, voorblaaie en uitgeligte playlist te kies.",
+            "Use Position to move the Speellyste section. Use Edit card order to choose the order, cover shapes, and featured playlist.");
 
     private static bool IsSpeellysteSystemPlaylist(AdminPlaylistRecord playlist) =>
         playlist.IsSystemPlaylist &&

@@ -25,6 +25,7 @@ public sealed record StoryPlaylist(
     public Guid PlaylistId { get; init; }
     public IReadOnlyList<Guid>? SpeellysteCarouselOrder { get; init; }
     public IReadOnlySet<Guid>? SpeellysteSquarePlaylistIds { get; init; }
+    public Guid? SpeellysteFeaturedPlaylistId { get; init; }
 
     public string ResolvedLogoImagePath => ResolveImagePath(LogoImagePath, DefaultLogoImagePath);
 

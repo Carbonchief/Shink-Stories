@@ -19,6 +19,7 @@ public partial class AdminSpeellysteOrderDialog
     private IReadOnlyList<Guid> _initialOrder = [];
     private readonly HashSet<Guid> _squarePlaylistIds = [];
     private AdminSpeellysteCarouselSettings? _savedSettings;
+    private Guid? _featuredPlaylistId;
     private string? _error;
     private bool _isLoading = true;
     private bool _isSaving;
@@ -30,7 +31,9 @@ public partial class AdminSpeellysteOrderDialog
         !_draft.Select(playlist => playlist.PlaylistId).SequenceEqual(_initialOrder);
 
     private bool CanSave => _savedSettings is not null && !IsEditingDisabled &&
-        (HasOrderChanges || !_squarePlaylistIds.SetEquals(_savedSettings.SquarePlaylistIds));
+        (HasOrderChanges ||
+         _featuredPlaylistId != _savedSettings.FeaturedPlaylistId ||
+         !_squarePlaylistIds.SetEquals(_savedSettings.SquarePlaylistIds));
 
     protected override async Task OnInitializedAsync()
     {
@@ -43,6 +46,7 @@ public partial class AdminSpeellysteOrderDialog
                 return;
             }
 
+            _featuredPlaylistId = _savedSettings.FeaturedPlaylistId;
             _squarePlaylistIds.UnionWith(_savedSettings.SquarePlaylistIds);
             _draft = SpeellysteCarouselOrderPolicy.Apply(Playlists, _savedSettings.PlaylistOrder, static playlist => playlist.PlaylistId).ToList();
             _initialOrder = _draft.Select(playlist => playlist.PlaylistId).ToArray();
@@ -101,7 +105,7 @@ public partial class AdminSpeellysteOrderDialog
             var orderedIds = HasOrderChanges
                 ? _draft.Select(playlist => playlist.PlaylistId).ToArray()
                 : _savedSettings.PlaylistOrder;
-            var settings = new AdminSpeellysteCarouselSettings(orderedIds, _squarePlaylistIds.ToArray());
+            var settings = new AdminSpeellysteCarouselSettings(orderedIds, _squarePlaylistIds.ToArray(), _featuredPlaylistId);
             var result = await AdminManagementService.SaveSpeellysteCarouselSettingsAsync(AdminEmail, _savedSettings, settings);
             if (result == AdminSpeellysteSettingsSaveResult.Saved)
             {

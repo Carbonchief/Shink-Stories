@@ -2,6 +2,8 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -1083,18 +1085,20 @@ public partial class SupabaseAdminManagementSelfServiceTests
                 UseSandboxApi = true
             }));
 
+        var supabaseOptions = Options.Create(new SupabaseOptions
+        {
+            Url = "https://example.supabase.co/",
+            SecretKey = "secret-key"
+        });
+        memoryCache ??= new MemoryCache(Options.Create(new MemoryCacheOptions()));
         return new SupabaseAdminManagementService(
             httpClient,
-            Options.Create(new SupabaseOptions
-            {
-                Url = "https://example.supabase.co/",
-                SecretKey = "secret-key"
-            }),
+            supabaseOptions,
             Options.Create(new SiteOptions
             {
                 PublicBaseUrl = "https://www.schink.co.za"
             }),
-            memoryCache ?? new MemoryCache(Options.Create(new MemoryCacheOptions())),
+            memoryCache,
             userNotificationService ?? new NoopUserNotificationService(),
             new NoopWordPressMigrationService(),
             new NoopSupabaseAuthService(),
@@ -1103,6 +1107,9 @@ public partial class SupabaseAdminManagementSelfServiceTests
             subscriptionPaymentRecoveryEmailService ?? new NoopSubscriptionPaymentRecoveryEmailService(),
             paystackService,
             payFastService,
+            new PostHogStoreAnalytics(httpClient, new ConfigurationBuilder().Build(), new HostingEnvironment(), memoryCache,
+                NullLogger<PostHogStoreAnalytics>.Instance),
+            new SupabaseStoreProductCatalogService(httpClient, supabaseOptions, memoryCache, NullLogger<SupabaseStoreProductCatalogService>.Instance),
             NullLogger<SupabaseAdminManagementService>.Instance);
     }
 

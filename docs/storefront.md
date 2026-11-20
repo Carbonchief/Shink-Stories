@@ -137,6 +137,26 @@ The existing enabled/disabled product switch remains the availability control.
 Counted stock reservations, discount codes, courier tracking and an account order
 history are separate features and are not represented as working controls here.
 
+## Admin shop analytics
+
+Open `/admin` → Analitika / Analytics → Winkel / Shop. The report uses the last
+7, 30 or 90 South African calendar days through today. Engagement figures come
+from Winkel’s anonymous PostHog events. A unique visitor is a distinct browser ID
+that opened a shop page. Each product row shows distinct card clickers, total
+product opens, distinct browsers that added the product to a basket and units
+sold. Historical click counts cover tracked quick views. Clicks on product
+names and images are captured from the release of this feature.
+
+Paid orders, average order value and gross sales come from paid `store_orders`
+records, including guest orders and delivery charges. The payment timestamp
+determines the reporting date, with the creation timestamp used for older paid
+orders without a payment timestamp.
+
+For PostHog reporting, set `PostHog__QueryApiKey` in the server's secret settings
+to a [Query Read key](https://posthog.com/docs/api/queries) scoped to Schink
+Stories (EU project `143269`). The browser capture key has its own setting. If
+PostHog is unavailable, the panel still displays the paid-order figures.
+
 ## Verification
 
 Run:

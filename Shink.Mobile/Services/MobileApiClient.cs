@@ -363,22 +363,25 @@ public sealed class MobileApiClient
 
         _cookieContainer = new CookieContainer();
 
+        _httpClient = CreateHttpClient(allowAutoRedirect: true);
+        _videoAuthorizationClient = CreateHttpClient(allowAutoRedirect: false);
+    }
+
+    private HttpClient CreateHttpClient(bool allowAutoRedirect)
+    {
+#if IOS
+        var handler = IosHttpHandler.Create();
+        handler.CookieContainer = _cookieContainer;
+        handler.AllowAutoRedirect = allowAutoRedirect;
+#else
         var handler = new HttpClientHandler
         {
             CookieContainer = _cookieContainer,
-            UseCookies = true
-        };
-
-        _httpClient = new HttpClient(handler)
-        {
-            Timeout = TimeSpan.FromSeconds(30)
-        };
-        _videoAuthorizationClient = new HttpClient(new HttpClientHandler
-        {
-            CookieContainer = _cookieContainer,
             UseCookies = true,
-            AllowAutoRedirect = false
-        }) { Timeout = TimeSpan.FromSeconds(30) };
+            AllowAutoRedirect = allowAutoRedirect
+        };
+#endif
+        return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
     }
 
     public string BaseUrl

@@ -158,6 +158,9 @@ public interface IAdminManagementService
     Task<AdminStoreOrderPage> GetStoreOrdersPageAsync(
         string? adminEmail, int pageIndex, int pageSize, CancellationToken cancellationToken = default);
 
+    Task<AdminStoreAnalyticsSnapshot> GetStoreAnalyticsAsync(
+        string? adminEmail, int days, bool forceRefresh = false, CancellationToken cancellationToken = default);
+
     Task<StoreOrderRecord?> GetStoreOrderAsync(
         string? adminEmail, Guid orderId, CancellationToken cancellationToken = default);
 
@@ -645,7 +648,8 @@ public sealed record AdminPlaylistStorySaveItem(
 
 public sealed record AdminSpeellysteCarouselSettings(
     IReadOnlyList<Guid> PlaylistOrder,
-    IReadOnlyList<Guid> SquarePlaylistIds);
+    IReadOnlyList<Guid> SquarePlaylistIds,
+    Guid? FeaturedPlaylistId);
 
 public enum AdminSpeellysteSettingsSaveResult
 {

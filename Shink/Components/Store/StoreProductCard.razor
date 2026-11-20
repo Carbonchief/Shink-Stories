@@ -2,7 +2,7 @@
          data-search="@($"{Product.Name} {Product.Description}")" data-price="@StoreCheckoutRules.ToCents(Product.UnitPriceZar)"
          data-order="@Product.SortOrder" data-free-delivery="@(Product.WaivesDeliveryFee ? "true" : "false")" data-collection="@Product.CollectionSlug">
     <div class="winkel-product-visual">
-        <a class="winkel-product-media" href="@ProductUrl" aria-label="@($"Bekyk {Product.Name}")">
+        <a class="winkel-product-media" href="@ProductUrl" data-store-product-link="@Product.Slug" aria-label="@($"Bekyk {Product.Name}")">
             <img src="@Product.ImagePath" alt="@Product.AltText" width="1080" height="1080" loading="lazy" decoding="async"
                  onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
         </a>
@@ -16,7 +16,7 @@
     </div>
     <div class="winkel-product-body">
         <p class="winkel-product-type">@Product.CollectionName</p>
-        <h3><a href="@ProductUrl">@Product.Name</a></h3>
+        <h3><a href="@ProductUrl" data-store-product-link="@Product.Slug">@Product.Name</a></h3>
         <p class="winkel-product-price">@StoreCheckoutRules.FormatZar(Product.UnitPriceZar)</p>
         <p class="winkel-product-description">@(string.IsNullOrWhiteSpace(Product.Description) ? "Gereed vir storietyd, slaaptyd en elke klein knuffel tussenin." : Product.Description)</p>
         <span class="winkel-in-cart" data-store-in-cart="@Product.Slug" hidden></span>

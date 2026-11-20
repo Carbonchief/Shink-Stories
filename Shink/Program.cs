@@ -220,6 +220,8 @@ builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteServi
 builder.Services.AddHttpClient<ISubscriberPlaylistService, SupabaseSubscriberPlaylistService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>().WithSupabaseResponseCompression().AddHttpMessageHandler<SupabasePublicContentCacheHandler>();
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>().WithSupabaseResponseCompression();
+builder.Services.AddHttpClient<PostHogStoreAnalytics>(client => client.Timeout = TimeSpan.FromSeconds(15))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<IReferralService, SupabaseReferralService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<ISchoolManagementService, SupabaseSchoolManagementService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IWordPressMigrationService, WordPressMigrationService>().WithSupabaseResponseCompression();

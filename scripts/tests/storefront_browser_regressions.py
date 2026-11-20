@@ -7,11 +7,13 @@ Playwright CLI browser. Run: python3 scripts/tests/storefront_browser_regression
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import threading
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import URLError
 from urllib.parse import parse_qs, urlparse
@@ -72,6 +74,16 @@ class OrderFixture(BaseHTTPRequestHandler):
             if "order_reference" in query:
                 reference = query["order_reference"][0].removeprefix("eq.")
                 self.respond([self.orders[reference]] if reference in self.orders else [])
+            elif "or" in query and query.get("payment_status") == ["eq.paid"]:
+                bounds = re.findall(r"(?:paid_at|created_at)\.(?:gte|lt)\.([^,)]+)", query["or"][0])
+                if len(bounds) != 4 or bounds[:2] != bounds[2:]:
+                    self.respond({"error": "Invalid paid-order window"}, 400)
+                    return
+                start, end = map(datetime.fromisoformat, bounds[:2])
+                columns = query["select"][0].split(",")
+                self.respond([{column: row.get(column) for column in columns}
+                              for row in self.orders.values() if row["payment_status"] == "paid"
+                              and start <= datetime.fromisoformat(row.get("paid_at") or row["created_at"]) < end])
             elif "order_id" in query:
                 order_id = query["order_id"][0].removeprefix("eq.")
                 self.respond([row for row in self.orders.values() if row["order_id"] == order_id])
@@ -131,6 +143,8 @@ class OrderFixture(BaseHTTPRequestHandler):
                           for reference, row in self.orders.items()])
         elif parsed.path == "/_test/order-page-paused":
             self.respond({"paused": self.server.order_page_paused.wait(timeout=5)})
+        elif parsed.path == "/_test/shop-queries":
+            self.respond(self.server.shop_queries)
         else:
             self.respond([])
 
@@ -162,6 +176,27 @@ class OrderFixture(BaseHTTPRequestHandler):
         elif path == "/rest/v1/store_customer_details":
             self.preferences[payload["account_email"]] = payload
             self.respond([])
+        elif path == "/api/projects/143269/query/":
+            if self.headers.get("Authorization") != "Bearer local-winkel-query-key":
+                self.respond({}, 401)
+                return
+            query = payload["query"]["query"]
+            bounds = re.findall(r"toDateTime\('([^']+)', 'UTC'\)", query)
+            start, end = map(datetime.fromisoformat, bounds)
+            days = (end - start).days
+            self.server.shop_queries.append({"days": days, "refresh": payload["refresh"]})
+            if self.server.fail_shop_query.is_set():
+                self.server.fail_shop_query.clear()
+                self.respond({}, 503)
+                return
+            latest_day = str(end.date())  # 22:00 UTC is the final reporting date in South Africa.
+            total = ["total", "all", 26, 18, 7, 11, 5, 3] if days == 30 else ["total", "all", 9, 5, 2, 3, 1, 1]
+            daily = ["day", latest_day, total[2], total[3], 0, 0, 0, 0]
+            product = ["product", "toets-boek", 0, 0, total[4], total[5], 3 if days == 30 else 1, 0]
+            self.respond({"results": [] if days == 90 else [daily, product, total]})
+        elif path == "/_test/fail-shop-query":
+            self.server.fail_shop_query.set()
+            self.respond({})
         elif path == "/_test/paid" and payload["reference"] in self.orders:
             self.orders[payload["reference"]]["payment_status"] = "paid"
             self.respond({"paid": payload["reference"]})
@@ -243,6 +278,9 @@ class StorefrontBrowserTests(unittest.TestCase):
     def test_winkel_analytics(self):
         self.run_scenarios("analytics", 2)
 
+    def test_winkel_admin_analytics(self):
+        self.run_scenarios("shop-analytics", 1)
+
     def test_winkel_orders(self):
         self.run_scenarios("orders", 7)
 
@@ -256,6 +294,8 @@ class StorefrontBrowserTests(unittest.TestCase):
         fixture.pause_order_page = threading.Event()
         fixture.order_page_paused = threading.Event()
         fixture.release_order_page = threading.Event()
+        fixture.fail_shop_query = threading.Event()
+        fixture.shop_queries = []
         OrderFixture.orders = {}
         if suite == "orders":
             for number in range(26):
@@ -268,6 +308,20 @@ class StorefrontBrowserTests(unittest.TestCase):
             OrderFixture.orders["fixture-older-00"].update(
                 product_slug="long-product-name", product_name="LongProductName" * 9, quantity=1, unit_price_zar=100,
             )
+        if suite == "shop-analytics":
+            now = datetime.now(timezone.utc)
+            book = {"product_slug": "toets-boek", "product_name": "Earlier name", "quantity": 2, "unit_price_zar": 180}
+            delivery = {"product_slug": "pudo-locker-delivery", "product_name": "Delivery", "quantity": 1, "unit_price_zar": 80}
+            OrderFixture.orders = {
+                "new-sale": {"order_id": str(uuid4()), **book, "items": [book, delivery], "total_price_zar": 440,
+                             "payment_status": "paid", "paid_at": (now - timedelta(days=2)).isoformat(),
+                             "created_at": (now - timedelta(days=100)).isoformat()},
+                "legacy-sale": {"order_id": str(uuid4()), "product_slug": "toets-pakket", "product_name": "Toetspakket",
+                                "quantity": 1, "unit_price_zar": 500, "items": [], "total_price_zar": 500,
+                                "payment_status": "paid", "created_at": (now - timedelta(days=10)).isoformat()},
+                "pending": {"order_id": str(uuid4()), **book, "items": [book], "total_price_zar": 360,
+                            "payment_status": "pending", "created_at": now.isoformat()},
+            }
         OrderFixture.preferences = {}
         OrderFixture.sessions = {}
         OrderFixture.product_revision = 1
@@ -283,7 +337,7 @@ class StorefrontBrowserTests(unittest.TestCase):
                 ("toets-pakket", "Toetspakket", 500, "pakkette", True, True),
                 ("af-boek", "Afboek", 100, "kinderboeke", False, False),
             ], 1)
-        ] if suite == "collections" else None
+        ] if suite in ("collections", "shop-analytics") else None
         threading.Thread(target=fixture.serve_forever, daemon=True).start()
         fixture_url = f"http://127.0.0.1:{fixture.server_port}"
         base_url = f"http://127.0.0.1:{free_port()}"
@@ -298,9 +352,13 @@ class StorefrontBrowserTests(unittest.TestCase):
             "Paystack__VerifyUrl": fixture_url + "/_disabled/paystack", "Paystack__PublicBaseUrl": base_url,
             "Geoapify__ApiKey": "", "PostHog__ProjectApiKey": "", "POSTHOG_PROJECT_API_KEY": "",
             "POSTHOG_API_KEY": "", "PostHog__HostUrl": "", "POSTHOG_HOST_URL": "", "POSTHOG_HOST": "",
+            "PostHog__QueryApiKey": "",
         }}
         if suite == "analytics":
             env.update({"PostHog__ProjectApiKey": "phc_local_winkel_test", "PostHog__HostUrl": fixture_url})
+        elif suite == "shop-analytics":
+            env.update({"PostHog__QueryApiKey": "local-winkel-query-key", "PostHog__QueryHostUrl": fixture_url,
+                        "PostHog__QueryProjectId": "143269"})
         with (OUTPUT / "app.log").open("w") as log:
             app = subprocess.Popen(["dotnet", "run", "--project", str(ROOT / "Shink/Shink.csproj"),
                                     "--no-build", "--no-launch-profile"], cwd=ROOT, env=env,

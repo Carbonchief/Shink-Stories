@@ -17,6 +17,8 @@ namespace Shink.Tests;
 [TestClass]
 public sealed class LuisterGratisPlaylistVisibilityTests
 {
+    private static readonly Guid GratisPlaylistId = new("c6eddbd6-e1e8-4a70-b996-b0344057a523");
+
     public static IEnumerable<object[]> ActivePaidTiers =>
         new[] { StoryAccessPolicy.StoryCornerMonthlyTierCode }
             .Concat(StoryAccessPolicy.AllStoriesTierCodes)
@@ -63,7 +65,34 @@ public sealed class LuisterGratisPlaylistVisibilityTests
         Assert.IsNull(document.QuerySelector("a.luister-speellyste-link[href*='gratis-stories']"));
     }
 
-    private static async Task<string> RenderAsync(bool signedIn, string[] activeTiers, bool includeGratis = true)
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Luister_FeaturedPlaylistFollowsCarouselVisibility(bool hasPaidAccess)
+    {
+        string[] activeTiers = hasPaidAccess ? [StoryAccessPolicy.StoryCornerMonthlyTierCode] : ["gratis"];
+        var html = await RenderAsync(signedIn: true, activeTiers: activeTiers, featureGratis: true);
+        using var document = new HtmlParser().ParseDocument(html);
+
+        var featured = document.QuerySelector(".luister-speellyste-section > .luister-playlist-showcase");
+        if (hasPaidAccess)
+        {
+            Assert.IsNull(featured);
+            return;
+        }
+
+        Assert.IsNotNull(featured);
+        var carousel = featured.NextElementSibling;
+        Assert.IsNotNull(carousel);
+        Assert.IsTrue(carousel.ClassList.Contains("stories-carousel-shell"));
+        Assert.AreEqual(
+            "/luister/speellys/gratis-stories/stories",
+            featured.QuerySelector(".luister-playlist-showcase-link")?.GetAttribute("href"));
+        Assert.AreEqual("/gratis-playlist.png", featured.QuerySelector(".luister-playlist-showcase-image")?.GetAttribute("src"));
+        Assert.IsNotNull(carousel.QuerySelector("a.luister-speellyste-link[href*='gratis-stories']"));
+    }
+
+    private static async Task<string> RenderAsync(bool signedIn, string[] activeTiers, bool includeGratis = true, bool featureGratis = false)
     {
         var freeStory = new StoryItem("gratis-storie", "Gratis storie", "", "/cover.png", "audio.mp3", AccessLevel: "free");
         var playlists = new List<StoryPlaylist>
@@ -73,7 +102,18 @@ public sealed class LuisterGratisPlaylistVisibilityTests
         if (includeGratis)
         {
             playlists.Add(new(StoryAccessPolicy.GratisPlaylistSlug, "Gratis uit die admin", "Die ingestelde beskrywing", 2,
-                [freeStory], IncludeInSpeellysteCarousel: true));
+                [freeStory], ShowcaseImagePath: "/gratis-playlist.png", IncludeInSpeellysteCarousel: true)
+            {
+                PlaylistId = GratisPlaylistId
+            });
+        }
+
+        if (featureGratis)
+        {
+            playlists.Add(new("speellyste", "Speellyste", null, 0, [], IsSystemPlaylist: true, SystemKey: "speellyste")
+            {
+                SpeellysteFeaturedPlaylistId = GratisPlaylistId
+            });
         }
 
         using var services = new ServiceCollection()

@@ -5,6 +5,24 @@
             <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
         }
 
+        @if (_draft.Count > 0 || _featuredPlaylistId is not null)
+        {
+            <div class="speellyste-featured-setting">
+                <label for="speellyste-featured-playlist">@T("Uitgeligte playlist", "Featured playlist")</label>
+                <select id="speellyste-featured-playlist" @bind="_featuredPlaylistId" disabled="@IsEditingDisabled">
+                    <option value="">@T("Geen", "None")</option>
+                    @if (_featuredPlaylistId is Guid featuredId && !_draft.Any(playlist => playlist.PlaylistId == featuredId))
+                    {
+                        <option value="@featuredId">@T("Tans onbeskikbaar", "Currently unavailable")</option>
+                    }
+                    @foreach (var playlist in _draft)
+                    {
+                        <option @key="playlist.PlaylistId" value="@playlist.PlaylistId">@playlist.Title</option>
+                    }
+                </select>
+            </div>
+        }
+
         @if (_isLoading)
         {
             <p role="status">@T("Laai Speellyste-instellings…", "Loading Speellyste settings…")</p>

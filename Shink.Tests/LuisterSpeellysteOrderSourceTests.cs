@@ -14,7 +14,7 @@ public class LuisterSpeellysteOrderSourceTests
 
         StringAssert.Contains(markup, "BuildOrderedLuisterSections()");
         StringAssert.Contains(markup, "LuisterSectionKind.Speellyste");
-        StringAssert.Contains(markup, "RenderSpeellysteSection(section.SpeellystePlaylists, section.SquarePlaylistIds)");
+        StringAssert.Contains(markup, "RenderSpeellysteSection(section.SpeellystePlaylists, section.SquarePlaylistIds, section.FeaturedPlaylist)");
         Assert.IsFalse(
             markup.Contains("var speellysteCarouselPlaylists = GetSpeellysteCarouselPlaylists();", StringComparison.Ordinal),
             "Speellyste should no longer be hardcoded ahead of the playlist loop.");

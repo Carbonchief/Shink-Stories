@@ -367,12 +367,7 @@ public sealed class SupabaseStoreOrderService(
             Quantity: row.Quantity,
             UnitPriceZar: row.UnitPriceZar,
             TotalPriceZar: row.TotalPriceZar,
-            Items: MapItems(
-                row.Items,
-                row.ProductSlug,
-                row.ProductName,
-                row.Quantity,
-                row.UnitPriceZar),
+            Items: MapItems(row),
             DeliveryFeeWaived: row.DeliveryFeeWaived,
             CustomerName: row.CustomerName?.Trim() ?? string.Empty,
             CustomerEmail: row.CustomerEmail?.Trim().ToLowerInvariant() ?? string.Empty,
@@ -394,17 +389,12 @@ public sealed class SupabaseStoreOrderService(
             AnalyticsVisitorId: row.AnalyticsVisitorId,
             ShippedAt: row.ShippedAt);
 
-    private static IReadOnlyList<StoreOrderItemRecord> MapItems(
-        JsonElement itemsNode,
-        string? fallbackProductSlug,
-        string? fallbackProductName,
-        int fallbackQuantity,
-        decimal fallbackUnitPriceZar)
+    internal static IReadOnlyList<StoreOrderItemRecord> MapItems(StoreOrderRow row)
     {
-        if (itemsNode.ValueKind == JsonValueKind.Array)
+        if (row.Items.ValueKind == JsonValueKind.Array)
         {
             var items = new List<StoreOrderItemRecord>();
-            foreach (var itemNode in itemsNode.EnumerateArray())
+            foreach (var itemNode in row.Items.EnumerateArray())
             {
                 if (itemNode.ValueKind != JsonValueKind.Object)
                 {
@@ -436,18 +426,18 @@ public sealed class SupabaseStoreOrderService(
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(fallbackProductSlug) &&
-            !string.IsNullOrWhiteSpace(fallbackProductName) &&
-            fallbackQuantity > 0 &&
-            fallbackUnitPriceZar > 0)
+        if (!string.IsNullOrWhiteSpace(row.ProductSlug) &&
+            !string.IsNullOrWhiteSpace(row.ProductName) &&
+            row.Quantity > 0 &&
+            row.UnitPriceZar > 0)
         {
             return
             [
                 new StoreOrderItemRecord(
-                    ProductSlug: fallbackProductSlug.Trim(),
-                    ProductName: fallbackProductName.Trim(),
-                    Quantity: fallbackQuantity,
-                    UnitPriceZar: fallbackUnitPriceZar)
+                    ProductSlug: row.ProductSlug.Trim(),
+                    ProductName: row.ProductName.Trim(),
+                    Quantity: row.Quantity,
+                    UnitPriceZar: row.UnitPriceZar)
             ];
         }
 

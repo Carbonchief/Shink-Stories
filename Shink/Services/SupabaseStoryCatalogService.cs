@@ -437,7 +437,7 @@ public sealed class SupabaseStoryCatalogService(
         string[]? optionalColumns = null)
     {
         const string requiredColumns = "playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex";
-        optionalColumns ??= ["accent_color_end_hex", "font_color_hex", "speellyste_carousel_order", "speellyste_square_playlist_ids"];
+        optionalColumns ??= ["accent_color_end_hex", "font_color_hex", "speellyste_carousel_order", "speellyste_square_playlist_ids", "speellyste_featured_playlist_id"];
         var playlistColumns = string.Join(',', optionalColumns.Prepend(requiredColumns));
 
         var requestUri = new Uri(
@@ -1316,7 +1316,8 @@ public sealed class SupabaseStoryCatalogService(
         {
             PlaylistId = playlistRow.PlaylistId,
             SpeellysteCarouselOrder = playlistRow.SpeellysteCarouselOrder,
-            SpeellysteSquarePlaylistIds = playlistRow.SpeellysteSquarePlaylistIds?.ToHashSet()
+            SpeellysteSquarePlaylistIds = playlistRow.SpeellysteSquarePlaylistIds?.ToHashSet(),
+            SpeellysteFeaturedPlaylistId = playlistRow.SpeellysteFeaturedPlaylistId
         };
 
     private static IReadOnlyList<StoryPlaylist> BuildDefaultLuisterPlaylists(IReadOnlyList<StoryCatalogRow> storyRows)
@@ -1828,6 +1829,9 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("speellyste_square_playlist_ids")]
         public Guid[]? SpeellysteSquarePlaylistIds { get; set; }
+
+        [JsonPropertyName("speellyste_featured_playlist_id")]
+        public Guid? SpeellysteFeaturedPlaylistId { get; set; }
 
         [JsonPropertyName("show_showcase_image_on_luister_page")]
         public bool ShowShowcaseImageOnLuisterPage { get; set; }

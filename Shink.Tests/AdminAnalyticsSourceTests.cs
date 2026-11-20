@@ -304,7 +304,9 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "Items=\"FilteredAnalyticsCharacters\"");
         StringAssert.Contains(admin, "admin-character-stats-scroll");
         StringAssert.Contains(admin, "admin-character-stats-table");
-        Assert.IsFalse(admin.Contains("RowsPerPage=\"10\"", StringComparison.Ordinal));
+        var characterTableStart = admin.IndexOf("<MudTable T=\"AdminAnalyticsTopCharacterRecord\"", StringComparison.Ordinal);
+        var characterTableEnd = admin.IndexOf("</MudTable>", characterTableStart, StringComparison.Ordinal);
+        Assert.IsFalse(admin[characterTableStart..characterTableEnd].Contains("RowsPerPage=\"10\"", StringComparison.Ordinal));
         StringAssert.Contains(admin, "Immediate=\"true\"");
         Assert.IsFalse(admin.Contains("@T(\"Top karakters\", \"Top characters\")", StringComparison.Ordinal));
         StringAssert.Contains(admin, "Analytics.StoryAnalytics");

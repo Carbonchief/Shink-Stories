@@ -109,7 +109,7 @@ else
     {
         @if (section.Kind == LuisterSectionKind.Speellyste)
         {
-            @RenderSpeellysteSection(section.SpeellystePlaylists, section.SquarePlaylistIds)
+            @RenderSpeellysteSection(section.SpeellystePlaylists, section.SquarePlaylistIds, section.FeaturedPlaylist)
             continue;
         }
 
@@ -155,6 +155,11 @@ else
                 var showcaseClassName = IsMusicStory(showcaseStory)
                     ? "luister-playlist-showcase is-music"
                     : "luister-playlist-showcase";
+                var showcaseContent = RenderPlaylistShowcaseContent(
+                    showcaseStoryTitle,
+                    showcaseStory.ThumbnailPath,
+                    "fa-play",
+                    $"{showcaseStory.ThumbnailPath} 640w, {showcaseStory.ImagePath} 1024w");
 
                 <div class="@showcaseClassName">
                     @if (canAccessShowcaseStory)
@@ -163,22 +168,7 @@ else
                            href="@GetStoryHref(showcaseStory.Slug)"
                            data-enhance-nav="false"
                            aria-label="Luister na @showcaseStoryTitle">
-                            <span class="luister-playlist-showcase-cover">
-                                <img class="luister-playlist-showcase-image"
-                                     src="@showcaseStory.ThumbnailPath"
-                                     srcset="@($"{showcaseStory.ThumbnailPath} 640w, {showcaseStory.ImagePath} 1024w")"
-                                     sizes="(max-width: 900px) calc(100vw - 2rem), 720px"
-                                     alt="Voorblad van @showcaseStoryTitle"
-                                     width="1024"
-                                     height="576"
-                                     loading="lazy"
-                                     decoding="async"
-                                     onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
-                                <span class="story-cover-play" aria-hidden="true">
-                                    <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                                </span>
-                            </span>
-                            <span class="luister-playlist-showcase-title">@showcaseStoryTitle</span>
+                            @showcaseContent
                         </a>
                     }
                     else
@@ -187,22 +177,7 @@ else
                                 class="luister-playlist-showcase-link luister-playlist-showcase-link-button"
                                 @onclick="() => HandleStoryCardClickAsync(showcaseStory)"
                                 aria-label="Luister na @showcaseStoryTitle">
-                            <span class="luister-playlist-showcase-cover">
-                                <img class="luister-playlist-showcase-image"
-                                     src="@showcaseStory.ThumbnailPath"
-                                     srcset="@($"{showcaseStory.ThumbnailPath} 640w, {showcaseStory.ImagePath} 1024w")"
-                                     sizes="(max-width: 900px) calc(100vw - 2rem), 720px"
-                                     alt="Voorblad van @showcaseStoryTitle"
-                                     width="1024"
-                                     height="576"
-                                     loading="lazy"
-                                     decoding="async"
-                                     onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
-                                <span class="story-cover-play" aria-hidden="true">
-                                    <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                                </span>
-                            </span>
-                            <span class="luister-playlist-showcase-title">@showcaseStoryTitle</span>
+                            @showcaseContent
                         </button>
                     }
                 </div>
@@ -560,7 +535,10 @@ else
                 SpeellystePlaylists: speellystePlaylists,
                 SortOrder: speellysteConfig?.SortOrder ?? int.MinValue,
                 Title: speellysteConfig is null ? "Speellyste" : GetPlaylistTitle(speellysteConfig),
-                SquarePlaylistIds: speellysteConfig?.SpeellysteSquarePlaylistIds));
+                SquarePlaylistIds: speellysteConfig?.SpeellysteSquarePlaylistIds,
+                FeaturedPlaylist: speellysteConfig?.SpeellysteFeaturedPlaylistId is Guid featuredPlaylistId
+                    ? speellystePlaylists.FirstOrDefault(playlist => playlist.PlaylistId == featuredPlaylistId)
+                    : null));
         }
 
         var orderedSections = sections
@@ -573,11 +551,45 @@ else
             static section => section.Playlist?.Slug);
     }
 
-    private RenderFragment RenderSpeellysteSection(IReadOnlyList<StoryPlaylist> speellysteCarouselPlaylists, IReadOnlySet<Guid>? squarePlaylistIds) => @<text>
+    private RenderFragment RenderPlaylistShowcaseContent(string title, string imagePath, string iconClass, string? imageSources = null) => @<text>
+        <span class="luister-playlist-showcase-cover">
+            <img class="luister-playlist-showcase-image"
+                 src="@imagePath"
+                 srcset="@imageSources"
+                 sizes="(max-width: 900px) calc(100vw - 2rem), 720px"
+                 alt="Voorblad van @title"
+                 width="1024"
+                 height="576"
+                 loading="lazy"
+                 decoding="async"
+                 onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
+            <span class="story-cover-play" aria-hidden="true">
+                <i class="@($"story-cover-play-icon fa-solid {iconClass}")" aria-hidden="true"></i>
+            </span>
+        </span>
+        <span class="luister-playlist-showcase-title">@title</span>
+    </text>;
+
+    private RenderFragment RenderSpeellysteSection(
+        IReadOnlyList<StoryPlaylist> speellysteCarouselPlaylists,
+        IReadOnlySet<Guid>? squarePlaylistIds,
+        StoryPlaylist? featuredPlaylist) => @<text>
         @if (speellysteCarouselPlaylists.Count > 0)
         {
             <section class="section-block stories-carousel-section luister-speellyste-section" aria-labelledby="luister-speellyste-heading">
                 <h2 id="luister-speellyste-heading">Speellyste</h2>
+                @if (featuredPlaylist is not null)
+                {
+                    var featuredTitle = GetPlaylistTitle(featuredPlaylist);
+                    <div class="luister-playlist-showcase" style="@BuildPlaylistAccentStyle(featuredPlaylist)">
+                        <a class="luister-playlist-showcase-link"
+                           href="@GetPlaylistShowcaseHref(GetPlaylistSlug(featuredPlaylist))"
+                           data-enhance-nav="false"
+                           aria-label="Maak die speellys @featuredTitle oop">
+                            @RenderPlaylistShowcaseContent(featuredTitle, GetPlaylistCarouselImagePath(featuredPlaylist), "fa-images")
+                        </a>
+                    </div>
+                }
                 <div class="stories-carousel-shell">
                     <div class="stories-carousel luister-speellyste-carousel" role="list" aria-label="Speellyste">
                         @for (var playlistIndex = 0; playlistIndex < speellysteCarouselPlaylists.Count; playlistIndex++)
@@ -1152,7 +1164,8 @@ else
         IReadOnlyList<StoryPlaylist> SpeellystePlaylists,
         int SortOrder,
         string Title,
-        IReadOnlySet<Guid>? SquarePlaylistIds = null);
+        IReadOnlySet<Guid>? SquarePlaylistIds = null,
+        StoryPlaylist? FeaturedPlaylist = null);
 
     private sealed record PendingCharacterUnlockPopupPayload(
         string? Type,

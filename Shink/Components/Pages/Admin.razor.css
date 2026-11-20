@@ -2398,6 +2398,44 @@
     grid-column: 1 / -1;
 }
 
+.admin-shop-analytics {
+    min-width: 0;
+}
+
+.admin-shop-analytics-period {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.admin-shop-analytics-kpis {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
+}
+
+.admin-shop-analytics-kpis .admin-analytics-meta strong {
+    white-space: nowrap;
+}
+
+.admin-shop-analytics-chart {
+    min-width: 0;
+    height: clamp(180px, 22vw, 260px);
+}
+
+.admin-shop-analytics-chart ::deep .mud-chart {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.admin-shop-analytics-chart ::deep .mud-chart svg {
+    width: 100%;
+    height: 100%;
+}
+
+.admin-shop-analytics-chart ::deep svg text {
+    fill: var(--admin-text);
+}
+
 .admin-analytics-panel-head {
     display: flex;
     flex-wrap: wrap;

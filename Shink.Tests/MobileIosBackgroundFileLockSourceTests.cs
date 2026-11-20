@@ -6,6 +6,21 @@ namespace Shink.Tests;
 public sealed class MobileIosBackgroundFileLockSourceTests
 {
     [TestMethod]
+    public void IosHttpClientsAvoidPersistentSessionStores()
+    {
+        var handler = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "IosHttpHandler.cs"));
+        var apiClient = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+        var startup = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
+
+        StringAssert.Contains(handler, "NSUrlSessionConfiguration.EphemeralSessionConfiguration");
+        StringAssert.Contains(apiClient, "var handler = IosHttpHandler.Create();");
+        StringAssert.Contains(apiClient, "handler.CookieContainer = _cookieContainer;");
+        StringAssert.Contains(apiClient, "_videoAuthorizationClient = CreateHttpClient(allowAutoRedirect: false);");
+        StringAssert.Contains(startup, "ConfigureHttpClientDefaults(client => client.ConfigurePrimaryHttpMessageHandler(");
+        StringAssert.Contains(startup, "IosHttpHandler.Create));");
+    }
+
+    [TestMethod]
     public void ImageCacheWorkersStopBeforeIosSuspendsTheApp()
     {
         var lifecycle = File.ReadAllText(GetRepoPath(
