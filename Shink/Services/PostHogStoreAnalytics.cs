@@ -72,8 +72,8 @@ public sealed class PostHogStoreAnalytics(
         var escapedEnvironment = environmentName.Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("'", "\\'", StringComparison.Ordinal);
 
-        // One scan yields period totals, daily visitors and per-product engagement. A quick view
-        // has always required a product-card click, including before link clicks were tracked.
+        // One scan yields period totals, daily visitors, product engagement and checkout issues.
+        // A quick view has always required a product-card click, including before link clicks were tracked.
         return $"""
             SELECT
                 bucket.1 AS scope,
@@ -83,27 +83,36 @@ public sealed class PostHogStoreAnalytics(
                 uniqExactIf(distinct_id, clicked_product) AS clickers,
                 countIf(event = 'winkel_product_viewed') AS product_opens,
                 uniqExactIf(distinct_id, event = 'winkel_basket_added') AS basket_visitors,
-                uniqExactIf(distinct_id, event = 'winkel_checkout_started') AS checkout_visitors
+                uniqExactIf(distinct_id, event = 'winkel_checkout_started') AS checkout_visitors,
+                countIf(event = 'winkel_checkout_pay_clicked') AS pay_clicks,
+                uniqExactIf(distinct_id, event = 'winkel_checkout_pay_clicked') AS pay_clickers,
+                countIf(event = 'winkel_checkout_validation_failed') AS validation_failures,
+                uniqExactIf(distinct_id, event = 'winkel_checkout_validation_failed') AS blocked_browsers,
+                countIf(event = 'winkel_checkout_validation_failed' AND from_server) AS server_validation_failures
             FROM (
                 SELECT event, distinct_id,
+                    properties.source = 'checkout_server' AS from_server,
                     event = 'winkel_product_clicked' OR
                         (event = 'winkel_product_viewed' AND properties.view_type = 'quick_view') AS clicked_product,
                     arrayJoin([
                         ('total', 'all'),
                         ('day', if(event = 'winkel_visited', toString(toDate(toTimeZone(timestamp, '{StoreAnalyticsPeriod.TimeZoneId}'))), '')),
-                        ('product', ifNull(toString(properties.product_slug), ''))
+                        ('product', ifNull(toString(properties.product_slug), '')),
+                        ('validation', if(event = 'winkel_checkout_validation_failed',
+                            coalesce(nullIf(toString(properties.checkout_issue), ''), 'other'), ''))
                     ]) AS bucket
                 FROM events
                 WHERE timestamp >= toDateTime('{from}', 'UTC')
                     AND timestamp < toDateTime('{to}', 'UTC')
-                    AND event IN ('winkel_visited', 'winkel_product_clicked', 'winkel_product_viewed', 'winkel_basket_added', 'winkel_checkout_started')
+                    AND event IN ('winkel_visited', 'winkel_product_clicked', 'winkel_product_viewed', 'winkel_basket_added',
+                        'winkel_checkout_started', 'winkel_checkout_pay_clicked', 'winkel_checkout_validation_failed')
                     AND properties.environment = '{escapedEnvironment}'
-                    AND properties.source = 'browser'
+                    AND (properties.source = 'browser' OR (event = 'winkel_checkout_validation_failed' AND from_server))
                     AND startsWith(distinct_id, 'winkel:')
             )
             WHERE bucket.2 != ''
             GROUP BY scope, label
-            ORDER BY scope, label
+            ORDER BY scope, validation_failures DESC, label
             LIMIT {ResultLimit}
             """;
     }
@@ -112,10 +121,11 @@ public sealed class PostHogStoreAnalytics(
     {
         var dailyVisitors = new Dictionary<DateOnly, long>();
         var products = new Dictionary<string, StoreProductEngagement>(StringComparer.Ordinal);
-        var totals = new AdminStoreEngagement(0, 0, 0, 0, dailyVisitors);
+        var validationIssues = new List<AdminStoreCheckoutValidationIssue>();
+        var totals = new AdminStoreEngagement(0, 0, 0, 0, dailyVisitors, new(0, 0, 0, 0, validationIssues));
         foreach (var row in rows)
         {
-            if (row.Length != 8 || row[1].GetString() is not { Length: > 0 } label)
+            if (row.Length != 13 || row[1].GetString() is not { Length: > 0 } label)
             {
                 throw new JsonException("Unexpected Winkel analytics row.");
             }
@@ -123,7 +133,8 @@ public sealed class PostHogStoreAnalytics(
             switch (row[0].GetString())
             {
                 case "total":
-                    totals = new(row[2].GetInt64(), row[3].GetInt64(), row[6].GetInt64(), row[7].GetInt64(), dailyVisitors);
+                    totals = new(row[2].GetInt64(), row[3].GetInt64(), row[6].GetInt64(), row[7].GetInt64(), dailyVisitors,
+                        new(row[8].GetInt64(), row[9].GetInt64(), row[10].GetInt64(), row[11].GetInt64(), validationIssues));
                     break;
                 case "day":
                     var day = DateOnly.ParseExact(label, "yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -131,6 +142,10 @@ public sealed class PostHogStoreAnalytics(
                     break;
                 case "product":
                     products[label] = new(row[4].GetInt64(), row[5].GetInt64(), row[6].GetInt64());
+                    break;
+                case "validation":
+                    var serverFailures = row[12].GetInt64();
+                    validationIssues.Add(new(label, row[10].GetInt64() - serverFailures, serverFailures));
                     break;
                 default:
                     throw new JsonException("Unexpected Winkel analytics group.");

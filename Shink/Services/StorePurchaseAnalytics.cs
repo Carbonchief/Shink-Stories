@@ -22,9 +22,7 @@ internal sealed class StorePurchaseAnalytics(
         var options = supabaseOptions.Value;
         if (string.IsNullOrWhiteSpace(options.SecretKey) ||
             !Uri.TryCreate(options.Url, UriKind.Absolute, out var supabaseUri) ||
-            postHog.ProjectApiKey?.StartsWith("phc_", StringComparison.Ordinal) != true ||
-            !Uri.TryCreate(postHog.HostUrl?.TrimEnd('/') + "/i/v0/e/", UriKind.Absolute, out var captureUri) ||
-            (captureUri.Scheme != Uri.UriSchemeHttps && !(captureUri.IsLoopback && captureUri.Scheme == Uri.UriSchemeHttp)))
+            !postHog.TryGetCaptureUri(out var captureUri))
         {
             return;
         }

@@ -147,6 +147,13 @@ product opens, distinct browsers that added the product to a basket and units
 sold. Historical click counts cover tracked quick views. Clicks on product
 names and images are captured from the release of this feature.
 
+Checkout attempts show Pay button clicks, validation failures and the distinct
+browsers behind each count. A blocked attempt records its first issue, such as a
+required field, invalid phone number or changed basket total. The breakdown
+distinguishes browser checks from server checks. Events use fixed issue codes
+and omit the contents of the checkout fields. Counts begin when this tracking
+is deployed.
+
 Paid orders, average order value and gross sales come from paid `store_orders`
 records, including guest orders and delivery charges. The payment timestamp
 determines the reporting date, with the creation timestamp used for older paid

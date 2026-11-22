@@ -9,7 +9,14 @@ public sealed record AdminStoreAnalyticsSnapshot(
     AdminStoreSales? Sales, IReadOnlyList<AdminStoreProductAnalytics> Products);
 
 public sealed record AdminStoreEngagement(
-    long Visits, long Visitors, long BasketVisitors, long CheckoutVisitors, IReadOnlyDictionary<DateOnly, long> DailyVisitors);
+    long Visits, long Visitors, long BasketVisitors, long CheckoutVisitors, IReadOnlyDictionary<DateOnly, long> DailyVisitors,
+    AdminStoreCheckoutAnalytics Checkout);
+
+public sealed record AdminStoreCheckoutAnalytics(
+    long PayClicks, long PayClickers, long ValidationFailures, long BlockedBrowsers,
+    IReadOnlyList<AdminStoreCheckoutValidationIssue> Issues);
+
+public sealed record AdminStoreCheckoutValidationIssue(string Issue, long BrowserFailures, long ServerFailures);
 
 public sealed record AdminStoreSales(long PaidOrders, decimal GrossRevenueZar);
 

@@ -2415,6 +2415,16 @@
     white-space: nowrap;
 }
 
+.admin-shop-checkout-analytics {
+    display: grid;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.admin-shop-checkout-analytics .admin-report-table {
+    min-width: 0;
+}
+
 .admin-shop-analytics-chart {
     min-width: 0;
     height: clamp(180px, 22vw, 260px);

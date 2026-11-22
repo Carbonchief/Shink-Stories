@@ -222,6 +222,8 @@ builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogS
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<PostHogStoreAnalytics>(client => client.Timeout = TimeSpan.FromSeconds(15))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<StoreCheckoutAnalytics>(client => client.Timeout = TimeSpan.FromSeconds(3))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<IReferralService, SupabaseReferralService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<ISchoolManagementService, SupabaseSchoolManagementService>().WithSupabaseResponseCompression();
 builder.Services.AddHttpClient<IWordPressMigrationService, WordPressMigrationService>().WithSupabaseResponseCompression();
@@ -1797,6 +1799,7 @@ app.MapPost("/winkel/koop/paystack", async (
     StoreReceiptAccess receiptAccess,
     PaystackCheckoutService paystackCheckoutService,
     IStoreOrderService storeOrderService,
+    StoreCheckoutAnalytics checkoutAnalytics,
     IStoreCustomerDetailsService storeCustomerDetailsService,
     IStoreProductCatalogService storeProductCatalogService,
     IAbandonedCartRecoveryService abandonedCartRecoveryService,
@@ -1824,9 +1827,14 @@ app.MapPost("/winkel/koop/paystack", async (
     }
 
     var form = await httpContext.Request.ReadFormAsync(httpContext.RequestAborted);
+    var visitorId = form["winkelAnalyticsVisitorId"].ToString();
+    Guid? analyticsVisitorId = postHogSettings.IsConfigured && Guid.TryParseExact(visitorId, "D", out var parsedVisitorId) && parsedVisitorId != Guid.Empty
+        ? parsedVisitorId
+        : null;
     var availableProducts = await storeProductCatalogService.GetEnabledProductsAsync(httpContext.RequestAborted);
-    if (!TryBuildStoreCheckoutDraft(form, availableProducts, out var draft, out var amountInCents, out var errorMessage))
+    if (!TryBuildStoreCheckoutDraft(form, availableProducts, out var draft, out var amountInCents, out var errorMessage, out var validationIssue))
     {
+        checkoutAnalytics.RecordValidationFailure(httpContext.Response, analyticsVisitorId, validationIssue);
         var requestedProductSlug = GetFirstSelectedStoreProductSlugFromForm(form, availableProducts);
         return Results.Redirect(BuildStorePageRedirectPath(
             paymentStatus: "misluk",
@@ -1834,13 +1842,7 @@ app.MapPost("/winkel/koop/paystack", async (
             message: errorMessage));
     }
 
-    var visitorId = form["winkelAnalyticsVisitorId"].ToString();
-    var storeDraft = draft! with
-    {
-        AnalyticsVisitorId = postHogSettings.IsConfigured && Guid.TryParseExact(visitorId, "D", out var parsedVisitorId) && parsedVisitorId != Guid.Empty
-            ? parsedVisitorId
-            : null
-    };
+    var storeDraft = draft! with { AnalyticsVisitorId = analyticsVisitorId };
 
     var preferencesError = await StoreCheckoutPreferences.SaveIfRequestedAsync(
         httpContext.User, form, storeDraft, storeCustomerDetailsService, httpContext.RequestAborted);
@@ -5644,26 +5646,31 @@ static bool TryBuildStoreCheckoutDraft(
     IReadOnlyList<StoreProduct> availableProducts,
     out StoreOrderDraft? draft,
     out int amountInCents,
-    out string? errorMessage)
+    out string? errorMessage,
+    out string validationIssue)
 {
     draft = null;
     amountInCents = 0;
     errorMessage = null;
+    validationIssue = string.Empty;
 
     if (availableProducts.Count == 0)
     {
+        validationIssue = "products_unavailable";
         errorMessage = "Die winkel is tans leeg. Probeer asseblief later weer.";
         return false;
     }
 
     if (StoreCheckoutRules.HasUnavailableProducts(form, availableProducts))
     {
+        validationIssue = "products_unavailable";
         errorMessage = "'n Produk in jou mandjie is nie meer beskikbaar nie. Gaan jou mandjie na en probeer weer.";
         return false;
     }
 
     if (form["terme"] != "aanvaar")
     {
+        validationIssue = "terms";
         errorMessage = "Aanvaar asseblief die terme en voorwaardes voordat jy betaal.";
         return false;
     }
@@ -5682,6 +5689,7 @@ static bool TryBuildStoreCheckoutDraft(
         if (!int.TryParse(rawQuantity, NumberStyles.Integer, CultureInfo.InvariantCulture, out var quantity) ||
             quantity is < 0 or > 10)
         {
+            validationIssue = "quantity";
             errorMessage = $"Gebruik asseblief 'n geldige hoeveelheid vir {product.Name}.";
             return false;
         }
@@ -5701,6 +5709,7 @@ static bool TryBuildStoreCheckoutDraft(
 
     if (items.Count == 0)
     {
+        validationIssue = "empty_cart";
         errorMessage = "Kies asseblief ten minste een StorieTjommie.";
         return false;
     }
@@ -5708,6 +5717,7 @@ static bool TryBuildStoreCheckoutDraft(
     var totalQuantity = items.Sum(item => item.Quantity);
     if (totalQuantity > 20)
     {
+        validationIssue = "quantity";
         errorMessage = "Jy kan tans tot 20 teddies in een bestelling plaas.";
         return false;
     }
@@ -5715,6 +5725,7 @@ static bool TryBuildStoreCheckoutDraft(
     var customerName = NormalizeOptionalFormText(form["naam"], 120);
     if (string.IsNullOrWhiteSpace(customerName))
     {
+        validationIssue = "name";
         errorMessage = "Vul asseblief jou naam in.";
         return false;
     }
@@ -5722,6 +5733,7 @@ static bool TryBuildStoreCheckoutDraft(
     var customerEmail = NormalizeOptionalFormText(form["epos"], 254)?.ToLowerInvariant();
     if (string.IsNullOrWhiteSpace(customerEmail) || !IsValidEmail(customerEmail))
     {
+        validationIssue = "email";
         errorMessage = "Gebruik asseblief 'n geldige e-posadres.";
         return false;
     }
@@ -5729,6 +5741,7 @@ static bool TryBuildStoreCheckoutDraft(
     var customerPhone = NormalizeOptionalFormText(form["selfoon"], 40);
     if (string.IsNullOrWhiteSpace(customerPhone) || !IsValidMobileNumber(customerPhone))
     {
+        validationIssue = "phone";
         errorMessage = "Gebruik asseblief 'n geldige selfoonnommer.";
         return false;
     }
@@ -5736,6 +5749,7 @@ static bool TryBuildStoreCheckoutDraft(
     var deliveryAddressLine1 = NormalizeOptionalFormText(form["adresLyn1"], 250);
     if (string.IsNullOrWhiteSpace(deliveryAddressLine1))
     {
+        validationIssue = "address";
         errorMessage = "Vul asseblief jou straatadres in.";
         return false;
     }
@@ -5743,6 +5757,7 @@ static bool TryBuildStoreCheckoutDraft(
     var deliveryCity = NormalizeOptionalFormText(form["stad"], 120);
     if (string.IsNullOrWhiteSpace(deliveryCity))
     {
+        validationIssue = "city";
         errorMessage = "Vul asseblief jou stad of dorp in.";
         return false;
     }
@@ -5752,6 +5767,7 @@ static bool TryBuildStoreCheckoutDraft(
         deliveryPostalCode.Length < 3 ||
         !Regex.IsMatch(deliveryPostalCode, @"^[A-Za-z0-9 -]{3,20}$", RegexOptions.CultureInvariant))
     {
+        validationIssue = "postal_code";
         errorMessage = "Gebruik asseblief 'n geldige poskode.";
         return false;
     }
@@ -5764,6 +5780,7 @@ static bool TryBuildStoreCheckoutDraft(
     var totalPriceZar = checkoutItems.Sum(item => item.LineTotalZar);
     if (!StoreCheckoutRules.MatchesDisplayedTotal(form["cartTotalCents"], totalPriceZar))
     {
+        validationIssue = "total_changed";
         errorMessage = "Die prys of aflewering van jou bestelling het verander. Gaan die nuwe totaal in jou mandjie na en probeer weer.";
         return false;
     }

@@ -145,6 +145,9 @@ class OrderFixture(BaseHTTPRequestHandler):
             self.respond({"paused": self.server.order_page_paused.wait(timeout=5)})
         elif parsed.path == "/_test/shop-queries":
             self.respond(self.server.shop_queries)
+        elif parsed.path == "/_test/checkout-validation-events":
+            self.server.checkout_validation_captured.wait(timeout=5)
+            self.respond(self.server.checkout_validation_events)
         else:
             self.respond([])
 
@@ -176,11 +179,19 @@ class OrderFixture(BaseHTTPRequestHandler):
         elif path == "/rest/v1/store_customer_details":
             self.preferences[payload["account_email"]] = payload
             self.respond([])
+        elif path == "/i/v0/e/":
+            if payload["event"] == "winkel_checkout_validation_failed" and payload["properties"]["source"] == "checkout_server":
+                self.server.checkout_validation_events.append(payload)
+                self.server.checkout_validation_captured.set()
+            self.respond({"status": 1})
         elif path == "/api/projects/143269/query/":
             if self.headers.get("Authorization") != "Bearer local-winkel-query-key":
                 self.respond({}, 401)
                 return
             query = payload["query"]["query"]
+            if not all(signal in query for signal in ("winkel_checkout_pay_clicked", "winkel_checkout_validation_failed", "checkout_server")):
+                self.respond({"error": "Checkout analytics query is incomplete"}, 400)
+                return
             bounds = re.findall(r"toDateTime\('([^']+)', 'UTC'\)", query)
             start, end = map(datetime.fromisoformat, bounds)
             days = (end - start).days
@@ -190,10 +201,13 @@ class OrderFixture(BaseHTTPRequestHandler):
                 self.respond({}, 503)
                 return
             latest_day = str(end.date())  # 22:00 UTC is the final reporting date in South Africa.
-            total = ["total", "all", 26, 18, 7, 11, 5, 3] if days == 30 else ["total", "all", 9, 5, 2, 3, 1, 1]
-            daily = ["day", latest_day, total[2], total[3], 0, 0, 0, 0]
-            product = ["product", "toets-boek", 0, 0, total[4], total[5], 3 if days == 30 else 1, 0]
-            self.respond({"results": [] if days == 90 else [daily, product, total]})
+            total = ["total", "all", 26, 18, 7, 11, 5, 3, 4, 3, 3, 2, 1] if days == 30 else ["total", "all", 9, 5, 2, 3, 1, 1, 2, 1, 1, 1, 1]
+            daily = ["day", latest_day, total[2], total[3]] + [0] * 9
+            product = ["product", "toets-boek", 0, 0, total[4], total[5], 3 if days == 30 else 1] + [0] * 6
+            issues = [["validation", "phone"] + [0] * 8 + [1, 1, 1]]
+            if days == 30:
+                issues.insert(0, ["validation", "email"] + [0] * 8 + [2, 1, 0])
+            self.respond({"results": [] if days == 90 else [daily, product, total, *issues]})
         elif path == "/_test/fail-shop-query":
             self.server.fail_shop_query.set()
             self.respond({})
@@ -296,6 +310,8 @@ class StorefrontBrowserTests(unittest.TestCase):
         fixture.release_order_page = threading.Event()
         fixture.fail_shop_query = threading.Event()
         fixture.shop_queries = []
+        fixture.checkout_validation_captured = threading.Event()
+        fixture.checkout_validation_events = []
         OrderFixture.orders = {}
         if suite == "orders":
             for number in range(26):
