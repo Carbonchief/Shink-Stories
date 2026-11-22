@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Configuration;
 
 namespace Shink.Services;
@@ -11,6 +12,14 @@ internal sealed record PostHogSettings(string? ProjectApiKey, string? HostUrl)
     public bool HasAnyValue =>
         !string.IsNullOrWhiteSpace(ProjectApiKey) ||
         !string.IsNullOrWhiteSpace(HostUrl);
+
+    public bool TryGetCaptureUri([NotNullWhen(true)] out Uri? captureUri)
+    {
+        captureUri = null;
+        return ProjectApiKey?.StartsWith("phc_", StringComparison.Ordinal) == true &&
+            Uri.TryCreate(HostUrl?.TrimEnd('/') + "/i/v0/e/", UriKind.Absolute, out captureUri) &&
+            (captureUri.Scheme == Uri.UriSchemeHttps || (captureUri.IsLoopback && captureUri.Scheme == Uri.UriSchemeHttp));
+    }
 
     public static PostHogSettings FromConfiguration(IConfiguration configuration)
     {

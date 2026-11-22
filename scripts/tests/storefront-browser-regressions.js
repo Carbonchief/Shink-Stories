@@ -580,20 +580,21 @@ async (page) => {
                 "Access-Control-Allow-Headers": "content-type",
             } });
         });
-        const captureDuring = async (name, action) => {
-            const [response] = await Promise.all([
-                tab.waitForResponse(response => response.url() === captureUrl && response.request().method() === "POST" &&
-                    response.request().postDataJSON().event === name),
-                action(),
-            ]);
+        const waitForCapture = async (name) => {
+            const response = await tab.waitForResponse(response => response.url() === captureUrl && response.request().method() === "POST" &&
+                response.request().postDataJSON().event === name);
             assert(response.ok(), `Capture failed for ${name}.`);
             return response.request().postDataJSON();
         };
-        return { events, captureDuring };
+        const captureDuring = async (name, action) => {
+            const [captured] = await Promise.all([waitForCapture(name), action()]);
+            return captured;
+        };
+        return { events, captureDuring, waitForCapture };
     }
 
     await check("Winkel analytics connects discovery, basket and checkout without leaking personal data", async (tab, context) => {
-        const { events, captureDuring } = await recordWinkelEvents(tab, context);
+        const { events, captureDuring, waitForCapture } = await recordWinkelEvents(tab, context);
         const visit = await captureDuring("winkel_visited", () => tab.reload());
         const detail = await captureDuring("winkel_product_viewed", () => tab.locator('[data-store-card][data-slug="tiekie"] .winkel-product-media').click());
         assert(detail.properties.view_type === "detail" && detail.properties.product_slug === "tiekie", "Detail view attribution is missing.");
@@ -616,8 +617,42 @@ async (page) => {
         assert(events.filter(event => event.event === "winkel_basket_added").length === 1, "An invalid basket add counted as successful.");
         const started = await captureDuring("winkel_checkout_started", () => checkout(tab));
         assert(started.properties.item_count === 2 && started.properties.currency === "ZAR", "Checkout totals are missing.");
+
+        const payButton = tab.locator("[data-store-pay]");
+        const name = tab.locator("input[name=naam]");
+        const [clicked, firstFailure] = await Promise.all([
+            waitForCapture("winkel_checkout_pay_clicked"),
+            waitForCapture("winkel_checkout_validation_failed"),
+            payButton.click(),
+        ]);
+        assert(clicked.properties.page === "checkout" && firstFailure.properties.checkout_issue === "name",
+            "Pay and native validation did not record the checkout and its first blocking field.");
+        await name.fill("Regressietoets");
+        const [, nextFailure] = await Promise.all([
+            waitForCapture("winkel_checkout_pay_clicked"),
+            waitForCapture("winkel_checkout_validation_failed"),
+            name.press("Enter"),
+        ]);
+        assert(nextFailure.properties.checkout_issue === "email", "An implicit Pay attempt did not record the next blocking field.");
+
         await details(tab);
-        const reference = await submit(tab);
+        const privatePhoneInput = "local-invalid-phone-data";
+        await tab.locator("input[name=selfoon]").fill(privatePhoneInput);
+        await Promise.all([
+            waitForCapture("winkel_checkout_pay_clicked"),
+            tab.waitForURL("**/winkel/afreken?**"),
+            payButton.click(),
+        ]);
+        await tab.getByText("Gebruik asseblief 'n geldige selfoonnommer.", { exact: true }).waitFor();
+        const orderBeforeRetry = await (await tab.request.get(fixture + "/_test/orders")).json();
+        assert(orderBeforeRetry.length === 0, "A rejected checkout created an order.");
+        const serverEvents = await (await tab.request.get(fixture + "/_test/checkout-validation-events")).json();
+        assert(serverEvents.length === 1 && serverEvents[0].distinct_id === visit.distinct_id &&
+            serverEvents[0].properties.checkout_issue === "phone" && serverEvents[0].properties.environment === "development",
+            "The rejected phone number lacked a single classified server event tied to the same browser.");
+
+        await details(tab);
+        const [, reference] = await Promise.all([waitForCapture("winkel_checkout_pay_clicked"), submit(tab)]);
         const orders = await (await tab.request.get(fixture + "/_test/orders")).json();
         assert(`winkel:${orders.find(order => order.reference === reference).analytics_visitor_id}` === visit.distinct_id,
             "Checkout did not persist the browser analytics ID on the order.");
@@ -625,8 +660,12 @@ async (page) => {
         assert(events.every(event => event.distinct_id === visit.distinct_id && event.properties.environment === "development" &&
             event.properties.source === "browser" && event.properties.$process_person_profile === false), "Browser event identity or environment changed.");
         assert(events.every(event => event.event !== "winkel_purchase_verified"), "The receipt generated a client-side purchase event.");
-        const payloads = JSON.stringify(events);
-        assert(![privateSearch, "review@example.invalid", "PUDO Toetslocker", "0821234567", reference].some(value => payloads.includes(value)),
+        assert(events.filter(event => event.event === "winkel_checkout_pay_clicked").length === 4,
+            "Each Pay activation should count once.");
+        assert(events.filter(event => event.event === "winkel_checkout_validation_failed").length === 2,
+            "Native checkout validation counted more than one failure per blocked attempt.");
+        const payloads = JSON.stringify([...events, ...serverEvents]);
+        assert(![privateSearch, privatePhoneInput, "review@example.invalid", "PUDO Toetslocker", "0821234567", reference].some(value => payloads.includes(value)),
             "The analytics payload contains personal checkout or search data.");
     });
 
@@ -695,6 +734,13 @@ async (page) => {
         assert(await period.inputValue() === "30", "The report did not default to 30 days.");
         await expectValue("Unieke besoekers", "18");
         await expectValue("Betaalde bestellings", "2");
+        await expectValue("Klikke op Betaal", "4");
+        await expectValue("Validasiefoute", "3");
+        const checkoutIssues = panel.getByRole("table", { name: "Validasiefoute volgens veld of kontrole" });
+        const phone = await checkoutIssues.getByRole("row").filter({ hasText: "Selfoonnommer" }).locator("td").allInnerTexts();
+        const email = await checkoutIssues.getByRole("row").filter({ hasText: "E-posadres" }).locator("td").allInnerTexts();
+        assert(JSON.stringify(phone) === JSON.stringify(["Selfoonnommer", "0", "1"]) &&
+            JSON.stringify(email) === JSON.stringify(["E-posadres", "2", "0"]), "The report mixed browser and server validation counts.");
         assert((await card("Bruto verkope").innerText()).includes("940"), "Paid sales must include delivery charges.");
         await panel.locator(".admin-shop-analytics-chart svg").first().waitFor();
         const product = panel.getByRole("row").filter({ hasText: "Toetsboek" });
@@ -713,6 +759,8 @@ async (page) => {
         await expectValue("Betaalde bestellings", "1");
         await tab.getByRole("button", { name: "Verfris analitika", exact: true }).click();
         await expectValue("Unieke besoekers", "5");
+        await expectValue("Klikke op Betaal", "2");
+        await expectValue("Validasiefoute", "1");
         assert((await getQueries()).some(query => query.days === 7 && query.refresh === "force_blocking"),
             "Refresh did not request fresh PostHog results for the selected period.");
 
@@ -720,6 +768,8 @@ async (page) => {
         await panel.getByText("Geen winkelbesoeke is in hierdie tydperk aangeteken nie.").waitFor();
         await expectValue("Unieke besoekers", "0");
         await expectValue("Betaalde bestellings", "2");
+        await expectValue("Klikke op Betaal", "0");
+        await panel.getByText("Geen validasiefoute is in hierdie tydperk aangeteken nie.").waitFor();
 
         await tab.setViewportSize({ width: 390, height: 844 });
         await tab.locator(".admin-language .mud-input-control").click();
@@ -727,6 +777,8 @@ async (page) => {
         await panel.getByRole("heading", { name: "Shop analytics", exact: true }).waitFor();
         await period.selectOption("7");
         await expectValue("Unique visitors", "5");
+        await expectValue("Pay button clicks", "2");
+        await panel.getByRole("row").filter({ hasText: "Mobile number" }).waitFor();
         assert(await panel.evaluate(element => element.scrollWidth <= element.clientWidth + 1),
             "Shop analytics overflows on a mobile screen.");
     });

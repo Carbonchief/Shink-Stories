@@ -73,6 +73,25 @@ public partial class Admin
 
     private string FormatShopAnalyticsCount(long? count) => count?.ToString("N0", GetAdminCulture()) ?? "—";
 
+    private string GetCheckoutValidationIssueLabel(string issue) => issue switch
+    {
+        "name" => T("Naam", "Name"),
+        "email" => T("E-posadres", "Email address"),
+        "phone" => T("Selfoonnommer", "Mobile number"),
+        "address" => T("Afleweringsadres of PUDO-locker", "Delivery address or PUDO locker"),
+        "suburb" => T("Voorstad", "Suburb"),
+        "city" => T("Stad of dorp", "City or town"),
+        "postal_code" => T("Poskode", "Postal code"),
+        "notes" => T("Bestelnotas", "Order notes"),
+        "terms" => T("Terme en voorwaardes", "Terms and conditions"),
+        "cart_changed" => T("Mandjie het verander", "Basket changed"),
+        "empty_cart" => T("Leë mandjie", "Empty basket"),
+        "products_unavailable" => T("Produkte onbeskikbaar", "Products unavailable"),
+        "quantity" => T("Produkhoeveelheid", "Product quantity"),
+        "total_changed" => T("Besteltotaal het verander", "Order total changed"),
+        _ => T("Ander validasiefout", "Other validation issue")
+    };
+
     private static IEnumerable<DateOnly> ShopAnalyticsChartDays(AdminStoreAnalyticsSnapshot report) =>
         Enumerable.Range(0, report.Through.DayNumber - report.From.DayNumber + 1).Select(report.From.AddDays);
 

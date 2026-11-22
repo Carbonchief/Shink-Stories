@@ -291,6 +291,19 @@ let lastAnalyticsRender;
 let checkoutTracked = false;
 let lastAnalyticsTimestamp = 0;
 
+const checkoutFieldIssues = new Map([
+    ["naam", "name"],
+    ["epos", "email"],
+    ["selfoon", "phone"],
+    ["adresLyn1", "address"],
+    ["adresLyn2", "address"],
+    ["voorstad", "suburb"],
+    ["stad", "city"],
+    ["poskode", "postal_code"],
+    ["notas", "notes"],
+    ["terme", "terms"],
+]);
+
 function winkelAnalytics() {
     try {
         const { posthogApiKey, posthogHostUrl, posthogEnvironment } = document.body.dataset;
@@ -376,8 +389,8 @@ export function initialize() {
     };
 
     const controller = new AbortController();
-    const listen = (target, event, handler) =>
-        target.addEventListener(event, handler, { signal: controller.signal });
+    const listen = (target, event, handler, capture = false) =>
+        target.addEventListener(event, handler, { capture, signal: controller.signal });
     const quickView = root.querySelector("[data-store-quick-view]");
     let selectedProduct = null;
     disposeCurrent = () => {
@@ -835,6 +848,21 @@ export function initialize() {
     const form = root.querySelector("#winkel-order-form");
     if (form) {
         let draftCheckoutId = null;
+        let reportedInvalidField = false;
+        const trackValidationFailure = (issue) => track("winkel_checkout_validation_failed", { checkout_issue: issue });
+        listen(form, "click", (event) => {
+            const pay = event.target.closest("[data-store-pay]");
+            if (!pay || pay.disabled) return;
+            reportedInvalidField = false;
+            track("winkel_checkout_pay_clicked");
+        });
+        listen(form, "invalid", (event) => {
+            // Native validation sends one event per invalid field. Record the first per attempt.
+            if (reportedInvalidField) return;
+            reportedInvalidField = true;
+            trackValidationFailure(checkoutFieldIssues.get(event.target.name) ?? "other");
+            setTimeout(() => { reportedInvalidField = false; }, 0);
+        }, true);
         const customerKey = form.dataset.storeCustomerKey || "";
         const saveDetails = form.querySelector("[data-store-save-details]");
         const fields = () =>
@@ -902,6 +930,7 @@ export function initialize() {
             const latest = normalizeCart(latestState.items, products);
             if (JSON.stringify(latest) !== JSON.stringify(state.items)) {
                 event.preventDefault();
+                trackValidationFailure("cart_changed");
                 state = replaceCartItems(latestState, latest);
                 render();
                 notice(
@@ -911,6 +940,7 @@ export function initialize() {
             }
             if (latest.length === 0) {
                 event.preventDefault();
+                trackValidationFailure("empty_cart");
                 render();
                 return;
             }

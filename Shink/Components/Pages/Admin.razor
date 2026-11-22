@@ -3517,6 +3517,57 @@
 
                                     @if (engagement is not null)
                                     {
+                                        var checkout = engagement.Checkout;
+                                        <section class="admin-shop-checkout-analytics" aria-labelledby="shop-checkout-analytics-heading">
+                                            <h3 id="shop-checkout-analytics-heading">@T("Afrekenpogings", "Checkout attempts")</h3>
+                                            <div class="admin-analytics-grid admin-shop-analytics-kpis">
+                                                <article class="admin-analytics-card">
+                                                    <p class="admin-analytics-label">@T("Klikke op Betaal", "Pay button clicks")</p>
+                                                    <p class="admin-analytics-value">@FormatShopAnalyticsCount(checkout.PayClicks)</p>
+                                                    <div class="admin-analytics-meta">
+                                                        <span>@T("Unieke blaaiers", "Unique browsers")</span>
+                                                        <strong>@FormatShopAnalyticsCount(checkout.PayClickers)</strong>
+                                                    </div>
+                                                </article>
+                                                <article class="admin-analytics-card">
+                                                    <p class="admin-analytics-label">@T("Validasiefoute", "Validation failures")</p>
+                                                    <p class="admin-analytics-value">@FormatShopAnalyticsCount(checkout.ValidationFailures)</p>
+                                                    <div class="admin-analytics-meta">
+                                                        <span>@T("Unieke blaaiers", "Unique browsers")</span>
+                                                        <strong>@FormatShopAnalyticsCount(checkout.BlockedBrowsers)</strong>
+                                                    </div>
+                                                </article>
+                                            </div>
+
+                                            @if (checkout.Issues.Count > 0)
+                                            {
+                                                <p class="admin-analytics-footnote">@T("Die eerste probleem wat 'n poging keer, word getel.", "The first issue that blocks each attempt is counted.")</p>
+                                                <div class="admin-report-table-wrap">
+                                                    <table class="admin-report-table" aria-label='@T("Validasiefoute volgens veld of kontrole", "Validation failures by field or check")'>
+                                                        <thead><tr>
+                                                            <th scope="col">@T("Veld of kontrole", "Field or check")</th>
+                                                            <th scope="col">@T("Blaaier", "Browser")</th>
+                                                            <th scope="col">@T("Bediener", "Server")</th>
+                                                        </tr></thead>
+                                                        <tbody>
+                                                            @foreach (var issue in checkout.Issues)
+                                                            {
+                                                                <tr @key="issue.Issue">
+                                                                    <td>@GetCheckoutValidationIssueLabel(issue.Issue)</td>
+                                                                    <td>@FormatShopAnalyticsCount(issue.BrowserFailures)</td>
+                                                                    <td>@FormatShopAnalyticsCount(issue.ServerFailures)</td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <p class="admin-analytics-footnote">@T("Geen validasiefoute is in hierdie tydperk aangeteken nie.", "No validation failures were recorded in this period.")</p>
+                                            }
+                                        </section>
+
                                         <section class="admin-report-chart-card">
                                             <div class="admin-analytics-copy">
                                                 <h3>@T("Daaglikse winkelbesoekers", "Daily shop visitors")</h3>
