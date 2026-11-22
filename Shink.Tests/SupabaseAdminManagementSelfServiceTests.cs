@@ -612,110 +612,79 @@ public partial class SupabaseAdminManagementSelfServiceTests
                 return JsonResponse("""{ "has_wordpress_data": true, "membership_stats": [], "active_members_per_level": [], "sales_and_revenue": [] }""");
             }
 
-            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            if (request.RequestUri?.AbsolutePath == "/rest/v1/rpc/get_admin_report_inputs")
             {
-                return JsonResponse(
-                    $$"""
-                    [
-                      {
-                        "subscriber_id": "{{subscriberId}}",
-                        "email": "ouer@example.com",
-                        "first_name": "Ouer",
-                        "last_name": "Toets",
-                        "display_name": "Ouer Toets",
-                        "mobile_number": null,
-                        "profile_image_url": null,
-                        "created_at": "2026-06-14T07:55:37Z",
-                        "updated_at": "2026-06-14T07:58:30Z",
-                        "disabled_at": null,
-                        "disabled_by_admin_email": null,
-                        "disabled_reason": null
-                      }
-                    ]
+                return JsonResponse($$"""
+                    {
+                      "subscribers": [
+                        {
+                          "subscriber_id": "{{subscriberId}}",
+                          "email": "ouer@example.com",
+                          "first_name": "Ouer",
+                          "last_name": "Toets",
+                          "display_name": "Ouer Toets",
+                          "mobile_number": null,
+                          "profile_image_url": null,
+                          "created_at": "2026-06-14T07:55:37Z",
+                          "updated_at": "2026-06-14T07:58:30Z",
+                          "disabled_at": null,
+                          "disabled_by_admin_email": null,
+                          "disabled_reason": null
+                        }
+                      ],
+                      "subscriptions": [
+                        {
+                          "subscription_id": "{{subscriptionId}}",
+                          "subscriber_id": "{{subscriberId}}",
+                          "tier_code": "all_stories_monthly",
+                          "provider": "paystack",
+                          "source_system": "shink_app",
+                          "status": "active",
+                          "subscribed_at": "2026-06-14T07:58:18Z",
+                          "next_renewal_at": "2026-07-14T07:58:18Z",
+                          "cancelled_at": null,
+                          "billing_amount_zar": 79.00,
+                          "billing_period_months": 1,
+                          "provider_payment_id": "SUB_test",
+                          "provider_transaction_id": "1200677"
+                        }
+                      ],
+                      "tiers": [
+                        {
+                          "tier_code": "story_corner_monthly",
+                          "display_name": "Story Corner Monthly",
+                          "price_zar": 55.00,
+                          "is_active": true
+                        },
+                        {
+                          "tier_code": "all_stories_monthly",
+                          "display_name": "All Stories Monthly",
+                          "price_zar": 79.00,
+                          "is_active": true
+                        }
+                      ],
+                      "events": [],
+                      "orders": [],
+                      "feedback": [],
+                      "carts": [
+                        {
+                          "recovery_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+                          "source_type": "subscription",
+                          "source_key": "story_corner_monthly",
+                          "checkout_reference": "storie-hoekie-maandeliks-test",
+                          "provider": "paystack",
+                          "customer_email": "ouer@example.com",
+                          "customer_name": "Ouer Toets",
+                          "item_name": "Storie Hoekie Maandeliks",
+                          "cart_total_zar": 55.00,
+                          "created_at": "2026-06-14T07:55:44Z",
+                          "resolved_at": "2026-06-14T07:58:27Z",
+                          "resolution": "paid"
+                        }
+                      ],
+                      "recoveries": []
+                    }
                     """);
-            }
-
-            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
-            {
-                return JsonResponse(
-                    $$"""
-                    [
-                      {
-                        "subscription_id": "{{subscriptionId}}",
-                        "subscriber_id": "{{subscriberId}}",
-                        "tier_code": "all_stories_monthly",
-                        "provider": "paystack",
-                        "source_system": "shink_app",
-                        "status": "active",
-                        "subscribed_at": "2026-06-14T07:58:18Z",
-                        "next_renewal_at": "2026-07-14T07:58:18Z",
-                        "cancelled_at": null,
-                        "billing_amount_zar": 79.00,
-                        "billing_period_months": 1,
-                        "provider_payment_id": "SUB_test",
-                        "provider_transaction_id": "1200677"
-                      }
-                    ]
-                    """);
-            }
-
-            if (IsSupabaseGet(request, "/rest/v1/subscription_events") ||
-                IsSupabaseGet(request, "/rest/v1/store_orders") ||
-                IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries") ||
-                IsSupabaseGet(request, "/rest/v1/auth_sessions") ||
-                IsSupabaseGet(request, "/rest/v1/story_views") ||
-                IsSupabaseGet(request, "/rest/v1/story_listen_events"))
-            {
-                return JsonResponse("[]");
-            }
-
-            if (IsSupabaseGet(request, "/rest/v1/subscription_tiers"))
-            {
-                return JsonResponse(
-                    """
-                    [
-                      {
-                        "tier_code": "story_corner_monthly",
-                        "display_name": "Story Corner Monthly",
-                        "price_zar": 55.00,
-                        "is_active": true
-                      },
-                      {
-                        "tier_code": "all_stories_monthly",
-                        "display_name": "All Stories Monthly",
-                        "price_zar": 79.00,
-                        "is_active": true
-                      }
-                    ]
-                    """);
-            }
-
-            if (IsSupabaseGet(request, "/rest/v1/abandoned_cart_recoveries"))
-            {
-                return JsonResponse(
-                    """
-                    [
-                      {
-                        "recovery_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
-                        "source_type": "subscription",
-                        "source_key": "story_corner_monthly",
-                        "checkout_reference": "storie-hoekie-maandeliks-test",
-                        "provider": "paystack",
-                        "customer_email": "ouer@example.com",
-                        "customer_name": "Ouer Toets",
-                        "item_name": "Storie Hoekie Maandeliks",
-                        "cart_total_zar": 55.00,
-                        "created_at": "2026-06-14T07:55:44Z",
-                        "resolved_at": "2026-06-14T07:58:27Z",
-                        "resolution": "paid"
-                      }
-                    ]
-                    """);
-            }
-
-            if (IsSupabaseGet(request, "/rest/v1/subscription_cancellation_feedback"))
-            {
-                return JsonResponse("[]");
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -723,7 +692,7 @@ public partial class SupabaseAdminManagementSelfServiceTests
 
         var service = CreateService(handler);
 
-        var snapshot = await service.GetSubscriberReportsAsync("admin@example.com");
+        var snapshot = await service.GetSubscriberReportsAsync("admin@example.com", includeEngagement: false);
         var recoveredRevenue = snapshot.RecoveredRevenueDetails.Single();
 
         Assert.AreEqual("story_corner_monthly", recoveredRevenue.TierCode);
@@ -750,157 +719,130 @@ public partial class SupabaseAdminManagementSelfServiceTests
                 return JsonResponse("""{ "has_wordpress_data": true, "membership_stats": [], "active_members_per_level": [], "sales_and_revenue": [] }""");
             }
 
-            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            if (request.RequestUri?.AbsolutePath == "/rest/v1/rpc/get_admin_report_inputs")
             {
-                return JsonResponse(
-                    $$"""
-                    [
-                      {
-                        "subscriber_id": "{{subscriberId}}",
-                        "email": "ouer1@example.com",
-                        "first_name": "Ouer",
-                        "last_name": "Een",
-                        "display_name": "Ouer Een",
-                        "mobile_number": null,
-                        "profile_image_url": null,
-                        "created_at": "2026-06-18T08:00:00Z",
-                        "updated_at": "2026-06-18T08:05:00Z",
-                        "disabled_at": null,
-                        "disabled_by_admin_email": null,
-                        "disabled_reason": null
-                      },
-                      {
-                        "subscriber_id": "{{secondSubscriberId}}",
-                        "email": "ouer2@example.com",
-                        "first_name": "Ouer",
-                        "last_name": "Twee",
-                        "display_name": "Ouer Twee",
-                        "mobile_number": null,
-                        "profile_image_url": null,
-                        "created_at": "2026-06-18T08:10:00Z",
-                        "updated_at": "2026-06-18T08:12:00Z",
-                        "disabled_at": null,
-                        "disabled_by_admin_email": null,
-                        "disabled_reason": null
-                      }
-                    ]
+                return JsonResponse($$"""
+                    {
+                      "subscribers": [
+                        {
+                          "subscriber_id": "{{subscriberId}}",
+                          "email": "ouer1@example.com",
+                          "first_name": "Ouer",
+                          "last_name": "Een",
+                          "display_name": "Ouer Een",
+                          "mobile_number": null,
+                          "profile_image_url": null,
+                          "created_at": "2026-06-18T08:00:00Z",
+                          "updated_at": "2026-06-18T08:05:00Z",
+                          "disabled_at": null,
+                          "disabled_by_admin_email": null,
+                          "disabled_reason": null
+                        },
+                        {
+                          "subscriber_id": "{{secondSubscriberId}}",
+                          "email": "ouer2@example.com",
+                          "first_name": "Ouer",
+                          "last_name": "Twee",
+                          "display_name": "Ouer Twee",
+                          "mobile_number": null,
+                          "profile_image_url": null,
+                          "created_at": "2026-06-18T08:10:00Z",
+                          "updated_at": "2026-06-18T08:12:00Z",
+                          "disabled_at": null,
+                          "disabled_by_admin_email": null,
+                          "disabled_reason": null
+                        }
+                      ],
+                      "subscriptions": [
+                        {
+                          "subscription_id": "11111111-1111-1111-1111-111111111111",
+                          "subscriber_id": "{{subscriberId}}",
+                          "tier_code": "all_stories_monthly",
+                          "provider": "paystack",
+                          "source_system": "shink_app",
+                          "status": "active",
+                          "subscribed_at": "2026-06-10T08:00:00Z",
+                          "next_renewal_at": "2026-07-10T08:00:00Z",
+                          "cancelled_at": "2026-07-10T08:00:00Z",
+                          "billing_amount_zar": 79.00,
+                          "billing_period_months": 1,
+                          "provider_payment_id": "SUB_one",
+                          "provider_transaction_id": "TRX_one"
+                        },
+                        {
+                          "subscription_id": "22222222-2222-2222-2222-222222222222",
+                          "subscriber_id": "{{secondSubscriberId}}",
+                          "tier_code": "story_corner_monthly",
+                          "provider": "payfast",
+                          "source_system": "shink_app",
+                          "status": "active",
+                          "subscribed_at": "2026-06-11T08:00:00Z",
+                          "next_renewal_at": "2026-07-11T08:00:00Z",
+                          "cancelled_at": "2026-07-11T08:00:00Z",
+                          "billing_amount_zar": 55.00,
+                          "billing_period_months": 1,
+                          "provider_payment_id": "PF_two",
+                          "provider_transaction_id": "TRX_two"
+                        }
+                      ],
+                      "tiers": [
+                        {
+                          "tier_code": "all_stories_monthly",
+                          "display_name": "All Stories Monthly",
+                          "price_zar": 79.00,
+                          "is_active": true
+                        },
+                        {
+                          "tier_code": "story_corner_monthly",
+                          "display_name": "Story Corner Monthly",
+                          "price_zar": 55.00,
+                          "is_active": true
+                        }
+                      ],
+                      "events": [],
+                      "orders": [],
+                      "feedback": [
+                        {
+                          "feedback_id": "33333333-3333-3333-3333-333333333333",
+                          "subscriber_id": "{{subscriberId}}",
+                          "subscription_id": "11111111-1111-1111-1111-111111111111",
+                          "tier_code": "all_stories_monthly",
+                          "provider": "paystack",
+                          "feedback_status": "submitted",
+                          "reason_code": "too_expensive",
+                          "note": "Ons gebruik dit minder as voorheen.",
+                          "cancelled_subscription_count": 1,
+                          "created_at": "2026-06-18T09:00:00Z"
+                        },
+                        {
+                          "feedback_id": "44444444-4444-4444-4444-444444444444",
+                          "subscriber_id": "{{secondSubscriberId}}",
+                          "subscription_id": "22222222-2222-2222-2222-222222222222",
+                          "tier_code": "story_corner_monthly",
+                          "provider": "payfast",
+                          "feedback_status": "submitted",
+                          "reason_code": "too_expensive",
+                          "note": null,
+                          "cancelled_subscription_count": 1,
+                          "created_at": "2026-06-18T08:45:00Z"
+                        },
+                        {
+                          "feedback_id": "55555555-5555-5555-5555-555555555555",
+                          "subscriber_id": "{{secondSubscriberId}}",
+                          "subscription_id": "22222222-2222-2222-2222-222222222222",
+                          "tier_code": "story_corner_monthly",
+                          "provider": "payfast",
+                          "feedback_status": "skipped",
+                          "reason_code": null,
+                          "note": null,
+                          "cancelled_subscription_count": 1,
+                          "created_at": "2026-06-18T08:30:00Z"
+                        }
+                      ],
+                      "carts": [],
+                      "recoveries": []
+                    }
                     """);
-            }
-
-            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
-            {
-                return JsonResponse(
-                    $$"""
-                    [
-                      {
-                        "subscription_id": "11111111-1111-1111-1111-111111111111",
-                        "subscriber_id": "{{subscriberId}}",
-                        "tier_code": "all_stories_monthly",
-                        "provider": "paystack",
-                        "source_system": "shink_app",
-                        "status": "active",
-                        "subscribed_at": "2026-06-10T08:00:00Z",
-                        "next_renewal_at": "2026-07-10T08:00:00Z",
-                        "cancelled_at": "2026-07-10T08:00:00Z",
-                        "billing_amount_zar": 79.00,
-                        "billing_period_months": 1,
-                        "provider_payment_id": "SUB_one",
-                        "provider_transaction_id": "TRX_one"
-                      },
-                      {
-                        "subscription_id": "22222222-2222-2222-2222-222222222222",
-                        "subscriber_id": "{{secondSubscriberId}}",
-                        "tier_code": "story_corner_monthly",
-                        "provider": "payfast",
-                        "source_system": "shink_app",
-                        "status": "active",
-                        "subscribed_at": "2026-06-11T08:00:00Z",
-                        "next_renewal_at": "2026-07-11T08:00:00Z",
-                        "cancelled_at": "2026-07-11T08:00:00Z",
-                        "billing_amount_zar": 55.00,
-                        "billing_period_months": 1,
-                        "provider_payment_id": "PF_two",
-                        "provider_transaction_id": "TRX_two"
-                      }
-                    ]
-                    """);
-            }
-
-            if (IsSupabaseGet(request, "/rest/v1/subscription_tiers"))
-            {
-                return JsonResponse(
-                    """
-                    [
-                      {
-                        "tier_code": "all_stories_monthly",
-                        "display_name": "All Stories Monthly",
-                        "price_zar": 79.00,
-                        "is_active": true
-                      },
-                      {
-                        "tier_code": "story_corner_monthly",
-                        "display_name": "Story Corner Monthly",
-                        "price_zar": 55.00,
-                        "is_active": true
-                      }
-                    ]
-                    """);
-            }
-
-            if (IsSupabaseGet(request, "/rest/v1/subscription_cancellation_feedback"))
-            {
-                return JsonResponse(
-                    $$"""
-                    [
-                      {
-                        "feedback_id": "33333333-3333-3333-3333-333333333333",
-                        "subscriber_id": "{{subscriberId}}",
-                        "subscription_id": "11111111-1111-1111-1111-111111111111",
-                        "tier_code": "all_stories_monthly",
-                        "provider": "paystack",
-                        "feedback_status": "submitted",
-                        "reason_code": "too_expensive",
-                        "note": "Ons gebruik dit minder as voorheen.",
-                        "cancelled_subscription_count": 1,
-                        "created_at": "2026-06-18T09:00:00Z"
-                      },
-                      {
-                        "feedback_id": "44444444-4444-4444-4444-444444444444",
-                        "subscriber_id": "{{secondSubscriberId}}",
-                        "subscription_id": "22222222-2222-2222-2222-222222222222",
-                        "tier_code": "story_corner_monthly",
-                        "provider": "payfast",
-                        "feedback_status": "submitted",
-                        "reason_code": "too_expensive",
-                        "note": null,
-                        "cancelled_subscription_count": 1,
-                        "created_at": "2026-06-18T08:45:00Z"
-                      },
-                      {
-                        "feedback_id": "55555555-5555-5555-5555-555555555555",
-                        "subscriber_id": "{{secondSubscriberId}}",
-                        "subscription_id": "22222222-2222-2222-2222-222222222222",
-                        "tier_code": "story_corner_monthly",
-                        "provider": "payfast",
-                        "feedback_status": "skipped",
-                        "reason_code": null,
-                        "note": null,
-                        "cancelled_subscription_count": 1,
-                        "created_at": "2026-06-18T08:30:00Z"
-                      }
-                    ]
-                    """);
-            }
-
-            if (IsSupabaseGet(request, "/rest/v1/subscription_events") ||
-                IsSupabaseGet(request, "/rest/v1/store_orders") ||
-                IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries") ||
-                IsSupabaseGet(request, "/rest/v1/abandoned_cart_recoveries") ||
-                IsSupabaseGet(request, "/rest/v1/auth_sessions") ||
-                IsSupabaseGet(request, "/rest/v1/story_views") ||
-                IsSupabaseGet(request, "/rest/v1/story_listen_events"))
-            {
-                return JsonResponse("[]");
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -908,7 +850,7 @@ public partial class SupabaseAdminManagementSelfServiceTests
 
         var service = CreateService(handler);
 
-        var snapshot = await service.GetSubscriberReportsAsync("admin@example.com");
+        var snapshot = await service.GetSubscriberReportsAsync("admin@example.com", includeEngagement: false);
 
         Assert.AreEqual(3, snapshot.CancellationSurveyOverview.TotalResponses);
         Assert.AreEqual(2, snapshot.CancellationSurveyOverview.SubmittedResponses);

@@ -223,5 +223,7 @@ begin
 end;
 $$;
 \timing off
+set local statement_timeout = '45s';
+\ir admin_panel_analytics.sql
 rollback;
 select 'Empty, boundary, completion, rounding, timezone, wrapper, permission and 3.08M-row parity checks passed; all fixtures rolled back.' as verification;

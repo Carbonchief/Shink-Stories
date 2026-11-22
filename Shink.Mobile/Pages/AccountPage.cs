@@ -41,8 +41,15 @@ public sealed class AccountPage : ContentPage
     private Grid? _authPanelFrame;
     private Border? _authPanelBackground;
     private View? _authHero;
+    private View? _signupMethods;
+    private View? _signupEmailForm;
+    private Button? _signupSubmitButton;
+    private readonly BoxView _signupBackground;
+    private bool _isSignupEmailSelected;
+    private bool _continueWithFreeStories;
     private AuthPanelMode _authPanelMode = AuthPanelMode.Landing;
     private double _lastLandingLayoutHeight = -1;
+    private double _lastAuthLayoutWidth = -1;
     private bool _hasLoadedSession;
     private bool _isAuthRequestInFlight;
     private bool _isSessionStateSubscribed;
@@ -105,6 +112,21 @@ public sealed class AccountPage : ContentPage
         };
 #endif
 
+        _signupBackground = new BoxView
+        {
+            IsVisible = false,
+            InputTransparent = true,
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new Point(0, 0), EndPoint = new Point(0, 1),
+                GradientStops =
+                {
+                    new GradientStop(Color.FromArgb("#3F9CAD"), 0),
+                    new GradientStop(Color.FromArgb("#68B6A5"), 0.48f),
+                    new GradientStop(Color.FromArgb("#D8D572"), 1)
+                }
+            }
+        };
         var pageContent = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
@@ -123,6 +145,7 @@ public sealed class AccountPage : ContentPage
                     Opacity = 0.48,
                     InputTransparent = true
                 },
+                _signupBackground,
                 _accountScrollView
             }
         };
@@ -134,9 +157,11 @@ public sealed class AccountPage : ContentPage
     {
         base.OnSizeAllocated(width, height);
         UpdateAuthPanelTopSpacer();
-        if (height > 0 && Math.Abs(_lastLandingLayoutHeight - height) > 1)
+        if (height > 0 && (Math.Abs(_lastLandingLayoutHeight - height) > 1 ||
+            Math.Abs(_lastAuthLayoutWidth - width) > 1))
         {
             _lastLandingLayoutHeight = height;
+            _lastAuthLayoutWidth = width;
             ApplyLandingLayoutMetrics();
         }
     }
@@ -178,6 +203,11 @@ public sealed class AccountPage : ContentPage
 
         if (!_isAuthRequestInFlight)
         {
+            if (_authPanelMode == AuthPanelMode.SignUp && _isSignupEmailSelected)
+            {
+                ShowSignupEmailForm(false);
+                return true;
+            }
             SetAuthPanelMode(AuthPanelMode.Landing);
         }
 
@@ -534,24 +564,24 @@ public sealed class AccountPage : ContentPage
             return;
         }
 
+        var isSignup = _authPanelMode == AuthPanelMode.SignUp;
         var formContent = new StackLayout
         {
-            Spacing = 14,
+            Spacing = isSignup ? 12 : 14,
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Start
         };
 
-        formContent.Children.Add(BuildAuthPanelHeader(
-            _authPanelMode == AuthPanelMode.SignIn ? "Teken in" : "Skep rekening"));
+        formContent.Children.Add(isSignup ? BuildSignupHeader() : BuildAuthPanelHeader("Teken in"));
         formContent.Children.Add(_statusLabel);
 
-        var isSignup = _authPanelMode == AuthPanelMode.SignUp;
         var emailConsent = new CheckBox { IsChecked = true, Color = Color.FromArgb("#243238") };
         var emailConsentLabel = new Label
         {
             Text = "Ontvang Schink-e-posse",
             TextColor = Color.FromArgb("#243238"),
-            FontSize = 14,
+            FontSize = isSignup ? 12 : 14,
+            FontFamily = isSignup ? "Poppins" : null,
             VerticalOptions = LayoutOptions.Center,
             LineBreakMode = LineBreakMode.WordWrap
         };
@@ -567,6 +597,13 @@ public sealed class AccountPage : ContentPage
         emailConsentRow.Add(emailConsent, 0, 0);
         emailConsentRow.Add(emailConsentLabel, 1, 0);
         SemanticProperties.SetDescription(emailConsent, "Ontvang Schink-e-posse, opsioneel");
+        if (isSignup)
+        {
+            emailConsent.Color = Color.FromArgb("#00865D");
+            emailConsentLabel.TextColor = Color.FromArgb("#45616A");
+            emailConsentRow.HorizontalOptions = LayoutOptions.Center;
+            emailConsentRow.ColumnDefinitions[1].Width = GridLength.Auto;
+        }
 
         if (_authPanelMode is AuthPanelMode.SignIn or AuthPanelMode.SignUp)
         {
@@ -606,11 +643,15 @@ public sealed class AccountPage : ContentPage
                     }
                 }
             };
-            var googleButton = BuildGoogleSignInButton(out var googleLabel, out var googleSpinner);
+            var googleButton = BuildGoogleSignInButton(out var googleLabel, out var googleSpinner, isSignup);
+            if (isSignup)
+            {
+                SemanticProperties.SetDescription(googleButton, "Gaan voort met Google");
+            }
 #if IOS
             var appleButton = new AppleSignInButton
             {
-                HeightRequest = 58,
+                HeightRequest = isSignup ? 48 : 58,
                 HorizontalOptions = LayoutOptions.Fill,
                 VerticalOptions = LayoutOptions.Start
             };
@@ -670,7 +711,7 @@ public sealed class AccountPage : ContentPage
                     }
 
                     var signInResult = await _apiClient.CompleteGoogleSignInAsync(token,
-                        marketingConsent: isSignup && emailConsent.IsChecked);
+                        marketingConsent: false);
                     await RefreshSessionAsync(signInResult.Message);
                     await OpenPostAuthenticationDestinationAsync();
                 }
@@ -724,7 +765,7 @@ public sealed class AccountPage : ContentPage
                         result.FirstName,
                         result.LastName,
                         result.DisplayName,
-                        marketingConsent: isSignup && emailConsent.IsChecked);
+                        marketingConsent: false);
                     await RefreshSessionAsync(signInResult.Message);
                     await OpenPostAuthenticationDestinationAsync();
                 }
@@ -746,11 +787,53 @@ public sealed class AccountPage : ContentPage
             };
 #endif
 
+            if (isSignup)
+            {
+                var methods = new VerticalStackLayout { Spacing = 8 };
+                methods.Children.Add(googleButton);
 #if IOS
-            formContent.Children.Add(appleButton);
+                methods.Children.Add(appleButton);
 #endif
-            formContent.Children.Add(googleButton);
-            formContent.Children.Add(BuildAuthDivider("of"));
+                var emailButton = new Button
+                {
+                    AutomationId = "signup-email-choice",
+                    BackgroundColor = Colors.Transparent,
+                    BorderWidth = 0, Padding = 0,
+                    CornerRadius = 8, MinimumHeightRequest = 48
+                };
+                SemanticProperties.SetDescription(emailButton, "Gaan voort met e-pos");
+                emailButton.Clicked += (_, _) => ShowSignupEmailForm(true);
+                methods.Children.Add(new Border
+                {
+                    BackgroundColor = Colors.White, Stroke = Color.FromArgb("#C3CBD0"),
+                    StrokeThickness = 1, StrokeShape = new RoundRectangle { CornerRadius = 8 },
+                    Content = new Grid
+                    {
+                        Children =
+                        {
+                            BuildSignupProviderRow(new Image
+                            {
+                                Source = new FontImageSource
+                                {
+                                    Glyph = "\uf0e0", FontFamily = "FontAwesomeSolid",
+                                    Color = Color.FromArgb("#173F4F"), Size = 18
+                                }
+                            }, new Label { Text = "Gaan voort met e-pos" }),
+                            emailButton
+                        }
+                    }
+                });
+                _signupMethods = methods;
+                formContent.Children.Add(methods);
+            }
+            else
+            {
+#if IOS
+                formContent.Children.Add(appleButton);
+#endif
+                formContent.Children.Add(googleButton);
+                formContent.Children.Add(BuildAuthDivider("of"));
+            }
             if (!isSignup)
             {
                 formContent.Children.Add(BuildField(loginEmailEntry));
@@ -775,9 +858,12 @@ public sealed class AccountPage : ContentPage
             var signupButton = new Button
             {
                 Text = "Skep rekening",
-                BackgroundColor = Color.FromArgb("#E8B52F"),
-                TextColor = Color.FromArgb("#243238"),
-                CornerRadius = 24,
+                AutomationId = "signup-submit",
+                IsVisible = false,
+                BackgroundColor = Color.FromArgb("#00865D"),
+                TextColor = Colors.White,
+                FontFamily = "PoppinsSemiBold", FontSize = 20,
+                CornerRadius = 16,
                 FontAttributes = FontAttributes.Bold,
                 HeightRequest = 54
             };
@@ -802,17 +888,26 @@ public sealed class AccountPage : ContentPage
                 }
             };
 
-            formContent.Children.Add(BuildField(signupFirstNameEntry));
-            formContent.Children.Add(BuildField(signupLastNameEntry));
-            formContent.Children.Add(BuildField(signupDisplayNameEntry));
-            formContent.Children.Add(BuildField(signupEmailEntry));
-            formContent.Children.Add(BuildField(signupPasswordEntry));
-            formContent.Children.Add(emailConsentRow);
+            var emailForm = new VerticalStackLayout { Spacing = 8, IsVisible = false };
+            emailForm.Children.Add(BuildSignupField(signupFirstNameEntry));
+            emailForm.Children.Add(BuildSignupField(signupLastNameEntry));
+            emailForm.Children.Add(BuildSignupField(signupDisplayNameEntry));
+            emailForm.Children.Add(BuildSignupField(signupEmailEntry));
+            emailForm.Children.Add(BuildSignupField(signupPasswordEntry));
+            emailForm.Children.Add(emailConsentRow);
+            _signupEmailForm = emailForm;
+            _signupSubmitButton = signupButton;
+            formContent.Children.Add(emailForm);
             formContent.Children.Add(signupButton);
-            formContent.Children.Add(BuildModeSwitchLink(
-                "Het jy reeds 'n rekening?",
-                "Teken in",
-                AuthPanelMode.SignIn));
+            var signInLink = new Button
+            {
+                Text = "Ek het reeds 'n rekening", AutomationId = "signup-signin",
+                BackgroundColor = Colors.Transparent, TextColor = Color.FromArgb("#275A66"),
+                FontFamily = "Poppins", FontSize = 13, Padding = 0,
+                MinimumHeightRequest = 44
+            };
+            signInLink.Clicked += (_, _) => SetAuthPanelMode(AuthPanelMode.SignIn);
+            formContent.Children.Add(signInLink);
         }
 
         _authPanelContentHost.Content = formContent;
@@ -832,9 +927,16 @@ public sealed class AccountPage : ContentPage
 
     public void ShowSignIn() => SetAuthPanelMode(AuthPanelMode.SignIn);
 
+    internal void ShowFreeSignup()
+    {
+        _continueWithFreeStories = true;
+        SetAuthPanelMode(AuthPanelMode.SignUp);
+    }
+
     private void SetAuthPanelMode(AuthPanelMode mode)
     {
         _authPanelMode = mode;
+        _isSignupEmailSelected = false;
         UpdateSystemBackHandling();
         if (_authHero is not null)
         {
@@ -850,6 +952,11 @@ public sealed class AccountPage : ContentPage
     private void UpdateAuthPanelChrome()
     {
         var metrics = GetLandingLayoutMetrics();
+        var isSignup = _authPanelMode == AuthPanelMode.SignUp;
+        if (_signupBackground is not null)
+        {
+            _signupBackground.IsVisible = isSignup && !_sessionState.Current.IsSignedIn;
+        }
         if (_authPanelFrame is not null)
         {
             _authPanelFrame.Margin = _authPanelMode == AuthPanelMode.Landing
@@ -862,7 +969,7 @@ public sealed class AccountPage : ContentPage
         {
             _authPanelContentHost.Padding = _authPanelMode == AuthPanelMode.Landing
                 ? metrics.PanelPadding
-                : new Thickness(26, 24, 26, 28);
+                : isSignup ? new Thickness(24, 16, 24, 16) : new Thickness(26, 24, 26, 28);
         }
 
         if (_authPanelBackground is not null)
@@ -870,9 +977,22 @@ public sealed class AccountPage : ContentPage
             _authPanelBackground.BackgroundColor = _authPanelMode == AuthPanelMode.Landing
                 ? Colors.Transparent
                 : Color.FromArgb("#FFF7E8");
+            _authPanelBackground.Background = isSignup
+                ? new LinearGradientBrush
+                {
+                    StartPoint = new Point(0, 0), EndPoint = new Point(1, 0),
+                    GradientStops =
+                    {
+                        new GradientStop(Color.FromArgb("#F5EDDF"), 0),
+                        new GradientStop(Color.FromArgb("#F5F8F7"), 1)
+                    }
+                }
+                : new SolidColorBrush(_authPanelBackground.BackgroundColor);
+            _authPanelBackground.Stroke = isSignup ? Color.FromArgb("#E3E6DD") : Colors.Transparent;
+            _authPanelBackground.StrokeThickness = isSignup ? 1 : 0;
             _authPanelBackground.StrokeShape = new RoundRectangle
             {
-                CornerRadius = _authPanelMode == AuthPanelMode.Landing ? 0 : 34
+                CornerRadius = _authPanelMode == AuthPanelMode.Landing ? 0 : isSignup ? 22 : 34
             };
         }
     }
@@ -931,6 +1051,19 @@ public sealed class AccountPage : ContentPage
             return;
         }
 
+        if (_authPanelMode == AuthPanelMode.SignUp)
+        {
+            var signupWidth = Math.Min(466, Math.Max(0, MobileResponsiveLayout.ResolveWidth(Width) - 36));
+            _authPanelFrame.WidthRequest = signupWidth;
+            _authPanelFrame.MaximumWidthRequest = signupWidth;
+            _authPanelFrame.HorizontalOptions = LayoutOptions.Center;
+            return;
+        }
+
+        if (MobileResponsiveLayout.IsWide(Width))
+        {
+            _authPanelFrame.WidthRequest = -1;
+        }
         MobileResponsiveLayout.ApplyCenteredContent(_authPanelFrame, Width, 720);
 
         if (_authPanelMode != AuthPanelMode.Landing || MobileResponsiveLayout.IsWide(Width))
@@ -994,13 +1127,88 @@ public sealed class AccountPage : ContentPage
         var panelHeight = _authPanelFrame?.Height ?? 0;
         var panelMargin = _authPanelFrame?.Margin ?? Thickness.Zero;
         var remainingHeight = viewportHeight - panelHeight - panelMargin.VerticalThickness;
-        var topInset = Math.Max(24, Math.Floor(remainingHeight / 2));
+        var topInset = Math.Max(_authPanelMode == AuthPanelMode.SignUp ? 64 : 24, Math.Floor(remainingHeight / 2));
 
         _authPanelTopSpacer.IsVisible = true;
         if (Math.Abs(_authPanelTopSpacer.HeightRequest - topInset) > 0.5)
         {
             _authPanelTopSpacer.HeightRequest = topInset;
         }
+    }
+
+    private void ShowSignupEmailForm(bool showEmail)
+    {
+        if (_isAuthRequestInFlight || _signupMethods is null || _signupEmailForm is null)
+        {
+            return;
+        }
+
+        // Toggle the existing views so returning to the choices preserves entered details.
+        _isSignupEmailSelected = showEmail;
+        _signupMethods.IsVisible = !showEmail;
+        _signupEmailForm.IsVisible = showEmail;
+        if (_signupSubmitButton is not null)
+        {
+            _signupSubmitButton.IsVisible = showEmail;
+        }
+        SetStatus(null);
+        Dispatcher.Dispatch(UpdateAuthPanelTopSpacer);
+    }
+
+    private View BuildSignupHeader()
+    {
+        var hero = new VerticalStackLayout
+        {
+            Spacing = 0,
+            Children =
+            {
+                new Image
+                {
+                    Source = "signup_oortjies.png", Aspect = Aspect.AspectFit,
+                    HeightRequest = 138, HorizontalOptions = LayoutOptions.Center,
+                    InputTransparent = true
+                },
+                new Image
+                {
+                    Source = "signup_logo.png", Aspect = Aspect.AspectFit,
+                    HeightRequest = 104, MaximumWidthRequest = 264,
+                    HorizontalOptions = LayoutOptions.Fill, Margin = new Thickness(0, -4, 0, -4)
+                },
+                new Label
+                {
+                    Text = "Skep jou gratis rekening\nen begin luister",
+                    FontFamily = "Poppins", FontSize = 21,
+                    TextColor = Color.FromArgb("#173F4F"),
+                    HorizontalTextAlignment = TextAlignment.Center,
+                    Margin = new Thickness(0, 2, 0, 6)
+                }
+            }
+        };
+        var back = new Button
+        {
+            AutomationId = "auth-back", Text = "‹", FontSize = 28,
+            TextColor = Color.FromArgb("#45616A"), BackgroundColor = Colors.Transparent,
+            Padding = 0, WidthRequest = 44, HeightRequest = 44,
+            HorizontalOptions = LayoutOptions.Start, VerticalOptions = LayoutOptions.Start,
+            Margin = new Thickness(-12, -8, 0, 0)
+        };
+        SemanticProperties.SetDescription(back, "Terug");
+        back.Clicked += (_, _) => TryReturnToAuthLanding();
+        return new Grid { Children = { hero, back } };
+    }
+
+    private static View BuildSignupField(MauiEntry entry)
+    {
+        entry.FontFamily = "Poppins";
+        entry.FontSize = 16;
+        entry.TextColor = Color.FromArgb("#173F4F");
+        entry.PlaceholderColor = Color.FromArgb("#7B8890");
+        return new Border
+        {
+            BackgroundColor = Colors.White, Stroke = Color.FromArgb("#C3CBD0"),
+            StrokeThickness = 1, StrokeShape = new RoundRectangle { CornerRadius = 7 },
+            Padding = new Thickness(10, 0), Content = entry
+        };
     }
 
     private View BuildAuthPanelHeader(string text)
@@ -1119,7 +1327,36 @@ public sealed class AccountPage : ContentPage
         return label;
     }
 
-    private static Border BuildGoogleSignInButton(out Label label, out ActivityIndicator spinner)
+    private static Grid BuildSignupProviderRow(View icon, Label label)
+    {
+        const double iconSize = 20;
+        const double labelOffset = 58;
+        // On iOS, bring the icons closer to the labels to match the native Apple icon's center.
+        var iconGap = DeviceInfo.Platform == DevicePlatform.iOS ? 3 : 10;
+        icon.WidthRequest = iconSize;
+        icon.HeightRequest = iconSize;
+        icon.VerticalOptions = LayoutOptions.Center;
+        label.FontFamily = "Poppins";
+        label.FontSize = 14;
+        label.TextColor = Color.FromArgb("#173F4F");
+        label.HorizontalTextAlignment = TextAlignment.Start;
+        label.VerticalTextAlignment = TextAlignment.Center;
+        Grid.SetColumn(icon, 0);
+        Grid.SetColumn(label, 1);
+        var row = new Grid
+        {
+            WidthRequest = 244, MaximumWidthRequest = 244,
+            HorizontalOptions = LayoutOptions.Center,
+            Padding = new Thickness(labelOffset - iconSize - iconGap, 0, 0, 0),
+            ColumnSpacing = iconGap,
+            ColumnDefinitions = { new ColumnDefinition(iconSize), new ColumnDefinition(GridLength.Star) },
+            Children = { icon, label }, InputTransparent = true
+        };
+        AutomationProperties.SetIsInAccessibleTree(row, false);
+        return row;
+    }
+
+    private static Border BuildGoogleSignInButton(out Label label, out ActivityIndicator spinner, bool isSignup = false)
     {
         var googleIcon = new Image
         {
@@ -1132,10 +1369,11 @@ public sealed class AccountPage : ContentPage
         };
         label = new Label
         {
-            Text = "Teken in met Google",
+            Text = isSignup ? "Gaan voort met Google" : "Teken in met Google",
             TextColor = Color.FromArgb("#3C4043"),
-            FontAttributes = FontAttributes.Bold,
-            FontSize = 18,
+            FontAttributes = isSignup ? FontAttributes.None : FontAttributes.Bold,
+            FontFamily = isSignup ? "Poppins" : null,
+            FontSize = isSignup ? 14 : 18,
             HorizontalTextAlignment = TextAlignment.Center,
             VerticalTextAlignment = TextAlignment.Center,
             InputTransparent = true
@@ -1155,23 +1393,17 @@ public sealed class AccountPage : ContentPage
         Grid.SetColumn(googleIcon, 0);
         Grid.SetColumn(label, 1);
         Grid.SetColumn(spinner, 2);
-
-        return new Border
+        View content;
+        if (isSignup)
         {
-            BackgroundColor = Colors.White,
-            Stroke = Color.FromArgb("#DADCE0"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 18 },
-            HeightRequest = 58,
-            Padding = new Thickness(18, 0),
-            Shadow = new Shadow
-            {
-                Brush = Brush.Black,
-                Offset = new Point(0, 2),
-                Radius = 5,
-                Opacity = 0.18f
-            },
-            Content = new Grid
+            Grid.SetColumn(spinner, 0);
+            spinner.HorizontalOptions = LayoutOptions.End;
+            spinner.Margin = new Thickness(0, 0, 12, 0);
+            content = new Grid { Children = { BuildSignupProviderRow(googleIcon, label), spinner } };
+        }
+        else
+        {
+            content = new Grid
             {
                 ColumnDefinitions =
                 {
@@ -1179,14 +1411,26 @@ public sealed class AccountPage : ContentPage
                     new ColumnDefinition { Width = GridLength.Star },
                     new ColumnDefinition { Width = 42 }
                 },
-                Children =
-                {
-                    googleIcon,
-                    label,
-                    spinner
-                },
-                InputTransparent = true
-            }
+                Children = { googleIcon, label, spinner }, InputTransparent = true
+            };
+        }
+
+        return new Border
+        {
+            BackgroundColor = Colors.White,
+            Stroke = Color.FromArgb("#DADCE0"),
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = isSignup ? 8 : 18 },
+            HeightRequest = isSignup ? 48 : 58,
+            Padding = new Thickness(isSignup ? 0 : 18, 0),
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 2),
+                Radius = 5,
+                Opacity = isSignup ? 0 : 0.18f
+            },
+            Content = content
         };
     }
 
@@ -1288,7 +1532,8 @@ public sealed class AccountPage : ContentPage
     {
         _isAuthRequestInFlight = isLoading;
         googleButton.Opacity = isLoading ? 0.82 : 1;
-        googleLabel.Text = isLoading ? "Koppel met Google..." : "Teken in met Google";
+        googleLabel.Text = isLoading ? "Koppel met Google..."
+            : _authPanelMode == AuthPanelMode.SignUp ? "Gaan voort met Google" : "Teken in met Google";
         googleSpinner.IsVisible = isLoading;
         googleSpinner.IsRunning = isLoading;
         emailEntry.IsEnabled = !isLoading;
@@ -1350,7 +1595,7 @@ public sealed class AccountPage : ContentPage
         }
 
         var hasStoryReturnPath = PageHelpers.TryParseStoryReturnPath(ReturnUrl, out var source, out var slug);
-        if (!_sessionState.Current.HasPaidSubscription)
+        if (!_sessionState.Current.HasPaidSubscription && !_continueWithFreeStories)
         {
             var plansRoute = hasStoryReturnPath
                 ? $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(ReturnUrl!)}"
@@ -1391,6 +1636,10 @@ public sealed class AccountPage : ContentPage
     private void ApplySessionState()
     {
         var session = _sessionState.Current;
+        if (_signupBackground is not null)
+        {
+            _signupBackground.IsVisible = !session.IsSignedIn && _authPanelMode == AuthPanelMode.SignUp;
+        }
 #if ANDROID
         if (_authBackCallback is not null)
         {

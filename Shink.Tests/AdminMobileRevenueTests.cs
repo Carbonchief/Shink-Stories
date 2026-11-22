@@ -25,7 +25,8 @@ public sealed class AdminMobileRevenueTests
     {
         var start = new DateTime(2026, 10, 7);
         var admin = new Admin();
-        Set(admin, "SubscriberReports", AdminSubscriberReportsSnapshot.Empty with
+        var state = typeof(Admin).GetProperty("ReportState", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(admin)!;
+        state.GetType().GetProperty("Value")!.SetValue(state, AdminSubscriberReportsSnapshot.Empty with
         {
             SalesDetails = [
                 Sale("apple", start, 99m),

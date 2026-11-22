@@ -109,26 +109,26 @@ public class AdminLoadingTests
         Assert.AreEqual(1, service.Count("GetSubscriberReportsAsync"));
 
         await SelectAnalyticsPanelAsync(page, 2);
-        Assert.AreEqual(1, service.Count("GetSubscriberReportsAsync"));
-        await InvokeAsync(page, "RefreshAnalyticsAsync");
         Assert.AreEqual(2, service.Count("GetSubscriberReportsAsync"));
+        await InvokeAsync(page, "RefreshAnalyticsAsync");
+        Assert.AreEqual(3, service.Count("GetSubscriberReportsAsync"));
         Assert.AreEqual((false, true), service.ReportOptions[^1]);
         Assert.AreEqual(2, service.Count("GetAnalyticsAsync"));
     }
 
     [TestMethod]
-    public async Task StoryAnalyticsLoadsCatalogOnlyWhenStorySectionIsSelected()
+    public async Task StoryAnalyticsUsesItsOwnCompleteStoryList()
     {
         var (page, service) = CreatePage();
         await SelectTabAsync(page, 10);
         await SelectAnalyticsPanelAsync(page, 4);
         Assert.AreEqual(0, service.Count("GetStoriesAsync"));
         await SelectAnalyticsPanelAsync(page, 5);
-        Assert.AreEqual(1, service.Count("GetStoriesAsync"));
-        Assert.AreEqual(1, service.Count("GetPlaylistsAsync"));
-        Assert.AreEqual(1, service.Count("GetAnalyticsAsync"));
+        Assert.AreEqual(0, service.Count("GetStoriesAsync"));
+        Assert.AreEqual(0, service.Count("GetPlaylistsAsync"));
+        Assert.AreEqual(2, service.Count("GetAnalyticsAsync"));
         await SelectAnalyticsPanelAsync(page, 5);
-        Assert.AreEqual(1, service.Count("GetStoriesAsync"));
+        Assert.AreEqual(0, service.Count("GetStoriesAsync"));
     }
 
     [TestMethod]
@@ -273,6 +273,28 @@ public class AdminLoadingTests
         Assert.AreEqual(1, service.Count("GetAnalyticsAsync"));
     }
 
+    [TestMethod]
+    public async Task SwitchingAnalyticsPanelsKeepsEachResultEvenWhenTheEarlierRequestFinishesLast()
+    {
+        var (page, service) = CreatePage();
+        await SelectTabAsync(page, 10);
+        var awards = new TaskCompletionSource<AdminAnalyticsSnapshot>();
+        service.Analytics = () => awards.Task;
+        var first = SelectAnalyticsPanelAsync(page, 3);
+
+        var blog = AdminAnalyticsSnapshot.Empty with { GeneratedAt = DateTimeOffset.UtcNow };
+        service.Analytics = () => Task.FromResult(blog);
+        await SelectAnalyticsPanelAsync(page, 7);
+        var awarded = AdminAnalyticsSnapshot.Empty with { AwardSummary = new(10, 1, 4, 2, null) };
+        awards.SetResult(awarded);
+        await first;
+
+        Assert.AreSame(blog, Get<AdminAnalyticsSnapshot>(page, "Analytics"));
+        await SelectAnalyticsPanelAsync(page, 3);
+        Assert.AreSame(awarded, Get<AdminAnalyticsSnapshot>(page, "Analytics"));
+        CollectionAssert.AreEqual(new[] { AdminActivityPanel.Awards, AdminActivityPanel.Blog }, service.ActivityPanels.ToArray());
+    }
+
     private static (Admin Page, AdminServiceProxy Service) CreatePage()
     {
         var service = DispatchProxy.Create<IAdminManagementService, AdminServiceProxy>();
@@ -315,6 +337,7 @@ public class AdminLoadingTests
         public Func<Task<IReadOnlyList<AdminStoryRecord>>> Stories { get; set; } = () => Task.FromResult<IReadOnlyList<AdminStoryRecord>>([]);
         public Func<Task<AdminSubscriberReportsSnapshot>> Reports { get; set; } = () => Task.FromResult(AdminSubscriberReportsSnapshot.Empty);
         public Func<Task<AdminAnalyticsSnapshot>> Analytics { get; set; } = () => Task.FromResult(AdminAnalyticsSnapshot.Empty);
+        public List<AdminActivityPanel> ActivityPanels { get; } = [];
         public List<bool> UsageRefreshes { get; } = [];
         public List<(bool IncludeEngagement, bool ForceRefresh)> ReportOptions { get; } = [];
         public int Count(string method) => Calls.Count(call => call == method);
@@ -322,7 +345,11 @@ public class AdminLoadingTests
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
             Calls.Add(targetMethod!.Name);
-            if (targetMethod.Name == "GetAnalyticsAsync") UsageRefreshes.Add((bool)args![2]!);
+            if (targetMethod.Name == "GetAnalyticsAsync")
+            {
+                UsageRefreshes.Add((bool)args![2]!);
+                ActivityPanels.Add((AdminActivityPanel)args[3]!);
+            }
             if (targetMethod.Name == "GetSubscriberReportsAsync") ReportOptions.Add(((bool)args![2]!, (bool)args[3]!));
             return targetMethod.Name switch
             {

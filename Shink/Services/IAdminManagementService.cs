@@ -3,6 +3,9 @@ using Shink.Components.Content;
 
 namespace Shink.Services;
 
+public enum AdminActivityPanel { All, Awards, Usage, Stories, Resources, Blog }
+public enum AdminReportPanel { All, Membership, Cancellations, Revenue, Recoveries, Engagement }
+
 public interface IAdminManagementService
 {
     Task<bool> IsAdminAsync(string? email, CancellationToken cancellationToken = default);
@@ -202,7 +205,8 @@ public interface IAdminManagementService
     Task<AdminAnalyticsSnapshot> GetAnalyticsAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default,
-        bool forceRefresh = false);
+        bool forceRefresh = false,
+        AdminActivityPanel panel = AdminActivityPanel.All);
 
     Task<AdminSubscriptionSettingsSnapshot> GetSubscriptionSettingsAsync(
         string? adminEmail,
@@ -231,7 +235,8 @@ public interface IAdminManagementService
         string? adminEmail,
         CancellationToken cancellationToken = default,
         bool includeEngagement = true,
-        bool forceRefresh = false);
+        bool forceRefresh = false,
+        AdminReportPanel panel = AdminReportPanel.All);
 
     Task<IReadOnlyList<AdminResourceTypeRecord>> GetResourceTypesAsync(
         string? adminEmail,

@@ -94,7 +94,7 @@ public partial class AppShell : Shell
         _push.OnShellReady();
     }
 
-    private void RenderShellFromSessionState(bool openSignIn = false)
+    private void RenderShellFromSessionState(OnboardingPage.Destination destination = OnboardingPage.Destination.Account)
     {
         if (_isRendering)
         {
@@ -131,7 +131,7 @@ public partial class AppShell : Shell
             }
             else
             {
-                BuildSignedOutShell(openSignIn);
+                BuildSignedOutShell(destination);
             }
             _renderedShellState = shellState;
             _analytics.TrackEvent("mobile_shell_rendered", new Dictionary<string, object>
@@ -161,17 +161,31 @@ public partial class AppShell : Shell
         });
     }
 
-    private void OnOnboardingCompleted(object? sender, EventArgs args)
+    private async void OnOnboardingCompleted(object? sender, EventArgs args)
     {
-        var openSignIn = sender is OnboardingPage { OpenSignInOnCompletion: true };
-        if (sender is OnboardingPage page)
-            page.Completed -= OnOnboardingCompleted;
+        if (sender is not OnboardingPage page)
+            return;
+
+        page.Completed -= OnOnboardingCompleted;
 
         Preferences.Default.Set(OnboardingCompletedPreferenceKey, true);
-        RenderShellFromSessionState(openSignIn);
+        RenderShellFromSessionState(page.CompletionDestination);
+
+        if (page.CompletionDestination == OnboardingPage.Destination.Plans && _renderedShellState == "signed_out")
+        {
+            try
+            {
+                await GoToAsync(nameof(PlansPage), animate: false);
+            }
+            catch (Exception ex)
+            {
+                _analytics.TrackRecoverableFailure(ex, "mobile_onboarding_plans_navigation");
+                await DisplayAlertAsync("Intekeninge", "Ons kon nie nou die planne oopmaak nie.", "Reg so");
+            }
+        }
     }
 
-    private void BuildSignedOutShell(bool openSignIn)
+    private void BuildSignedOutShell(OnboardingPage.Destination destination)
     {
         Items.Clear();
         Items.Add(new ShellContent
@@ -180,8 +194,10 @@ public partial class AppShell : Shell
             ContentTemplate = new DataTemplate(() =>
             {
                 var page = _services.GetRequiredService<AccountPage>();
-                if (openSignIn)
+                if (destination == OnboardingPage.Destination.SignIn)
                     page.ShowSignIn();
+                else if (destination == OnboardingPage.Destination.FreeSignup)
+                    page.ShowFreeSignup();
                 return page;
             })
         });

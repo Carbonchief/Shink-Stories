@@ -24,7 +24,7 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "Cancellations");
         StringAssert.Contains(admin, "New subscribers today");
         StringAssert.Contains(admin, "Cancelled subscriptions");
-        StringAssert.Contains(admin, "GetAnalyticsSubscriberReportsAsync");
+        StringAssert.Contains(admin, "AdminManagementService.GetSubscriberReportsAsync");
         StringAssert.Contains(admin, "admin-analytics-tabs");
         StringAssert.Contains(admin, "@T(\"Inkomste\", \"Revenue\")");
         StringAssert.Contains(admin, "@T(\"Gebruik\", \"Usage\")");
@@ -104,10 +104,12 @@ public class AdminAnalyticsSourceTests
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
 
         StringAssert.Contains(service, "FetchRowsPagedAsync<SubscriptionRow>");
-        StringAssert.Contains(service, "maxRows: 50000");
+        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20261121130000_admin_panel_analytics.sql"));
+        StringAssert.Contains(migration, "get_admin_report_inputs");
+        StringAssert.Contains(migration, "from public.subscriptions");
         StringAssert.Contains(service, "&order=subscribed_at.desc,subscription_id.asc");
         StringAssert.Contains(service, "IsCurrentSystemTierDistributionSubscription(subscription, nowUtc)");
-        StringAssert.Contains(service, "ActiveMembersPerLevel: BuildTierDistributionMetrics(subscriptions, tierDetails)");
+        StringAssert.Contains(service, "ActiveMembersPerLevel = BuildTierDistributionMetrics(subscriptions, tierDetails)");
         StringAssert.Contains(admin, "@T(\"Aktiewe intekeninge en persentasie per intekenvlak.\", \"Active subscriptions and percentage by subscription tier.\")");
         StringAssert.Contains(admin, "@T(\"Aktiewe intekeninge\", \"Active subscriptions\")");
         StringAssert.Contains(admin, "string.Equals(metric.PeriodKey, \"all_time\", StringComparison.OrdinalIgnoreCase)");
@@ -188,10 +190,10 @@ public class AdminAnalyticsSourceTests
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
 
         StringAssert.Contains(admin, "admin-revenue-analytics-section");
-        StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"today\")");
-        StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"this_month\")");
-        StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"this_year\")");
-        StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"all_time\")");
+        StringAssert.Contains(admin, "GetSubscriberSalesMetric(RevenuePeriodCurrentDay)");
+        StringAssert.Contains(admin, "GetSubscriberSalesMetric(RevenuePeriodCurrentMonth)");
+        StringAssert.Contains(admin, "GetSubscriberSalesMetric(RevenuePeriodCurrentYear)");
+        StringAssert.Contains(admin, "GetSubscriberSalesMetric(RevenuePeriodCurrentWeek)");
         StringAssert.Contains(admin, "SelectedRevenueDrilldownPeriod");
         StringAssert.Contains(admin, "@T(\"Huidige dag\", \"Current day\")");
         StringAssert.Contains(admin, "@T(\"Huidige week\", \"Current week\")");
@@ -1166,6 +1168,7 @@ public class AdminAnalyticsSourceTests
             "BuildSubscriberReportsSnapshot", BindingFlags.Static | BindingFlags.NonPublic)!;
         var args = method.GetParameters().Select(parameter => parameter.Name switch
         {
+            "panel" => (object)AdminReportPanel.All,
             "subscribers" => subscribers,
             "subscriptions" => rows,
             "revenueEvents" => events,

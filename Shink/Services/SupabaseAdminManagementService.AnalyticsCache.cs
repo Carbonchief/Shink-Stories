@@ -4,8 +4,10 @@ namespace Shink.Services;
 
 public sealed partial class SupabaseAdminManagementService
 {
-    private static readonly SemaphoreSlim UsageSnapshotLoadGate = new(1, 1);
-    private static readonly SemaphoreSlim SubscriberReportsLoadGate = new(1, 1);
+    private static readonly IReadOnlyDictionary<AdminActivityPanel, SemaphoreSlim> ActivityLoadGates =
+        Enum.GetValues<AdminActivityPanel>().ToDictionary(panel => panel, _ => new SemaphoreSlim(1, 1));
+    private static readonly IReadOnlyDictionary<AdminReportPanel, SemaphoreSlim> ReportLoadGates =
+        Enum.GetValues<AdminReportPanel>().ToDictionary(panel => panel, _ => new SemaphoreSlim(1, 1));
     private static readonly TimeSpan AdminSnapshotCacheDuration = TimeSpan.FromSeconds(30);
 
     // Callers must verify admin access before reaching this cache, including on hits.
