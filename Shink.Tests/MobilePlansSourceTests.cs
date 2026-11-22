@@ -51,13 +51,19 @@ public class MobilePlansSourceTests
     }
 
     [TestMethod]
-    public void MobileGratisPostAuthenticationOpensPlansFirst()
+    public void MobileGratisPostAuthenticationOpensPlansUnlessFreeSignupWasSelected()
     {
         var account = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
+        var onboarding = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "OnboardingPage.cs"));
+        var shell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
 
+        StringAssert.Contains(onboarding, "Complete(Destination.FreeSignup)");
+        StringAssert.Contains(shell, "else if (destination == OnboardingPage.Destination.FreeSignup)\n                    page.ShowFreeSignup();");
+        StringAssert.Contains(account, "_continueWithFreeStories = true;\n        SetAuthPanelMode(AuthPanelMode.SignUp);");
         StringAssert.Contains(account, "var hasStoryReturnPath = PageHelpers.TryParseStoryReturnPath(ReturnUrl, out var source, out var slug);");
-        StringAssert.Contains(account, "if (!_sessionState.Current.HasPaidSubscription)");
+        StringAssert.Contains(account, "if (!_sessionState.Current.HasPaidSubscription && !_continueWithFreeStories)");
         StringAssert.Contains(account, "await Shell.Current.GoToAsync(plansRoute, animate: true);");
+        StringAssert.Contains(account, "await Shell.Current.GoToAsync(\"//Luister\", animate: true);");
     }
 
     [TestMethod]

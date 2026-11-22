@@ -1495,7 +1495,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "_apiClient.BuildGoogleSignInStartUri()");
         StringAssert.Contains(accountPage, "new Uri(MobileApiClient.GoogleCallbackUrl)");
         StringAssert.Contains(accountPage, "CompleteGoogleSignInAsync(token,");
-        StringAssert.Contains(accountPage, "marketingConsent: isSignup && emailConsent.IsChecked");
+        StringAssert.Contains(accountPage, "marketingConsent: false");
+        StringAssert.Contains(accountPage, "marketingConsent: emailConsent.IsChecked");
         StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"schinkstories://auth/google\";");
         StringAssert.Contains(apiClient, "private const string GoogleStartPath = \"/api/mobile/auth/google/start?callback=custom-scheme\";");
         Assert.IsFalse(apiClient.Contains("#if DEBUG", StringComparison.Ordinal));

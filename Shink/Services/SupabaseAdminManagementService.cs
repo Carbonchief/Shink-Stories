@@ -435,26 +435,32 @@ public sealed partial class SupabaseAdminManagementService(
             return null;
         }
 
-        var subscriber = await FetchSubscriberRecordByIdAsync(context, subscriberId, cancellationToken);
-        if (subscriber is null)
+        var row = await FetchSubscriberRowByIdAsync(context, subscriberId, cancellationToken);
+        if (row is null)
         {
             return null;
         }
 
-        var subscriptions = await FetchSubscriberSubscriptionsAsync(context, subscriberId, cancellationToken);
-        var tierOptions = await FetchAdminSubscriptionTierOptionsAsync(context, cancellationToken);
-        var tierNames = tierOptions.ToDictionary(tier => tier.TierCode, tier => tier.DisplayName, StringComparer.OrdinalIgnoreCase);
+        var subscriptionsTask = FetchSubscriberSubscriptionsAsync(context, subscriberId, cancellationToken);
+        var tiersTask = FetchAdminSubscriptionTierOptionsAsync(context, cancellationToken);
+        var notificationsTask = FetchSubscriberNotificationsAsync(context, subscriberId, cancellationToken);
+        var auditTask = FetchSubscriberAuditAsync(context, subscriberId, cancellationToken);
+        await Task.WhenAll(subscriptionsTask, tiersTask, notificationsTask, auditTask);
 
+        var subscriptions = await subscriptionsTask;
+        var subscriber = MapSubscriberRecord(row, BuildSubscriptionSummaryMap(subscriptions).GetValueOrDefault(subscriberId));
+        var billingTask = FetchSubscriberBillingEventsAsync(context, subscriberId, subscriptions, cancellationToken);
+        var ordersTask = FetchSubscriberStoreOrdersAsync(context, subscriber.Email, cancellationToken);
+        var activityTask = FetchSubscriberActivityAsync(context, subscriberId, subscriber.Email, cancellationToken);
+        var recoveriesTask = FetchSubscriberRecoveriesAsync(context, subscriber, subscriptions, cancellationToken);
+        await Task.WhenAll(billingTask, ordersTask, activityTask, recoveriesTask);
+
+        var tierOptions = await tiersTask;
+        var tierNames = tierOptions.ToDictionary(tier => tier.TierCode, tier => tier.DisplayName, StringComparer.OrdinalIgnoreCase);
         return new AdminSubscriberDetailSnapshot(
-            subscriber,
-            subscriptions.Select(row => MapSubscriberSubscription(row, tierNames)).ToArray(),
-            await FetchSubscriberBillingEventsAsync(context, subscriberId, subscriptions, cancellationToken),
-            await FetchSubscriberStoreOrdersAsync(context, subscriber.Email, cancellationToken),
-            await FetchSubscriberActivityAsync(context, subscriberId, subscriber.Email, cancellationToken),
-            await FetchSubscriberRecoveriesAsync(context, subscriber, subscriptions, cancellationToken),
-            await FetchSubscriberNotificationsAsync(context, subscriberId, cancellationToken),
-            tierOptions,
-            await FetchSubscriberAuditAsync(context, subscriberId, cancellationToken));
+            subscriber, subscriptions.Select(item => MapSubscriberSubscription(item, tierNames)).ToArray(),
+            await billingTask, await ordersTask, await activityTask, await recoveriesTask,
+            await notificationsTask, tierOptions, await auditTask);
     }
 
     public async Task<IReadOnlyList<AdminSubscriptionTierOption>> GetSubscriberAccessTierOptionsAsync(
@@ -2554,7 +2560,8 @@ public sealed partial class SupabaseAdminManagementService(
     public async Task<AdminAnalyticsSnapshot> GetAnalyticsAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default,
-        bool forceRefresh = false)
+        bool forceRefresh = false,
+        AdminActivityPanel panel = AdminActivityPanel.All)
     {
         if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
         {
@@ -2574,8 +2581,10 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         return await GetAdminSnapshotAsync(
-            $"admin:usage:{baseUri.AbsoluteUri}", UsageSnapshotLoadGate, forceRefresh,
-            () => LoadUsageSnapshotAsync(baseUri, apiKey, cancellationToken), cancellationToken);
+            $"admin:usage:{baseUri.AbsoluteUri}:{panel}", ActivityLoadGates[panel], forceRefresh,
+            () => panel == AdminActivityPanel.All
+                ? LoadUsageSnapshotAsync(baseUri, apiKey, cancellationToken)
+                : LoadActivityPanelAsync(baseUri, apiKey, panel, cancellationToken), cancellationToken);
     }
 
     private async Task<AdminAnalyticsSnapshot> LoadUsageSnapshotAsync(
@@ -2615,7 +2624,8 @@ public sealed partial class SupabaseAdminManagementService(
         string? adminEmail,
         CancellationToken cancellationToken = default,
         bool includeEngagement = true,
-        bool forceRefresh = false)
+        bool forceRefresh = false,
+        AdminReportPanel panel = AdminReportPanel.All)
     {
         if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
         {
@@ -2637,75 +2647,101 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         return await GetAdminSnapshotAsync(
-            $"admin:subscriber-reports:{baseUri.AbsoluteUri}:{includeEngagement}", SubscriberReportsLoadGate, forceRefresh,
-            () => LoadSubscriberReportsSnapshotAsync(baseUri, apiKey, includeEngagement, cancellationToken), cancellationToken);
+            $"admin:subscriber-reports:{baseUri.AbsoluteUri}:{includeEngagement}:{panel}", ReportLoadGates[panel], forceRefresh,
+            () => LoadSubscriberReportsSnapshotAsync(baseUri, apiKey, panel, includeEngagement, cancellationToken), cancellationToken);
     }
 
     private async Task<AdminSubscriberReportsSnapshot> LoadSubscriberReportsSnapshotAsync(
-        Uri baseUri, string apiKey, bool includeEngagement, CancellationToken cancellationToken)
+        Uri baseUri, string apiKey, AdminReportPanel panel, bool includeEngagement, CancellationToken cancellationToken)
     {
-        var wordPressSubscriberReportsTask = FetchWordPressSubscriberReportsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
-        var subscribersTask = FetchSubscribersAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
-        var subscriptionsTask = FetchSubscriptionsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
-        var providerRevenueEventsTask = FetchProviderRevenueEventsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
-        var storeOrderRevenueTask = FetchStoreOrderRevenueAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
-        var subscriptionTiersTask = FetchSubscriptionTiersAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
-        var recoveriesTask = FetchSubscriptionRecoveriesAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
-        var abandonedCartRecoveriesTask = FetchAbandonedCartRecoveriesAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
-        var authSessionsTask = includeEngagement
-            ? FetchAuthSessionsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true)
-            : Task.FromResult<IReadOnlyList<AuthSessionMetricRow>>([]);
-        var storyViewsTask = includeEngagement
-            ? FetchStoryViewsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true)
-            : Task.FromResult<IReadOnlyList<StoryViewMetricRow>>([]);
-        var storyListenSessionsTask = includeEngagement
-            ? FetchStoryListenSessionsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true)
-            : Task.FromResult<IReadOnlyList<StoryListenSessionMetricRow>>([]);
-        var cancellationSurveyTask = FetchSubscriptionCancellationFeedbackAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
-
-        await Task.WhenAll(
-            wordPressSubscriberReportsTask,
-            subscribersTask,
-            subscriptionsTask,
-            providerRevenueEventsTask,
-            storeOrderRevenueTask,
-            subscriptionTiersTask,
-            recoveriesTask,
-            abandonedCartRecoveriesTask,
-            authSessionsTask,
-            storyViewsTask,
-            storyListenSessionsTask,
-            cancellationSurveyTask);
-
-        var wordPressSubscriberReports = wordPressSubscriberReportsTask.Result;
-        if (wordPressSubscriberReports is null || !wordPressSubscriberReports.HasWordPressData)
+        if (panel == AdminReportPanel.Engagement)
         {
-            wordPressSubscriberReports = await TrySyncAndFetchWordPressSubscriberReportsAsync(
-                baseUri,
-                apiKey,
-                cancellationToken) ?? wordPressSubscriberReports;
+            return AdminSubscriberReportsSnapshot.Empty with
+            {
+                VisitsViewsAndLogins = await FetchEngagementAsync(baseUri, apiKey, cancellationToken)
+            };
         }
 
-        if (wordPressSubscriberReports is null)
+        var inputs = await InvokeRpcAsync<ReportInputs>(baseUri, apiKey, "get_admin_report_inputs",
+            new { p_panel = panel.ToString().ToLowerInvariant() }, cancellationToken, throwOnFailure: true)
+            ?? throw new JsonException("Missing subscriber report inputs.");
+
+        WordPressSubscriberReportsRpcSnapshot? historical = null;
+        if (panel == AdminReportPanel.All)
         {
-            throw new InvalidOperationException("Could not load the historical subscriber report snapshot.");
+            historical = await FetchWordPressSubscriberReportsAsync(baseUri, apiKey, cancellationToken, throwOnFailure: true);
+            if (historical?.HasWordPressData != true)
+                historical = await TrySyncAndFetchWordPressSubscriberReportsAsync(baseUri, apiKey, cancellationToken) ?? historical;
+            if (historical is null)
+                throw new InvalidOperationException("Could not load the historical subscriber report snapshot.");
         }
 
-        var snapshot = BuildSubscriberReportsSnapshot(
-            wordPressSubscriberReports,
-            subscribersTask.Result,
-            subscriptionsTask.Result,
-            providerRevenueEventsTask.Result,
-            BuildPaystackSubscriptionCreateIdentifiers(providerRevenueEventsTask.Result),
-            subscriptionTiersTask.Result,
-            recoveriesTask.Result,
-            abandonedCartRecoveriesTask.Result,
-            storeOrderRevenueTask.Result,
-            authSessionsTask.Result,
-            storyViewsTask.Result,
-            storyListenSessionsTask.Result,
-            cancellationSurveyTask.Result);
-        return includeEngagement ? snapshot : snapshot with { VisitsViewsAndLogins = [] };
+        var snapshot = BuildSubscriberReportsSnapshot(panel, historical, inputs.Subscribers, inputs.Subscriptions,
+            inputs.Events, BuildPaystackSubscriptionCreateIdentifiers(inputs.Events), inputs.Tiers, inputs.Recoveries,
+            inputs.Carts, inputs.Orders, inputs.Feedback);
+        return panel == AdminReportPanel.All && includeEngagement
+            ? snapshot with { VisitsViewsAndLogins = await FetchEngagementAsync(baseUri, apiKey, cancellationToken) }
+            : snapshot;
+    }
+
+    private sealed record ReportInputs(
+        [property: JsonRequired] SubscriberRow[] Subscribers, [property: JsonRequired] SubscriptionRow[] Subscriptions,
+        [property: JsonRequired] RevenueEventRow[] Events, [property: JsonRequired] SubscriptionTierRow[] Tiers,
+        [property: JsonRequired] SubscriptionRecoveryRow[] Recoveries, [property: JsonRequired] AbandonedCartRecoveryRow[] Carts,
+        [property: JsonRequired] StoreOrderRevenueRow[] Orders, [property: JsonRequired] SubscriptionCancellationFeedbackRow[] Feedback);
+
+    private sealed record EngagementReport(IReadOnlyList<AdminVisitsViewsLoginsMetric> Periods);
+
+    private async Task<IReadOnlyList<AdminVisitsViewsLoginsMetric>> FetchEngagementAsync(Uri baseUri, string apiKey, CancellationToken token)
+    {
+        var now = DateTime.Now;
+        var report = await InvokeRpcAsync<EngagementReport>(baseUri, apiKey, "get_admin_engagement_periods", new
+        {
+            p_today = now.Date.ToUniversalTime(),
+            p_week = GetStartOfWeek(now.Date).ToUniversalTime(),
+            p_month = new DateTime(now.Year, now.Month, 1).ToUniversalTime(),
+            p_year = new DateTime(now.Year, 1, 1).ToUniversalTime(),
+            p_now = now.ToUniversalTime()
+        }, token, throwOnFailure: true);
+        if (report?.Periods is not { Count: 5 } periods ||
+            !periods.Select(row => row.PeriodKey).SequenceEqual(["today", "this_week", "this_month", "year_to_date", "all_time"]))
+            throw new JsonException("Incomplete engagement report.");
+        return periods;
+    }
+
+    private async Task<AdminAnalyticsSnapshot> LoadActivityPanelAsync(Uri baseUri, string apiKey, AdminActivityPanel panel, CancellationToken token)
+    {
+        async Task<T> Read<T>(string rpc, object parameters) where T : class =>
+            await InvokeRpcAsync<T>(baseUri, apiKey, rpc, parameters, token, throwOnFailure: true)
+            ?? throw new JsonException($"Missing {panel} analytics.");
+
+        var result = AdminAnalyticsSnapshot.Empty with { GeneratedAt = DateTimeOffset.UtcNow };
+        switch (panel)
+        {
+            case AdminActivityPanel.Awards:
+                return result with { AwardSummary = await Read<AdminAwardAnalyticsSummary>("get_admin_award_analytics", new { }) };
+            case AdminActivityPanel.Resources:
+                return result with { ResourceDownloadSummary = await Read<AdminAnalyticsResourceDownloadSummary>("get_admin_resource_analytics", new { }) };
+            case AdminActivityPanel.Blog:
+                return result with { BlogVisitSummary = await Read<AdminAnalyticsBlogVisitSummary>("get_admin_blog_analytics", new { }) };
+            case AdminActivityPanel.Stories:
+            case AdminActivityPanel.Usage:
+                var listening = await Read<AdminAnalyticsSnapshot>("get_admin_listening_analytics", new { p_stories = panel == AdminActivityPanel.Stories });
+                if (listening.GeneratedAt is null) throw new JsonException("Missing listening report timestamp.");
+                if (panel == AdminActivityPanel.Stories)
+                    return result with { GeneratedAt = listening.GeneratedAt, StoryAnalytics = listening.StoryAnalytics ?? throw new JsonException("Missing story analytics.") };
+                return result with
+                {
+                    GeneratedAt = listening.GeneratedAt,
+                    StorySummary = listening.StorySummary ?? throw new JsonException("Missing story summary."),
+                    CharacterSummary = listening.CharacterSummary ?? throw new JsonException("Missing character summary."),
+                    DailyActivity = listening.DailyActivity ?? throw new JsonException("Missing daily activity."),
+                    TopCharacters = listening.TopCharacters ?? throw new JsonException("Missing characters."),
+                    TopCompletionStories = listening.TopCompletionStories ?? throw new JsonException("Missing completions.")
+                };
+            default:
+                throw new ArgumentOutOfRangeException(nameof(panel));
+        }
     }
 
     private async Task<AdminOperationContext?> TryCreateAdminOperationContextAsync(
@@ -2739,6 +2775,20 @@ public sealed partial class SupabaseAdminManagementService(
         Guid subscriberId,
         CancellationToken cancellationToken)
     {
+        var row = await FetchSubscriberRowByIdAsync(context, subscriberId, cancellationToken);
+        if (row is null)
+        {
+            return null;
+        }
+
+        var subscriptions = await FetchSubscriberSubscriptionsAsync(context, subscriberId, cancellationToken);
+        var summary = BuildSubscriptionSummaryMap(subscriptions).GetValueOrDefault(subscriberId);
+        return MapSubscriberRecord(row, summary);
+    }
+
+    private async Task<SubscriberRow?> FetchSubscriberRowByIdAsync(
+        AdminOperationContext context, Guid subscriberId, CancellationToken cancellationToken)
+    {
         if (subscriberId == Guid.Empty)
         {
             return null;
@@ -2751,15 +2801,7 @@ public sealed partial class SupabaseAdminManagementService(
             "?select=subscriber_id,email,first_name,last_name,display_name,mobile_number,profile_image_url,created_at,updated_at,disabled_at,disabled_by_admin_email,disabled_reason" +
             $"&subscriber_id=eq.{escapedSubscriberId}&limit=1");
         var rows = await FetchRowsAsync<SubscriberRow>(uri, context.ApiKey, cancellationToken);
-        var row = rows.FirstOrDefault();
-        if (row is null)
-        {
-            return null;
-        }
-
-        var subscriptions = await FetchSubscriberSubscriptionsAsync(context, subscriberId, cancellationToken);
-        var summary = BuildSubscriptionSummaryMap(subscriptions).GetValueOrDefault(subscriberId);
-        return MapSubscriberRecord(row, summary);
+        return rows.FirstOrDefault();
     }
 
     private async Task<IReadOnlyList<AdminSubscriberRecord>> FetchSubscriberRecordsByIdsAsync(
@@ -3726,17 +3768,6 @@ public sealed partial class SupabaseAdminManagementService(
         return new AdminOperationResult(false, "Kon nie resource document tier nou opdateer nie.");
     }
 
-    private async Task<IReadOnlyList<SubscriberRow>> FetchSubscribersAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
-    {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/subscribers" +
-            "?select=subscriber_id,email,first_name,last_name,display_name,mobile_number,profile_image_url,created_at,updated_at,disabled_at,disabled_by_admin_email,disabled_reason" +
-            "&order=updated_at.desc" +
-            "&limit=5000");
-        return await FetchRowsAsync<SubscriberRow>(uri, apiKey, cancellationToken, throwOnFailure);
-    }
-
     private async Task<IReadOnlyList<SubscriptionRow>> FetchSubscriptionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
@@ -3746,33 +3777,6 @@ public sealed partial class SupabaseAdminManagementService(
             "&order=subscribed_at.desc,subscription_id.asc");
 
         return await FetchRowsPagedAsync<SubscriptionRow>(uri, apiKey, maxRows: 50000, cancellationToken, throwOnFailure);
-    }
-
-    private async Task<IReadOnlyList<RevenueEventRow>> FetchProviderRevenueEventsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
-    {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/subscription_events" +
-            "?select=provider,event_type,event_status,received_at,payload,provider_payment_id,provider_transaction_id" +
-            "&provider=in.(paystack,payfast)" +
-            "&event_type=in.(charge.success,subscription.create,subscription.disable,payfast_itn)" +
-            "&order=received_at.desc" +
-            "&limit=50000");
-
-        return await FetchRowsAsync<RevenueEventRow>(uri, apiKey, cancellationToken, throwOnFailure);
-    }
-
-    private async Task<IReadOnlyList<StoreOrderRevenueRow>> FetchStoreOrderRevenueAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
-    {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/store_orders" +
-            "?select=order_id,order_reference,product_name,total_price_zar,payment_status,provider,provider_transaction_id,created_at,paid_at" +
-            "&payment_status=eq.paid" +
-            "&order=paid_at.desc.nullslast,created_at.desc" +
-            "&limit=10000");
-
-        return await FetchRowsAsync<StoreOrderRevenueRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
     private async Task<WordPressSubscriberReportsRpcSnapshot?> FetchWordPressSubscriberReportsAsync(
@@ -3785,93 +3789,6 @@ public sealed partial class SupabaseAdminManagementService(
             "get_wordpress_subscriber_report_snapshot",
             new { },
             cancellationToken, throwOnFailure);
-
-    private async Task<IReadOnlyList<SubscriptionTierRow>> FetchSubscriptionTiersAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
-    {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/subscription_tiers" +
-            "?select=tier_code,display_name,price_zar,is_active" +
-            "&order=display_name.asc" +
-            "&limit=100");
-
-        return await FetchRowsAsync<SubscriptionTierRow>(uri, apiKey, cancellationToken, throwOnFailure);
-    }
-
-    private async Task<IReadOnlyList<SubscriptionRecoveryRow>> FetchSubscriptionRecoveriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
-    {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/subscription_payment_recoveries" +
-            "?select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,created_at,resolved_at,resolution" +
-            "&order=created_at.desc" +
-            "&limit=50000");
-
-        return await FetchRowsAsync<SubscriptionRecoveryRow>(uri, apiKey, cancellationToken, throwOnFailure);
-    }
-
-    private async Task<IReadOnlyList<AbandonedCartRecoveryRow>> FetchAbandonedCartRecoveriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
-    {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/abandoned_cart_recoveries" +
-            "?select=recovery_id,source_type,source_key,checkout_reference,provider,customer_email,customer_name,item_name,cart_total_zar,created_at,resolved_at,resolution" +
-            "&order=created_at.desc" +
-            "&limit=50000");
-
-        return await FetchRowsAsync<AbandonedCartRecoveryRow>(uri, apiKey, cancellationToken, throwOnFailure);
-    }
-
-    private async Task<IReadOnlyList<AuthSessionMetricRow>> FetchAuthSessionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
-    {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/auth_sessions" +
-            "?select=created_at" +
-            "&order=created_at.desc" +
-            "&limit=50000");
-
-        return await FetchRowsAsync<AuthSessionMetricRow>(uri, apiKey, cancellationToken, throwOnFailure);
-    }
-
-    private async Task<IReadOnlyList<StoryViewMetricRow>> FetchStoryViewsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
-    {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/story_views" +
-            "?select=viewed_at" +
-            "&order=viewed_at.desc" +
-            "&limit=100000");
-
-        return await FetchRowsAsync<StoryViewMetricRow>(uri, apiKey, cancellationToken, throwOnFailure);
-    }
-
-    private async Task<IReadOnlyList<StoryListenSessionMetricRow>> FetchStoryListenSessionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
-    {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/story_listen_events" +
-            "?select=session_id,occurred_at" +
-            "&order=occurred_at.desc" +
-            "&limit=100000");
-
-        return await FetchRowsAsync<StoryListenSessionMetricRow>(uri, apiKey, cancellationToken, throwOnFailure);
-    }
-
-    private async Task<IReadOnlyList<SubscriptionCancellationFeedbackRow>> FetchSubscriptionCancellationFeedbackAsync(
-        Uri baseUri,
-        string apiKey,
-        CancellationToken cancellationToken, bool throwOnFailure = false)
-    {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/subscription_cancellation_feedback" +
-            "?select=feedback_id,subscriber_id,subscription_id,tier_code,provider,feedback_status,reason_code,note,cancelled_subscription_count,created_at" +
-            "&order=created_at.desc" +
-            "&limit=50000");
-
-        return await FetchRowsAsync<SubscriptionCancellationFeedbackRow>(uri, apiKey, cancellationToken, throwOnFailure);
-    }
 
     private async Task<IReadOnlyList<StoryRow>> FetchStoriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
@@ -4588,6 +4505,7 @@ public sealed partial class SupabaseAdminManagementService(
     }
 
     private static AdminSubscriberReportsSnapshot BuildSubscriberReportsSnapshot(
+        AdminReportPanel panel,
         WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
         IReadOnlyList<SubscriberRow> subscribers,
         IReadOnlyList<SubscriptionRow> subscriptions,
@@ -4597,9 +4515,6 @@ public sealed partial class SupabaseAdminManagementService(
         IReadOnlyList<SubscriptionRecoveryRow> recoveries,
         IReadOnlyList<AbandonedCartRecoveryRow> abandonedCartRecoveries,
         IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue,
-        IReadOnlyList<AuthSessionMetricRow> authSessions,
-        IReadOnlyList<StoryViewMetricRow> storyViews,
-        IReadOnlyList<StoryListenSessionMetricRow> storyListenSessions,
         IReadOnlyList<SubscriptionCancellationFeedbackRow> cancellationSurveyRows)
     {
         var tierDetails = subscriptionTiers
@@ -4609,39 +4524,58 @@ public sealed partial class SupabaseAdminManagementService(
                 group => group.Key,
                 group => group.First(),
                 StringComparer.OrdinalIgnoreCase);
-        var cancellationSurveyOverview = BuildCancellationSurveyOverview(cancellationSurveyRows);
-        var cancellationSurveyReasons = BuildCancellationSurveyReasons(cancellationSurveyRows);
-        var cancellationSurveyResponses = BuildCancellationSurveyResponses(cancellationSurveyRows, subscribers, tierDetails);
-        var recoveredSubscriberDetails = BuildRecoveredSubscriberDetails(subscribers, subscriptions, tierDetails, revenueEvents, recoveries);
-        var recoveredSignupDates = recoveredSubscriberDetails
-            .Select(detail => (detail.SubscriberId, detail.RecoveredAt)).ToHashSet();
-
-        return new AdminSubscriberReportsSnapshot(
-            MembershipStats: BuildMembershipStatsMetrics(
-                subscriptions,
-                paystackSubscriptionCreateIdentifiers,
-                revenueEvents),
-            MembershipTrend: BuildMembershipTrendMetrics(
-                subscriptions,
-                paystackSubscriptionCreateIdentifiers,
-                revenueEvents),
-            ActiveMembersPerLevel: BuildTierDistributionMetrics(subscriptions, tierDetails),
-            MembershipDetails: BuildSubscriberMembershipDetails(subscribers, subscriptions, tierDetails, paystackSubscriptionCreateIdentifiers),
-            SignupDetails: BuildSubscriberSignupDetails(subscribers, subscriptions, tierDetails, revenueEvents)
-                .Where(signup => !recoveredSignupDates.Contains((signup.SubscriberId, signup.SubscribedAt)))
-                .ToArray(),
-            RecurringRevenue: BuildRecurringRevenueMetrics(subscriptions, recoveries),
-            SalesAndRevenue: BuildSalesRevenueMetricsCore(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
-            SalesDetails: BuildSalesRevenueDetailsCore(subscribers, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
-            AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
-            RecoveredRevenueDetails: BuildRecoveredRevenueDetails(subscribers, subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
-            VisitsViewsAndLogins: BuildVisitsViewsLoginsMetrics(authSessions, storyViews, storyListenSessions),
-            CancellationSurveyOverview: cancellationSurveyOverview,
-            CancellationSurveyReasons: cancellationSurveyReasons,
-            CancellationSurveyResponses: cancellationSurveyResponses)
+        var report = AdminSubscriberReportsSnapshot.Empty;
+        if (panel is AdminReportPanel.All or AdminReportPanel.Cancellations)
         {
-            RecoveredSubscriberDetails = recoveredSubscriberDetails
-        };
+            report = report with
+            {
+                CancellationSurveyOverview = BuildCancellationSurveyOverview(cancellationSurveyRows),
+                CancellationSurveyReasons = BuildCancellationSurveyReasons(cancellationSurveyRows),
+                CancellationSurveyResponses = BuildCancellationSurveyResponses(cancellationSurveyRows, subscribers, tierDetails)
+            };
+        }
+        if (panel is AdminReportPanel.All or AdminReportPanel.Membership)
+        {
+            var recovered = BuildRecoveredSubscriberDetails(subscribers, subscriptions, tierDetails, revenueEvents, recoveries);
+            var recoveredDates = recovered.Select(detail => (detail.SubscriberId, detail.RecoveredAt)).ToHashSet();
+            report = report with
+            {
+                MembershipStats = BuildMembershipStatsMetrics(subscriptions, paystackSubscriptionCreateIdentifiers, revenueEvents),
+                MembershipTrend = BuildMembershipTrendMetrics(subscriptions, paystackSubscriptionCreateIdentifiers, revenueEvents),
+                ActiveMembersPerLevel = BuildTierDistributionMetrics(subscriptions, tierDetails),
+                MembershipDetails = BuildSubscriberMembershipDetails(subscribers, subscriptions, tierDetails, paystackSubscriptionCreateIdentifiers),
+                SignupDetails = BuildSubscriberSignupDetails(subscribers, subscriptions, tierDetails, revenueEvents)
+                    .Where(signup => !recoveredDates.Contains((signup.SubscriberId, signup.SubscribedAt))).ToArray(),
+                RecoveredSubscriberDetails = recovered
+            };
+        }
+        if (panel is AdminReportPanel.All or AdminReportPanel.Membership or AdminReportPanel.Revenue)
+        {
+            var sales = BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents, storeOrderRevenue, GetReportSubscriberEmails(subscribers));
+            report = report with
+            {
+                SalesAndRevenue = panel == AdminReportPanel.Membership
+                    ? [BuildSalesRevenueMetric("this_month", sales, SubscriberPeriod.ThisMonth)]
+                    : SummarizeSales(sales)
+            };
+            if (panel != AdminReportPanel.Membership)
+            {
+                report = report with
+                {
+                    RecurringRevenue = BuildRecurringRevenueMetrics(subscriptions, recoveries),
+                    SalesDetails = MapSalesDetails(sales)
+                };
+            }
+        }
+        if (panel is AdminReportPanel.All or AdminReportPanel.Revenue or AdminReportPanel.Recoveries)
+        {
+            report = report with
+            {
+                AbandonedCartRecoveries = BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
+                RecoveredRevenueDetails = BuildRecoveredRevenueDetails(subscribers, subscriptions, tierDetails, recoveries, abandonedCartRecoveries)
+            };
+        }
+        return report;
     }
 
     private static IReadOnlyList<AdminMembershipStatsMetric> BuildMembershipStatsMetrics(
@@ -4921,15 +4855,22 @@ public sealed partial class SupabaseAdminManagementService(
             .GroupBy(subscriber => subscriber.Email!.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
+        var firstPaidHistory = subscriptions
+            .Where(subscription => subscription.SubscriberId != Guid.Empty && subscription.SubscribedAt.HasValue)
+            .Where(subscription => string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase)
+                || IsPaidSubscriberSignupHistoryEligible(subscription))
+            .GroupBy(subscription => subscription.SubscriberId)
+            .ToDictionary(group => group.Key, group => group.Min(subscription => subscription.SubscribedAt!.Value));
+
         var freeSignupDetails = GetFirstSubscriberMembershipDetailSubscriptions(subscriptions)
             .Where(IsFreeSubscriberMembershipDetailEligible)
             .Where(subscription => !HasEarlierSupabasePaidSignupEvidence(
-                subscribersById.GetValueOrDefault(subscription.SubscriberId), subscriptions, subscription.SubscribedAt!.Value))
+                subscribersById.GetValueOrDefault(subscription.SubscriberId), firstPaidHistory, subscription.SubscribedAt!.Value))
             .Select(subscription => CreateSubscriberMembershipDetail(subscribersById, tierDetails, subscription))
             .ToArray();
 
         var paidSignupDetails = revenueEvents.Any(IsSuccessfulPositivePaystackChargeEvent)
-            ? BuildPaystackPaidSignupDetails(subscribersByEmail, subscriptions, tierDetails, revenueEvents)
+            ? BuildPaystackPaidSignupDetails(subscribersByEmail, subscriptions, firstPaidHistory, tierDetails, revenueEvents)
             : GetFirstPaidSubscriberMembershipDetailSubscriptions(subscriptions)
                 .Where(IsPaidSubscriberMembershipDetailEligible)
                 .Select(subscription => CreateSubscriberMembershipDetail(subscribersById, tierDetails, subscription))
@@ -4970,6 +4911,7 @@ public sealed partial class SupabaseAdminManagementService(
     private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> BuildPaystackPaidSignupDetails(
         IReadOnlyDictionary<string, SubscriberRow> subscribersByEmail,
         IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<Guid, DateTimeOffset> firstPaidHistory,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
         IReadOnlyList<RevenueEventRow> revenueEvents)
     {
@@ -4984,7 +4926,7 @@ public sealed partial class SupabaseAdminManagementService(
                 .OrderBy(row => ResolveRevenueEventOccurredAt(row))
                 .ThenBy(row => row.ProviderTransactionId, StringComparer.OrdinalIgnoreCase)
                 .First())
-            .Select(row => CreatePaystackPaidSignupDetail(subscribersByEmail, subscriptions, subscriptionLookup, tierDetails, row))
+            .Select(row => CreatePaystackPaidSignupDetail(subscribersByEmail, firstPaidHistory, subscriptionLookup, tierDetails, row))
             .Where(detail => detail is not null)
             .Select(detail => detail!)
             .ToArray();
@@ -4992,7 +4934,7 @@ public sealed partial class SupabaseAdminManagementService(
 
     private static AdminSubscriberMembershipDetailRecord? CreatePaystackPaidSignupDetail(
         IReadOnlyDictionary<string, SubscriberRow> subscribersByEmail,
-        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<Guid, DateTimeOffset> firstPaidHistory,
         IReadOnlyDictionary<string, SubscriptionRow> subscriptionLookup,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
         RevenueEventRow row)
@@ -5006,7 +4948,7 @@ public sealed partial class SupabaseAdminManagementService(
         subscribersByEmail.TryGetValue(email, out var subscriber);
         var occurredAt = ResolveRevenueEventOccurredAt(row);
         if (occurredAt is null ||
-            HasEarlierSupabasePaidSignupEvidence(subscriber, subscriptions, occurredAt.Value))
+            HasEarlierSupabasePaidSignupEvidence(subscriber, firstPaidHistory, occurredAt.Value))
         {
             return null;
         }
@@ -5213,22 +5155,9 @@ public sealed partial class SupabaseAdminManagementService(
         TryReadString(row.Payload, "email");
 
     private static bool HasEarlierSupabasePaidSignupEvidence(
-        SubscriberRow? subscriber,
-        IReadOnlyList<SubscriptionRow> subscriptions,
-        DateTimeOffset occurredAt)
-    {
-        if (subscriber is null || subscriber.SubscriberId == Guid.Empty)
-        {
-            return false;
-        }
+        SubscriberRow? subscriber, IReadOnlyDictionary<Guid, DateTimeOffset> firstPaidHistory, DateTimeOffset occurredAt) =>
+        subscriber is not null && firstPaidHistory.TryGetValue(subscriber.SubscriberId, out var first) && first < occurredAt;
 
-        return subscriptions
-            .Where(subscription => subscription.SubscriberId == subscriber.SubscriberId)
-            .Where(subscription => subscription.SubscribedAt is not null && subscription.SubscribedAt.Value < occurredAt)
-            .Any(subscription =>
-                string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) ||
-                IsPaidSubscriberSignupHistoryEligible(subscription));
-    }
 
     private static string? ResolvePaystackRevenueEventTierCode(RevenueEventRow row)
     {
@@ -5356,23 +5285,8 @@ public sealed partial class SupabaseAdminManagementService(
             .ToArray();
     }
 
-    private static IReadOnlyList<AdminSalesRevenueMetric> BuildSalesRevenueMetricsCore(
-        WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
-        IReadOnlyList<SubscriptionRow> subscriptions,
-        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
-        IReadOnlyList<RevenueEventRow> revenueEvents,
-        IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue)
+    private static IReadOnlyList<AdminSalesRevenueMetric> SummarizeSales(IReadOnlyList<SubscriberSaleMetricCandidate> eligibleSales)
     {
-        _ = wordPressSubscriberReports;
-        _ = tierDetails;
-
-        var eligibleSales = BuildEligibleSalesRevenueCandidates(
-            subscriptions,
-            tierDetails,
-            revenueEvents,
-            storeOrderRevenue,
-            new Dictionary<Guid, string>());
-
         return
         [
             BuildSalesRevenueMetric("current_day", eligibleSales, SubscriberPeriod.Today),
@@ -5461,29 +5375,11 @@ public sealed partial class SupabaseAdminManagementService(
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
         IReadOnlyList<RevenueEventRow> revenueEvents) =>
-        BuildSalesRevenueMetricsCore(
-            wordPressSubscriberReports,
-            subscriptions,
-            tierDetails,
-            revenueEvents,
-            Array.Empty<StoreOrderRevenueRow>());
+        SummarizeSales(BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents, [], new Dictionary<Guid, string>()));
 
-    private static IReadOnlyList<AdminSalesRevenueDetailRecord> BuildSalesRevenueDetailsCore(
-        IReadOnlyList<SubscriberRow> subscribers,
-        IReadOnlyList<SubscriptionRow> subscriptions,
-        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
-        IReadOnlyList<RevenueEventRow> revenueEvents,
-        IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue)
-    {
-        var subscriberEmailById = subscribers
-            .Where(subscriber => subscriber.SubscriberId != Guid.Empty)
-            .Where(subscriber => !string.IsNullOrWhiteSpace(subscriber.Email))
-            .GroupBy(subscriber => subscriber.SubscriberId)
-            .ToDictionary(
-                group => group.Key,
-                group => NormalizeOptionalText(group.First().Email, 254) ?? "-");
-
-        return BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents, storeOrderRevenue, subscriberEmailById)
+    private static IReadOnlyList<AdminSalesRevenueDetailRecord> MapSalesDetails(
+        IReadOnlyList<SubscriberSaleMetricCandidate> eligibleSales) =>
+        eligibleSales
             .Where(candidate => candidate.SubscribedAt is not null)
             .OrderByDescending(candidate => candidate.SubscribedAt)
             .Select(candidate => new AdminSalesRevenueDetailRecord(
@@ -5498,19 +5394,23 @@ public sealed partial class SupabaseAdminManagementService(
                 candidate.Status,
                 candidate.AmountSource))
             .ToArray();
-    }
 
     private static IReadOnlyList<AdminSalesRevenueDetailRecord> BuildSalesRevenueDetails(
         IReadOnlyList<SubscriberRow> subscribers,
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
         IReadOnlyList<RevenueEventRow> revenueEvents) =>
-        BuildSalesRevenueDetailsCore(
-            subscribers,
-            subscriptions,
-            tierDetails,
-            revenueEvents,
-            Array.Empty<StoreOrderRevenueRow>());
+        MapSalesDetails(BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents, [],
+            GetReportSubscriberEmails(subscribers)));
+
+    private static IReadOnlyDictionary<Guid, string> GetReportSubscriberEmails(IReadOnlyList<SubscriberRow> subscribers) =>
+        subscribers
+            .Where(subscriber => subscriber.SubscriberId != Guid.Empty)
+            .Where(subscriber => !string.IsNullOrWhiteSpace(subscriber.Email))
+            .GroupBy(subscriber => subscriber.SubscriberId)
+            .ToDictionary(
+                group => group.Key,
+                group => NormalizeOptionalText(group.First().Email, 254) ?? "-");
 
     private static IReadOnlyList<SubscriberSaleMetricCandidate> BuildEligibleSalesRevenueCandidates(
         IReadOnlyList<SubscriptionRow> subscriptions,
@@ -5662,47 +5562,6 @@ public sealed partial class SupabaseAdminManagementService(
         return records
             .OrderByDescending(record => record.RecoveredAt)
             .ToArray();
-    }
-
-    private static IReadOnlyList<AdminVisitsViewsLoginsMetric> BuildVisitsViewsLoginsMetrics(
-        IReadOnlyList<AuthSessionMetricRow> authSessions,
-        IReadOnlyList<StoryViewMetricRow> storyViews,
-        IReadOnlyList<StoryListenSessionMetricRow> storyListenSessions)
-    {
-        var visitStarts = storyListenSessions
-            .Where(row => row.SessionId != Guid.Empty)
-            .GroupBy(row => row.SessionId)
-            .Select(group => group.Min(row => row.OccurredAt))
-            .ToArray();
-
-        return
-        [
-            new AdminVisitsViewsLoginsMetric(
-                "today",
-                CountByLocalPeriod(visitStarts, SubscriberPeriod.Today),
-                CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.Today),
-                CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.Today)),
-            new AdminVisitsViewsLoginsMetric(
-                "this_week",
-                CountByLocalPeriod(visitStarts, SubscriberPeriod.ThisWeek),
-                CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.ThisWeek),
-                CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.ThisWeek)),
-            new AdminVisitsViewsLoginsMetric(
-                "this_month",
-                CountByLocalPeriod(visitStarts, SubscriberPeriod.ThisMonth),
-                CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.ThisMonth),
-                CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.ThisMonth)),
-            new AdminVisitsViewsLoginsMetric(
-                "year_to_date",
-                CountByLocalPeriod(visitStarts, SubscriberPeriod.YearToDate),
-                CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.YearToDate),
-                CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.YearToDate)),
-            new AdminVisitsViewsLoginsMetric(
-                "all_time",
-                CountByLocalPeriod(visitStarts, SubscriberPeriod.AllTime),
-                CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.AllTime),
-                CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.AllTime))
-        ];
     }
 
     private static AdminCancellationSurveyOverview BuildCancellationSurveyOverview(
@@ -7964,27 +7823,6 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("resolution")]
         public string? Resolution { get; set; }
-    }
-
-    private sealed class AuthSessionMetricRow
-    {
-        [JsonPropertyName("created_at")]
-        public DateTimeOffset CreatedAt { get; set; }
-    }
-
-    private sealed class StoryViewMetricRow
-    {
-        [JsonPropertyName("viewed_at")]
-        public DateTimeOffset ViewedAt { get; set; }
-    }
-
-    private sealed class StoryListenSessionMetricRow
-    {
-        [JsonPropertyName("session_id")]
-        public Guid SessionId { get; set; }
-
-        [JsonPropertyName("occurred_at")]
-        public DateTimeOffset OccurredAt { get; set; }
     }
 
     private sealed record SubscriptionSummary(

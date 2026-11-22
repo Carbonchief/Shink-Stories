@@ -671,6 +671,10 @@
                                 <h2>@T("Laai intekenaar verslag...", "Loading subscriber report...")</h2>
                             </section>
                         }
+                        else if (SubscriberReportsLoadFailed && !HasLoadedSubscriberReports)
+                        {
+                            @AnalyticsLoadState(true, true)
+                        }
                         else if (!HasSubscriberReportData(ActiveSubscriberView))
                         {
                             <section class="admin-state">
@@ -1538,28 +1542,6 @@
                         </MudButton>
                     </div>
 
-                    @{
-                        var todaySubscriberMetric = GetAccessFilteredSubscriberMetric("today");
-                        var monthlySubscriberMetric = GetAccessFilteredSubscriberMetric("this_month");
-                        var yearlySubscriberMetric = GetAccessFilteredSubscriberMetric("this_year");
-                        var currentDaySubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentDay);
-                        var currentWeekSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentWeek);
-                        var currentMonthSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentMonth);
-                        var currentYearSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentYear);
-                        var customSubscriberSales = GetCustomRevenueSalesMetric();
-                        var selectedRevenueSales = GetSelectedRevenueSalesMetric();
-                        var todaySubscriberSales = GetSubscriberSalesMetric("today");
-                        var monthlySubscriberSales = GetSubscriberSalesMetric("this_month");
-                        var yearlySubscriberSales = GetSubscriberSalesMetric("this_year");
-                        var allTimeSubscriberSales = GetSubscriberSalesMetric("all_time");
-                        var pastThirtyDaysSubscriberRecoveries = GetSubscriberRecoveryMetric("past_30_days");
-                        var allTimeSubscriberRecoveries = GetSubscriberRecoveryMetric("all_time");
-                        var totalRecurringRevenue = GetRecurringRevenueMetric("total");
-                        var monthlyRecurringRevenue = GetRecurringRevenueMetric("monthly");
-                        var yearlyRecurringRevenue = GetRecurringRevenueMetric("yearly");
-                        var cancellationSurveyOverview = CancellationSurveyOverview;
-                    }
-
                     <MudTabs Class="admin-detail-tabs admin-analytics-tabs" Rounded="true"
                              @bind-ActivePanelIndex="_activeAnalyticsTabIndex"
                              @bind-ActivePanelIndex:after="EnsureActiveAnalyticsPanelDataAsync">
@@ -1570,6 +1552,11 @@
                             }
                             else
                             {
+                                var todaySubscriberMetric = GetAccessFilteredSubscriberMetric("today");
+                                var monthlySubscriberMetric = GetAccessFilteredSubscriberMetric("this_month");
+                                var yearlySubscriberMetric = GetAccessFilteredSubscriberMetric("this_year");
+                                var monthlySubscriberSales = GetSubscriberSalesMetric("this_month");
+
                             <section class="admin-subscriber-analytics-section admin-analytics-panel admin-analytics-panel-wide">
                                 <div class="admin-analytics-panel-head">
                                     <div>
@@ -1927,6 +1914,8 @@
                             }
                             else
                             {
+                                var cancellationSurveyOverview = CancellationSurveyOverview;
+
                             <section class="admin-cancellation-analytics-section admin-analytics-panel admin-analytics-panel-wide">
                                 <div class="admin-analytics-panel-head">
                                     <div>
@@ -2166,6 +2155,16 @@
                             }
                             else
                             {
+                                var currentDaySubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentDay);
+                                var currentWeekSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentWeek);
+                                var currentMonthSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentMonth);
+                                var currentYearSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentYear);
+                                var customSubscriberSales = GetCustomRevenueSalesMetric();
+                                var selectedRevenueSales = GetSelectedRevenueSalesMetric();
+                                var totalRecurringRevenue = GetRecurringRevenueMetric("total");
+                                var monthlyRecurringRevenue = GetRecurringRevenueMetric("monthly");
+                                var yearlyRecurringRevenue = GetRecurringRevenueMetric("yearly");
+
                             <section class="admin-revenue-analytics-section admin-analytics-panel admin-analytics-panel-wide">
                                 <div class="admin-analytics-panel-head">
                                     <div>
@@ -5272,9 +5271,9 @@
     private bool IsSavingPlaylist { get; set; }
     private bool IsSavingPlaylistsOrder { get; set; }
     private bool IsSavingPlaylistStories { get; set; }
-    private bool IsRefreshingAnalytics { get; set; }
+    private bool IsRefreshingAnalytics => ActivityState.Pending is { IsCompleted: false };
     private bool IsRefreshingSubscribers { get; set; }
-    private bool IsRefreshingSubscriberReports { get; set; }
+    private bool IsRefreshingSubscriberReports => ReportState.Pending is { IsCompleted: false };
     private bool IsSubscriberDialogOpen { get; set; }
     private bool IsStoryDialogOpen { get; set; }
     private bool IsNewStoryDialogOpen { get; set; }
@@ -5361,9 +5360,9 @@
         Subscribers.All(subscriber => SelectedSubscriberIds.Contains(subscriber.SubscriberId));
     private IReadOnlyList<AdminStoryRecord> Stories { get; set; } = Array.Empty<AdminStoryRecord>();
     private IReadOnlyList<AdminPlaylistRecord> Playlists { get; set; } = Array.Empty<AdminPlaylistRecord>();
-    private AdminAnalyticsSnapshot Analytics { get; set; } = AdminAnalyticsSnapshot.Empty;
-    private AdminSubscriberReportsSnapshot SubscriberReports { get; set; } = AdminSubscriberReportsSnapshot.Empty;
-    private bool HasLoadedSubscriberReports { get; set; }
+    private AdminAnalyticsSnapshot Analytics => ActivityState.Value ?? AdminAnalyticsSnapshot.Empty;
+    private AdminSubscriberReportsSnapshot SubscriberReports => ReportState.Value ?? AdminSubscriberReportsSnapshot.Empty;
+    private bool HasLoadedSubscriberReports => ReportState.Value is not null;
     private string selectedSubscriberTrendPeriod = SubscriberTrendPeriodDay;
     private string SelectedSubscriberTrendPeriod
     {
@@ -5563,6 +5562,7 @@
             .ToArray();
 
     private bool HasAnalyticsData =>
+        Analytics.StoryAnalytics.Count > 0 ||
         Analytics.StorySummary.TotalViews > 0 ||
         Analytics.StorySummary.TotalListenEvents > 0 ||
         Analytics.StorySummary.TotalFavorites > 0 ||
@@ -6104,20 +6104,55 @@
 
     private Task? StoryCatalogLoadTask;
     private Task? AnalyticsTabLoadTask;
-    private Task? SubscriberAnalyticsLoadTask;
-    private Task? UsageAnalyticsLoadTask;
-    private bool SubscriberReportsLoadFailed;
-    private bool HasLoadedSubscriberEngagementReports;
+    private sealed class PanelState<T> where T : class
+    {
+        public T? Value { get; set; }
+        public Task? Pending { get; set; }
+        public bool Failed { get; set; }
+    }
+
+    private readonly Dictionary<AdminReportPanel, PanelState<AdminSubscriberReportsSnapshot>> ReportStates =
+        Enum.GetValues<AdminReportPanel>().ToDictionary(panel => panel, _ => new PanelState<AdminSubscriberReportsSnapshot>());
+    private readonly Dictionary<AdminActivityPanel, PanelState<AdminAnalyticsSnapshot>> ActivityStates =
+        Enum.GetValues<AdminActivityPanel>().ToDictionary(panel => panel, _ => new PanelState<AdminAnalyticsSnapshot>());
+
+    private AdminReportPanel CurrentReportPanel => _activeAdminTabIndex == 10
+        ? _activeAnalyticsTabIndex switch
+        {
+            1 => AdminReportPanel.Cancellations,
+            2 => AdminReportPanel.Revenue,
+            _ => AdminReportPanel.Membership
+        }
+        : ActiveSubscriberView switch
+        {
+            SubscriberAdminView.VisitsViewsAndLogins => AdminReportPanel.Engagement,
+            SubscriberAdminView.SalesAndRevenue => AdminReportPanel.Revenue,
+            SubscriberAdminView.AbandonedCartRecoveries => AdminReportPanel.Recoveries,
+            _ => AdminReportPanel.Membership
+        };
+
+    private AdminActivityPanel CurrentActivityPanel => _activeAnalyticsTabIndex switch
+    {
+        3 => AdminActivityPanel.Awards,
+        5 => AdminActivityPanel.Stories,
+        6 => AdminActivityPanel.Resources,
+        7 => AdminActivityPanel.Blog,
+        _ => AdminActivityPanel.Usage
+    };
+
+    private PanelState<AdminSubscriberReportsSnapshot> ReportState => ReportStates[CurrentReportPanel];
+    private PanelState<AdminAnalyticsSnapshot> ActivityState => ActivityStates[CurrentActivityPanel];
+    private bool SubscriberReportsLoadFailed => ReportState.Failed;
     private bool IsRefreshingActiveAnalyticsPanel => _activeAnalyticsTabIndex switch
     {
         ShopAnalyticsTabIndex => IsLoadingShopAnalytics,
         <= 2 => IsRefreshingSubscriberReports,
-        _ => IsRefreshingAnalytics || (_activeAnalyticsTabIndex == 5 && IsLoadingStoryCatalog)
+        _ => IsRefreshingAnalytics
     };
     private bool HasLoadedStories;
     private bool HasLoadedPlaylists;
-    private bool HasLoadedAnalytics;
-    private bool AnalyticsLoadFailed;
+    private bool HasLoadedAnalytics => ActivityState.Value is not null && !ActivityState.Failed;
+    private bool AnalyticsLoadFailed => ActivityState.Failed;
     private bool IsLoadingUsageAnalytics =>
         IsRefreshingAnalytics || (!HasLoadedAnalytics && !AnalyticsLoadFailed);
     private bool IsLoadingStoryCatalog => StoryCatalogLoadTask is { IsCompleted: false };
@@ -6157,39 +6192,26 @@
     private Task LoadActiveAnalyticsPanelAsync(bool forceRefresh) => _activeAnalyticsTabIndex switch
     {
         0 or 1 or 2 => EnsureSubscriberAnalyticsAsync(forceRefresh),
-        5 => Task.WhenAll(EnsureUsageAnalyticsAsync(forceRefresh), EnsureStoryCatalogAsync()),
         ShopAnalyticsTabIndex => EnsureShopAnalyticsAsync(forceRefresh),
         _ => EnsureUsageAnalyticsAsync(forceRefresh)
     };
 
     private Task EnsureSubscriberAnalyticsAsync(bool forceRefresh)
     {
-        if (SubscriberAnalyticsLoadTask is { IsCompleted: false })
-        {
-            return SubscriberAnalyticsLoadTask;
-        }
-
-        if (!forceRefresh && HasLoadedSubscriberReports && !SubscriberReportsLoadFailed)
-        {
-            return Task.CompletedTask;
-        }
-
-        return SubscriberAnalyticsLoadTask = LoadSubscriberReportsAsync(forceRefresh, includeEngagement: false);
+        var panel = CurrentReportPanel;
+        var state = ReportStates[panel];
+        if (state.Pending is { IsCompleted: false }) return state.Pending;
+        if (!forceRefresh && state.Value is not null && !state.Failed) return Task.CompletedTask;
+        return state.Pending = LoadSubscriberReportsAsync(panel, state, forceRefresh);
     }
 
     private Task EnsureUsageAnalyticsAsync(bool forceRefresh)
     {
-        if (UsageAnalyticsLoadTask is { IsCompleted: false })
-        {
-            return UsageAnalyticsLoadTask;
-        }
-
-        if (!forceRefresh && HasLoadedAnalytics && !AnalyticsLoadFailed)
-        {
-            return Task.CompletedTask;
-        }
-
-        return UsageAnalyticsLoadTask = LoadUsageAnalyticsAsync(forceRefresh);
+        var panel = CurrentActivityPanel;
+        var state = ActivityStates[panel];
+        if (state.Pending is { IsCompleted: false }) return state.Pending;
+        if (!forceRefresh && state.Value is not null && !state.Failed) return Task.CompletedTask;
+        return state.Pending = LoadUsageAnalyticsAsync(panel, state, forceRefresh);
     }
 
     private RenderFragment AnalyticsLoadState(bool failed, bool subscriberReports) =>
@@ -6642,27 +6664,21 @@
     private Task RefreshAnalyticsAsync() =>
         AnalyticsTabLoadTask = LoadActiveAnalyticsPanelAsync(forceRefresh: true);
 
-    private async Task LoadUsageAnalyticsAsync(bool forceRefresh)
+    private async Task LoadUsageAnalyticsAsync(AdminActivityPanel panel, PanelState<AdminAnalyticsSnapshot> state, bool forceRefresh)
     {
-        IsRefreshingAnalytics = true;
-        AnalyticsLoadFailed = false;
-
+        state.Failed = false;
         try
         {
-            Analytics = await AdminManagementService.GetAnalyticsAsync(CurrentAdminEmail, forceRefresh: forceRefresh);
-            HasLoadedAnalytics = true;
-            EnsureSelectedAnalyticsStory();
+            state.Value = await AdminManagementService.GetAnalyticsAsync(CurrentAdminEmail, forceRefresh: forceRefresh, panel: panel);
+            if (panel == AdminActivityPanel.Stories && CurrentActivityPanel == panel)
+                EnsureSelectedAnalyticsStory();
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Failed to refresh admin analytics.");
-            HasLoadedAnalytics = false;
-            AnalyticsLoadFailed = true;
-            SetError(T("Kon nie analitika nou laai nie.", "Could not load analytics right now."));
-        }
-        finally
-        {
-            IsRefreshingAnalytics = false;
+            Logger.LogError(exception, "Failed to load {Panel} analytics.", panel);
+            state.Failed = true;
+            if (CurrentActivityPanel == panel)
+                SetError(T("Kon nie analitika nou laai nie.", "Could not load analytics right now."));
         }
     }
 
@@ -10176,44 +10192,28 @@
 
         ActiveSubscriberView = subscriberView;
 
-        if (subscriberView != SubscriberAdminView.AllSubscribers &&
-            (!HasLoadedSubscriberReports || SubscriberReportsLoadFailed ||
-             (subscriberView == SubscriberAdminView.VisitsViewsAndLogins && !HasLoadedSubscriberEngagementReports)))
-        {
-            await RefreshSubscriberReportsAsync();
-        }
+        if (subscriberView != SubscriberAdminView.AllSubscribers)
+            await EnsureSubscriberAnalyticsAsync(forceRefresh: false);
     }
 
-    private Task RefreshSubscriberReportsAsync() =>
-        LoadSubscriberReportsAsync(forceRefresh: true,
-            includeEngagement: ActiveSubscriberView == SubscriberAdminView.VisitsViewsAndLogins);
+    private Task RefreshSubscriberReportsAsync() => EnsureSubscriberAnalyticsAsync(forceRefresh: true);
 
-    private async Task LoadSubscriberReportsAsync(bool forceRefresh, bool includeEngagement)
+    private async Task LoadSubscriberReportsAsync(AdminReportPanel panel, PanelState<AdminSubscriberReportsSnapshot> state, bool forceRefresh)
     {
-        IsRefreshingSubscriberReports = true;
-        SubscriberReportsLoadFailed = false;
-
+        state.Failed = false;
         try
         {
-            SubscriberReports = await GetAnalyticsSubscriberReportsAsync(forceRefresh, includeEngagement);
-            HasLoadedSubscriberReports = true;
-            HasLoadedSubscriberEngagementReports = includeEngagement;
+            state.Value = await AdminManagementService.GetSubscriberReportsAsync(CurrentAdminEmail,
+                includeEngagement: panel == AdminReportPanel.Engagement, forceRefresh: forceRefresh, panel: panel);
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Failed to refresh subscriber reports.");
-            SubscriberReportsLoadFailed = true;
-            SetError(T("Kon nie intekenaar verslae nou laai nie.", "Could not load subscriber reports right now."));
-        }
-        finally
-        {
-            IsRefreshingSubscriberReports = false;
+            Logger.LogError(exception, "Failed to load {Panel} subscriber report.", panel);
+            state.Failed = true;
+            if (CurrentReportPanel == panel)
+                SetError(T("Kon nie intekenaar verslae nou laai nie.", "Could not load subscriber reports right now."));
         }
     }
-
-    private Task<AdminSubscriberReportsSnapshot> GetAnalyticsSubscriberReportsAsync(bool forceRefresh, bool includeEngagement) =>
-        AdminManagementService.GetSubscriberReportsAsync(CurrentAdminEmail,
-            includeEngagement: includeEngagement, forceRefresh: forceRefresh);
 
     private AdminMembershipStatsMetric GetSubscriberMetric(string periodKey) =>
         SubscriberReports.MembershipStats.FirstOrDefault(metric =>

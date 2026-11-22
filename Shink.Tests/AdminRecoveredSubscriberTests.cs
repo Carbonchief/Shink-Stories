@@ -61,7 +61,8 @@ public sealed class AdminRecoveredSubscriberTests
     private static Admin CreateAdmin(params AdminRecoveredSubscriberDetailRecord[] details)
     {
         var admin = new Admin();
-        Set(admin, "SubscriberReports", AdminSubscriberReportsSnapshot.Empty with { RecoveredSubscriberDetails = details });
+        var state = typeof(Admin).GetProperty("ReportState", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(admin)!;
+        state.GetType().GetProperty("Value")!.SetValue(state, AdminSubscriberReportsSnapshot.Empty with { RecoveredSubscriberDetails = details });
         return admin;
     }
 

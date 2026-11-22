@@ -2,13 +2,13 @@ namespace Shink.Mobile.Pages;
 
 internal sealed class TabletOnboardingView : AbsoluteLayout
 {
-    private const double ArtworkWidth = 2048;
-    private const double ArtworkHeight = 2732;
-    private const double ContentBottom = 2200;
     private const double LogoTop = 100;
+    private static readonly (double Width, double Height, double ContentBottom) PortraitArtwork = (2048, 2732, 2200);
+    // Leave room below the tallest illustration so navigation never covers it.
+    private static readonly (double Width, double Height, double ContentBottom) LandscapeArtwork = (2732, 2048, 1780);
 
-    // The four JPEGs share this backdrop. Extend its colors beside the artwork in landscape.
-    private static readonly (double Y, Color Color)[] BackdropColors =
+    // Extend the image's edge colors where the artwork is narrower than the window.
+    private static readonly (double Y, Color Color)[] PortraitBackdropColors =
     [
         (0, Color.FromArgb("#3EC3CC")),
         (160, Color.FromArgb("#3EC3CC")),
@@ -17,47 +17,73 @@ internal sealed class TabletOnboardingView : AbsoluteLayout
         (1200, Color.FromArgb("#E7E9E4")),
         (1540, Color.FromArgb("#FCF8F3"))
     ];
+    private static readonly (double Y, Color Color)[] LandscapeBackdropColors =
+    [
+        (0, Color.FromArgb("#3EC3CC")),
+        (350, Color.FromArgb("#72C8CF")),
+        (600, Color.FromArgb("#9BCFCC")),
+        (900, Color.FromArgb("#BFD6CC")),
+        (1200, Color.FromArgb("#EEEEE4")),
+        (1400, Color.FromArgb("#FCF8F3"))
+    ];
 
-    private readonly Image _artwork = new()
-    {
-        AutomationId = "onboarding-tablet-artwork",
-        Aspect = Aspect.AspectFit
-    };
+    private readonly OnboardingArtworkView _artwork = new("onboarding-tablet-artwork");
     private readonly LinearGradientBrush _backdrop = new()
     {
         StartPoint = new Point(0, 0),
         EndPoint = new Point(0, 1)
     };
     private double _safeTop;
+    private int _slideIndex;
+    private string _description = string.Empty;
+    private bool _isLandscape;
 
-    public TabletOnboardingView()
+    public TabletOnboardingView(bool isLandscape, double safeTop)
     {
+        _isLandscape = isLandscape;
+        _safeTop = safeTop;
         AutomationId = "onboarding-tablet-composition";
         SafeAreaEdges = SafeAreaEdges.None;
         IsClippedToBounds = true;
 
-        foreach (var (y, color) in BackdropColors)
-            _backdrop.GradientStops.Add(new GradientStop(color, (float)(y / ContentBottom)));
+        foreach (var (y, color) in PortraitBackdropColors)
+            _backdrop.GradientStops.Add(new GradientStop(color, (float)(y / PortraitArtwork.ContentBottom)));
         Background = _backdrop;
 
-        AutomationProperties.SetIsInAccessibleTree(_artwork, true);
-        SemanticProperties.SetHint(_artwork, "Vee links of regs, of gebruik die navigasieknoppies.");
         Children.Add(_artwork);
         SizeChanged += (_, _) => ArrangeArtwork();
     }
 
-    public void ShowSlide(int index, string description)
+    public void ShowSlide(int index, string description, bool animate = false)
     {
-        _artwork.Source = $"schink_onboarding_tablet_{index + 1:00}.jpg";
-        SemanticProperties.SetDescription(_artwork, description);
+        _slideIndex = index;
+        _description = description;
+        UpdateArtwork(animate);
     }
 
-    public void SetSafeTop(double safeTop)
+    public void FinishTransition() => _artwork.FinishTransition();
+
+    public void SetViewport(bool isLandscape, double safeTop)
     {
-        if (_safeTop == safeTop)
+        if (_isLandscape == isLandscape && _safeTop == safeTop)
             return;
 
+        var orientationChanged = _isLandscape != isLandscape;
+        _isLandscape = isLandscape;
         _safeTop = safeTop;
+        if (orientationChanged)
+            UpdateArtwork(animate: false);
+        else
+            ArrangeArtwork();
+    }
+
+    private void UpdateArtwork(bool animate)
+    {
+        var image = _isLandscape
+            ? $"schink_onboarding_tablet_landscape_{_slideIndex + 1:00}.jpg"
+            : $"schink_onboarding_tablet_{_slideIndex + 1:00}.jpg";
+        _artwork.Show(image, _description, animate);
+
         ArrangeArtwork();
     }
 
@@ -67,17 +93,21 @@ internal sealed class TabletOnboardingView : AbsoluteLayout
         if (Width <= 0 || Height <= logoClearance)
             return;
 
-        // Fit all visible content above the footer and leave room for the logo in short windows.
-        var scale = Math.Min(Width / ArtworkWidth, Height / ContentBottom);
-        scale = Math.Min(scale, (Height - logoClearance) / (ContentBottom - LogoTop));
-        var width = ArtworkWidth * scale;
+        var (artworkWidth, artworkHeight, contentBottom) = _isLandscape ? LandscapeArtwork : PortraitArtwork;
+        // Fit the illustrated content and copy above the footer, clipping only the blank tail.
+        var scale = Math.Min(Width / artworkWidth, Height / contentBottom);
+        scale = Math.Min(scale, (Height - logoClearance) / (contentBottom - LogoTop));
+        var width = artworkWidth * scale;
         var top = Math.Max(0, logoClearance - LogoTop * scale);
 
-        SetLayoutBounds((BindableObject)_artwork, new Rect((Width - width) / 2, top, width, ArtworkHeight * scale));
-        for (var index = 0; index < BackdropColors.Length; index++)
+        SetLayoutBounds((BindableObject)_artwork, new Rect((Width - width) / 2, top, width, artworkHeight * scale));
+        var backdropColors = _isLandscape ? LandscapeBackdropColors : PortraitBackdropColors;
+        for (var index = 0; index < backdropColors.Length; index++)
         {
-            var y = BackdropColors[index].Y;
-            _backdrop.GradientStops[index].Offset = (float)((top + y * scale) / Height);
+            var (y, color) = backdropColors[index];
+            var stop = _backdrop.GradientStops[index];
+            stop.Color = color;
+            stop.Offset = (float)((top + y * scale) / Height);
         }
     }
 }

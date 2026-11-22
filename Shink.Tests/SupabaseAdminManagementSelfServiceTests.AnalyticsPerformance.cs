@@ -156,28 +156,22 @@ public partial class SupabaseAdminManagementSelfServiceTests
         var engagement = await service.GetSubscriberReportsAsync("admin@example.com", includeEngagement: true);
         Assert.IsNotEmpty(engagement.VisitsViewsAndLogins);
         Assert.AreEqual(2, calls["/rest/v1/rpc/get_wordpress_subscriber_report_snapshot"]);
-        Assert.AreEqual(1, calls["/rest/v1/story_listen_events"]);
-        Assert.AreEqual(1, calls["/rest/v1/story_views"]);
-        Assert.AreEqual(1, calls["/rest/v1/auth_sessions"]);
+        Assert.AreEqual(1, calls["/rest/v1/rpc/get_admin_engagement_periods"]);
+        Assert.IsFalse(calls.ContainsKey("/rest/v1/story_listen_events"));
 
         await service.GetSubscriberReportsAsync("admin@example.com", includeEngagement: false, forceRefresh: true);
         Assert.AreEqual(3, calls["/rest/v1/rpc/get_wordpress_subscriber_report_snapshot"]);
     }
 
     [TestMethod]
-    public async Task SubscriberReportsDoNotCachePartialPagesAfterARequiredRequestFails()
+    public async Task SubscriberReportsDoNotCacheFailuresWhenReadingAllInputs()
     {
         var calls = new Dictionary<string, int>();
         var fail = true;
         var service = CreatePerformanceReportsService(calls, request =>
         {
-            if (!IsSupabaseGet(request, "/rest/v1/subscriptions")) return null;
-            if (request.RequestUri!.Query.Contains("offset=0", StringComparison.Ordinal))
-            {
-                return JsonResponse(JsonSerializer.Serialize(Enumerable.Repeat(new { subscription_id = Guid.Empty }, 1000)));
-            }
-
-            return fail ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) : JsonResponse("[]");
+            if (request.RequestUri!.AbsolutePath != "/rest/v1/rpc/get_admin_report_inputs") return null;
+            return fail ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) : null;
         });
 
         await Assert.ThrowsExactlyAsync<HttpRequestException>(() =>
@@ -185,8 +179,8 @@ public partial class SupabaseAdminManagementSelfServiceTests
         fail = false;
         var recovered = await service.GetSubscriberReportsAsync("admin@example.com", includeEngagement: false);
         Assert.AreSame(recovered, await service.GetSubscriberReportsAsync("admin@example.com", includeEngagement: false));
-        Assert.AreEqual(4, calls["/rest/v1/subscriptions"]);
-        Assert.AreEqual(2, calls["/rest/v1/rpc/get_wordpress_subscriber_report_snapshot"]);
+        Assert.AreEqual(2, calls["/rest/v1/rpc/get_admin_report_inputs"]);
+        Assert.AreEqual(1, calls["/rest/v1/rpc/get_wordpress_subscriber_report_snapshot"]);
     }
 
     [TestMethod]
@@ -199,7 +193,7 @@ public partial class SupabaseAdminManagementSelfServiceTests
         authorized = false;
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             service.GetSubscriberReportsAsync("admin@example.com", includeEngagement: false));
-        Assert.AreEqual(1, calls["/rest/v1/subscriptions"]);
+        Assert.AreEqual(1, calls["/rest/v1/rpc/get_admin_report_inputs"]);
     }
 
     [TestMethod]
@@ -210,14 +204,14 @@ public partial class SupabaseAdminManagementSelfServiceTests
         var calls = new Dictionary<string, int>();
         var fail = true;
         var service = CreatePerformanceReportsService(calls, request =>
-            fail && IsSupabaseGet(request, "/rest/v1/subscribers") ? JsonResponse(invalidResponse) : null);
+            fail && request.RequestUri!.AbsolutePath == "/rest/v1/rpc/get_admin_report_inputs" ? JsonResponse(invalidResponse) : null);
 
-        await Assert.ThrowsExactlyAsync<JsonException>(() =>
+        await Assert.ThrowsAsync<JsonException>(() =>
             service.GetSubscriberReportsAsync("admin@example.com", includeEngagement: false));
         fail = false;
         var recovered = await service.GetSubscriberReportsAsync("admin@example.com", includeEngagement: false);
         Assert.AreSame(recovered, await service.GetSubscriberReportsAsync("admin@example.com", includeEngagement: false));
-        Assert.AreEqual(2, calls["/rest/v1/subscribers"]);
+        Assert.AreEqual(2, calls["/rest/v1/rpc/get_admin_report_inputs"]);
     }
 
     private static AdminAnalyticsSnapshot UsageSnapshot(int views) => AdminAnalyticsSnapshot.Empty with
@@ -225,6 +219,21 @@ public partial class SupabaseAdminManagementSelfServiceTests
         GeneratedAt = DateTimeOffset.UtcNow,
         StorySummary = AdminAnalyticsSnapshot.Empty.StorySummary with { TotalViews = views }
     };
+
+    [TestMethod]
+    public async Task MembershipMonthlySalesMatchesRevenueIncludingPaidOrders()
+    {
+        var inputs = $$"""
+            {"subscribers":[],"subscriptions":[],"tiers":[],"events":[],"recoveries":[],"carts":[],"feedback":[],
+             "orders":[{"order_id":"00000000-0000-0000-0000-000000000001","total_price_zar":149,"payment_status":"paid","paid_at":"{{DateTimeOffset.UtcNow:O}}"}]}
+            """;
+        var service = CreatePerformanceReportsService(new(), _ => JsonResponse(inputs));
+        var membership = await service.GetSubscriberReportsAsync("admin@example.com", panel: AdminReportPanel.Membership);
+        var revenue = await service.GetSubscriberReportsAsync("admin@example.com", panel: AdminReportPanel.Revenue);
+        var month = membership.SalesAndRevenue.Single(row => row.PeriodKey == "this_month");
+        Assert.AreEqual(149m, month.RevenueZar);
+        Assert.AreEqual(month, revenue.SalesAndRevenue.Single(row => row.PeriodKey == "this_month"));
+    }
 
     private static SupabaseAdminManagementService CreatePerformanceReportsService(
         Dictionary<string, int> calls,
@@ -243,9 +252,14 @@ public partial class SupabaseAdminManagementSelfServiceTests
                 return JsonResponse("""{"has_wordpress_data":true,"membership_stats":[],"active_members_per_level":[],"sales_and_revenue":[]}""");
             }
 
-            Assert.AreEqual(HttpMethod.Get, request.Method);
-            Assert.Contains(path, new[] { "/rest/v1/subscribers", "/rest/v1/subscriptions", "/rest/v1/subscription_events", "/rest/v1/store_orders", "/rest/v1/subscription_tiers", "/rest/v1/subscription_payment_recoveries", "/rest/v1/abandoned_cart_recoveries", "/rest/v1/subscription_cancellation_feedback", "/rest/v1/auth_sessions", "/rest/v1/story_views", "/rest/v1/story_listen_events" });
-            return responseOverride?.Invoke(request) ?? JsonResponse("[]");
+            Assert.AreEqual(HttpMethod.Post, request.Method);
+            if (path == "/rest/v1/rpc/get_admin_engagement_periods")
+                return JsonResponse(JsonSerializer.Serialize(new { periods = new[] { "today", "this_week", "this_month", "year_to_date", "all_time" }
+                    .Select(key => new AdminVisitsViewsLoginsMetric(key, 0, 0, 0)) }));
+            Assert.AreEqual("/rest/v1/rpc/get_admin_report_inputs", path);
+            return responseOverride?.Invoke(request) ?? JsonResponse("""
+                {"subscribers":[],"subscriptions":[],"tiers":[],"events":[],"orders":[],"recoveries":[],"carts":[],"feedback":[]}
+                """);
         }));
 
     private sealed class AnalyticsTestClock : ISystemClock
