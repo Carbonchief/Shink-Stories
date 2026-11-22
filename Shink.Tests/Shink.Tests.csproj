@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Shink\Shink.csproj" />
+    <ProjectReference Include="../jobs/Schink.WelcomeGuard/Schink.WelcomeGuard.csproj" />
   </ItemGroup>
 
   <ItemGroup>
