@@ -101,6 +101,82 @@ public sealed class MobilePushTests
     }
 
     [TestMethod]
+    [DataRow("story_published", "/media/image?src=https%3A%2F%2Fmedia.prioritybit.co.za%2Fcover.jpg", "https://media.prioritybit.co.za/cover.jpg")]
+    [DataRow("character_unlock", "/branding/characters/roomie.png", "https://www.schink.co.za/branding/characters/roomie.png")]
+    [DataRow("blog_published", "/branding/blog.jpg", null)]
+    [DataRow("resource_document_published", "/branding/resource.jpg", null)]
+    [DataRow("story_published", "/branding/schink-placeholder.png", null)]
+    [DataRow("story_published", null, null)]
+    [DataRow("character_unlock", "https://example.net/portrait.jpg", null)]
+    [DataRow("story_published", "/media/image?src=https%3A%2F%2Fexample.net%2Fcover.jpg", null)]
+    public async Task SendAsync_SelectsArtworkForBothProviders(string kind, string? imagePath, string? expectedUrl)
+    {
+        using var appleKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var firebaseKey = RSA.Create(2048);
+        foreach (var platform in new[] { "apns", "fcm" })
+        {
+            var handler = new Handler(async request =>
+            {
+                if (request.RequestUri!.Host == "oauth2.googleapis.com")
+                    return JsonResponse(HttpStatusCode.OK, """{"access_token":"test","expires_in":3600}""");
+                using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+                var data = platform == "apns" ? payload.RootElement : payload.RootElement.GetProperty("message").GetProperty("data");
+                Assert.AreEqual(expectedUrl is not null, data.TryGetProperty("image_url", out var url));
+                if (expectedUrl is not null) Assert.AreEqual(expectedUrl, url.GetString());
+                if (platform == "apns")
+                {
+                    Assert.AreEqual(expectedUrl is not null, data.GetProperty("aps").TryGetProperty("mutable-content", out var flag));
+                    if (expectedUrl is not null) Assert.AreEqual(1, flag.GetInt32());
+                }
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            });
+            using var cache = new MemoryCache(new MemoryCacheOptions());
+            var settings = platform == "apns" ? AppleSettings(appleKey) : FirebaseSettings(firebaseKey);
+            var sender = new MobilePushSender(new ClientFactory(handler), Options.Create(settings), cache);
+            var result = await sender.SendAsync(Delivery(platform) with { NotificationType = kind, ImagePath = imagePath }, TestContext.CancellationToken);
+            Assert.AreEqual("sent", result.Result);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("apns", true)]
+    [DataRow("apns", false)]
+    [DataRow("fcm", true)]
+    [DataRow("fcm", false)]
+    public async Task SendAsync_BlogIncludesBodyOnlyWhenItAddsText(string platform, bool repeatTitle)
+    {
+        using var appleKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var firebaseKey = RSA.Create(2048);
+        var title = "Skillie en Haas " + new string('a', 120);
+        var delivery = Delivery(platform) with
+        {
+            NotificationType = "blog_published", Href = "/blog/skillie-en-haas",
+            Title = title, Body = repeatTitle ? title : "Lees die artikel oor die vertoning."
+        };
+        var handler = new Handler(async request =>
+        {
+            if (request.RequestUri!.Host == "oauth2.googleapis.com")
+                return JsonResponse(HttpStatusCode.OK, """{"access_token":"test","expires_in":3600}""");
+
+            using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            var root = payload.RootElement;
+            var data = platform == "apns" ? root : root.GetProperty("message").GetProperty("data");
+            var alert = platform == "apns" ? root.GetProperty("aps").GetProperty("alert") : data;
+            Assert.AreEqual(title[..120], alert.GetProperty("title").GetString());
+            Assert.AreEqual(!repeatTitle, alert.TryGetProperty("body", out var body));
+            if (!repeatTitle) Assert.AreEqual(delivery.Body, body.GetString());
+            Assert.AreEqual(delivery.Href, data.GetProperty("href").GetString());
+            Assert.AreEqual(delivery.NotificationType, data.GetProperty("notification_type").GetString());
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var settings = platform == "apns" ? AppleSettings(appleKey) : FirebaseSettings(firebaseKey);
+        var sender = new MobilePushSender(new ClientFactory(handler), Options.Create(settings), cache);
+
+        Assert.AreEqual("sent", (await sender.SendAsync(delivery, TestContext.CancellationToken)).Result);
+    }
+
+    [TestMethod]
     [DataRow("""{"error":{"details":[{"@type":"type.googleapis.com/google.firebase.fcm.v1.FcmError","errorCode":"UNREGISTERED"}]}}""", "invalid")]
     [DataRow("""{"error":{"status":"NOT_FOUND"}}""", "retry")]
     public async Task SendAsync_FirebaseOnlyUnregistersForExplicitInvalidToken(string body, string expected)

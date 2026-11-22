@@ -18,13 +18,14 @@ create table public.subscriber_notifications (
     notification_id uuid primary key default gen_random_uuid(),
     subscriber_id uuid not null references public.subscribers(subscriber_id) on delete cascade,
     notification_type text not null default 'story_published', source_key text not null,
-    title text not null default 'Nuwe storie beskikbaar', body text, href text,
+    title text not null default 'Nuwe storie beskikbaar', body text, href text, image_path text,
     created_at timestamptz not null default now(), read_at timestamptz, cleared_at timestamptz,
     unique(subscriber_id, source_key)
 );
 grant select on public.subscribers, public.subscriber_notifications to service_role;
 grant insert on public.subscriber_notifications to service_role;
 \ir ../../Shink/Database/migrations/20261029135259_mobile_push_notifications.sql
+\ir ../../Shink/Database/migrations/20261122210000_mobile_push_artwork.sql
 
 insert into public.subscribers(subscriber_id, email) values
     ('10000000-0000-0000-0000-000000000001', 'a@example.test'),
@@ -35,6 +36,8 @@ do $$ begin
     assert not has_table_privilege('authenticated', 'public.mobile_push_devices', 'INSERT');
     assert not has_table_privilege('authenticated', 'public.mobile_push_deliveries', 'SELECT');
     assert not has_function_privilege('anon', 'public.claim_mobile_push_deliveries(text[],integer)', 'EXECUTE');
+    assert not has_function_privilege('anon', 'public.claim_mobile_push_deliveries_with_artwork(text[],integer)', 'EXECUTE');
+    assert not has_function_privilege('authenticated', 'public.claim_mobile_push_deliveries_with_artwork(text[],integer)', 'EXECUTE');
     assert not has_function_privilege('authenticated', 'public.register_mobile_push_device(text,uuid,text,text,text,text)', 'EXECUTE');
     assert (select relrowsecurity from pg_class where oid = 'public.mobile_push_devices'::regclass);
     assert (select relrowsecurity from pg_class where oid = 'public.mobile_push_deliveries'::regclass);
@@ -44,13 +47,14 @@ set role service_role;
 select public.register_mobile_push_device('a@example.test', '20000000-0000-0000-0000-000000000001', repeat('a',64), 'apns', 'production', repeat('1',64));
 select public.register_mobile_push_device('a@example.test', '20000000-0000-0000-0000-000000000002', repeat('b',64), 'fcm', 'production', 'fake-fcm-token-for-local-test');
 select public.register_mobile_push_device('b@example.test', '20000000-0000-0000-0000-000000000003', repeat('c',64), 'apns', 'sandbox', repeat('2',64));
-insert into public.subscriber_notifications(subscriber_id, source_key, body, href)
-values ('10000000-0000-0000-0000-000000000001', 'first-story', 'Storie een', '/luister/een');
+insert into public.subscriber_notifications(subscriber_id, source_key, body, href, image_path)
+values ('10000000-0000-0000-0000-000000000001', 'first-story', 'Storie een', '/luister/een', '/branding/een.png');
 insert into public.subscriber_notifications(subscriber_id, source_key)
 values ('10000000-0000-0000-0000-000000000001', 'first-story') on conflict do nothing;
 do $$ declare v_claim record; begin
     assert (select count(*) from public.mobile_push_deliveries) = 2, 'Only the inbox recipient devices are queued, once';
-    select * into v_claim from public.claim_mobile_push_deliveries(array['apns']);
+    select * into v_claim from public.claim_mobile_push_deliveries_with_artwork(array['apns']);
+    assert v_claim.image_path = '/branding/een.png';
     assert v_claim.platform = 'apns' and v_claim.body = 'Storie een' and v_claim.href = '/luister/een';
     assert public.can_send_mobile_push_delivery(v_claim.delivery_id, v_claim.lease_id);
     assert (select count(*) from public.claim_mobile_push_deliveries(array['apns'])) = 0, 'An active lease cannot be reclaimed';

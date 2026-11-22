@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="CodesignProvision;CodesignEntitlements;ArchiveOnBuild">
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <OutputType>Library</OutputType>
+    <IsAppExtension>true</IsAppExtension>
+    <ApplicationId>com.schink.stories.mobile.notificationservice</ApplicationId>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ValidateXcodeVersion>false</ValidateXcodeVersion>
+    <ArchiveOnBuild>false</ArchiveOnBuild>
+    <!-- Let the SDK select the matching extension profile unless a specific one is supplied. -->
+    <CodesignProvision>$(SchinkNotificationServiceProvision)</CodesignProvision>
+    <CodesignEntitlements></CodesignEntitlements>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Shink/Shared/MobilePushArtwork.cs" Link="MobilePushArtwork.cs" />
+    <Compile Include="../Shink.Mobile/Services/MobilePushArtworkDownload.cs" Link="MobilePushArtworkDownload.cs" />
+  </ItemGroup>
+</Project>

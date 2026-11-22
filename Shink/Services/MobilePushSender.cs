@@ -1,3 +1,4 @@
+using Shink.Shared;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -26,18 +27,30 @@ public sealed class MobilePushSender(IHttpClientFactory clients, IOptions<Mobile
     {
         var settings = options.Value;
         var host = delivery.Environment == "sandbox" ? "api.sandbox.push.apple.com" : "api.push.apple.com";
+        var aps = new Dictionary<string, object> { ["alert"] = BuildAlertText(delivery), ["sound"] = "default" };
+        var payload = new Dictionary<string, object>
+        {
+            ["aps"] = aps,
+            ["notification_id"] = delivery.NotificationId,
+            ["registration_id"] = delivery.RegistrationId,
+            ["notification_type"] = delivery.NotificationType,
+            ["href"] = delivery.Href ?? string.Empty
+        };
+        if (MobilePushArtwork.Resolve(delivery.NotificationType, delivery.ImagePath) is { } image)
+        {
+            aps["mutable-content"] = 1;
+            payload["image_url"] = image.AbsoluteUri;
+            if (JsonSerializer.SerializeToUtf8Bytes(payload).Length > 4096)
+            {
+                payload.Remove("image_url");
+                aps.Remove("mutable-content");
+            }
+        }
         using var request = new HttpRequestMessage(HttpMethod.Post, $"https://{host}/3/device/{delivery.Token}")
         {
             Version = HttpVersion.Version20,
             VersionPolicy = HttpVersionPolicy.RequestVersionExact,
-            Content = JsonContent.Create(new
-            {
-                aps = new { alert = new { title = Truncate(delivery.Title, 120), body = Truncate(delivery.Body, 500) }, sound = "default" },
-                notification_id = delivery.NotificationId.ToString("D"),
-                registration_id = delivery.RegistrationId.ToString("D"),
-                notification_type = delivery.NotificationType,
-                href = delivery.Href ?? string.Empty
-            })
+            Content = JsonContent.Create(payload)
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("bearer", await GetAppleTokenAsync(cancellationToken));
         request.Headers.Add("apns-topic", settings.AppleBundleId);
@@ -58,6 +71,17 @@ public sealed class MobilePushSender(IHttpClientFactory clients, IOptions<Mobile
     private async Task<MobilePushSendResult> SendFirebaseAsync(HttpClient client, MobilePushDelivery delivery, CancellationToken cancellationToken)
     {
         var accessToken = await GetGoogleTokenAsync(client, cancellationToken);
+        var data = BuildAlertText(delivery);
+        data["notification_id"] = delivery.NotificationId.ToString("D");
+        data["registration_id"] = delivery.RegistrationId.ToString("D");
+        data["notification_type"] = delivery.NotificationType;
+        data["href"] = delivery.Href ?? string.Empty;
+        if (MobilePushArtwork.Resolve(delivery.NotificationType, delivery.ImagePath) is { } image)
+        {
+            data["image_url"] = image.AbsoluteUri;
+            if (data.Sum(pair => Encoding.UTF8.GetByteCount(pair.Key) + Encoding.UTF8.GetByteCount(pair.Value)) > 4096)
+                data.Remove("image_url");
+        }
         using var request = new HttpRequestMessage(HttpMethod.Post,
             $"https://fcm.googleapis.com/v1/projects/{Uri.EscapeDataString(options.Value.FirebaseProjectId)}/messages:send")
         {
@@ -68,14 +92,7 @@ public sealed class MobilePushSender(IHttpClientFactory clients, IOptions<Mobile
                 message = new
                 {
                     token = delivery.Token,
-                    data = new Dictionary<string, string>
-                    {
-                        ["notification_id"] = delivery.NotificationId.ToString("D"),
-                        ["registration_id"] = delivery.RegistrationId.ToString("D"),
-                        ["notification_type"] = delivery.NotificationType,
-                        ["href"] = delivery.Href ?? string.Empty,
-                        ["title"] = Truncate(delivery.Title, 120), ["body"] = Truncate(delivery.Body, 500)
-                    },
+                    data,
                     android = new { priority = "HIGH", ttl = "3600s" }
                 }
             })
@@ -157,6 +174,16 @@ public sealed class MobilePushSender(IHttpClientFactory clients, IOptions<Mobile
     {
         try { return await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken); }
         catch (JsonException) { return null; }
+    }
+
+    private static Dictionary<string, string> BuildAlertText(MobilePushDelivery delivery)
+    {
+        var alert = new Dictionary<string, string> { ["title"] = Truncate(delivery.Title, 120) };
+        var repeatsBlogTitle = delivery.NotificationType == "blog_published"
+            && string.Equals(delivery.Title.Trim(), delivery.Body?.Trim(), StringComparison.OrdinalIgnoreCase);
+        if (!repeatsBlogTitle && !string.IsNullOrWhiteSpace(delivery.Body))
+            alert["body"] = Truncate(delivery.Body, 500);
+        return alert;
     }
 
     private static string? ReadString(JsonElement? element, string name) =>

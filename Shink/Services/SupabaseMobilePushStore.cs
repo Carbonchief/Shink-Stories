@@ -37,7 +37,7 @@ public sealed class SupabaseMobilePushStore(HttpClient httpClient, IOptions<Supa
 
     public async Task<IReadOnlyList<MobilePushDelivery>> ClaimAsync(string[] platforms, CancellationToken cancellationToken)
     {
-        using var response = await RpcAsync("claim_mobile_push_deliveries", new { p_platforms = platforms, p_take = 20 }, cancellationToken);
+        using var response = await RpcAsync("claim_mobile_push_deliveries_with_artwork", new { p_platforms = platforms, p_take = 20 }, cancellationToken);
         return await response.Content.ReadFromJsonAsync<List<MobilePushDelivery>>(JsonOptions, cancellationToken) ?? [];
     }
 

@@ -17,7 +17,7 @@
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
     <ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
-		<ApplicationVersion>41</ApplicationVersion>
+		<ApplicationVersion>43</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' == 'true'">24.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' != 'true'">21.0</SupportedOSPlatformVersion>
@@ -40,6 +40,7 @@
     <SchinkFirebaseConfig Condition="'$(SchinkFirebaseConfig)' == ''">Platforms/Android/google-services.json</SchinkFirebaseConfig>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Shink/Shared/MobilePushArtwork.cs" Link="Shared/MobilePushArtwork.cs" />
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>MobilePushEnabled</_Parameter1>
       <_Parameter2>$(SchinkPushEnabled)</_Parameter2>
@@ -150,6 +151,12 @@
                Resize="False" />
     <MauiImage Update="Resources/Images/schink_stories_logo_white.png" Resize="False" />
     <MauiAsset Include="Resources/Images/schink_stories_logo_white.png" LogicalName="schink_stories_logo_white_raw.png" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios' and '$(SchinkPushEnabled)' == 'true'">
+    <ProjectReference Include="../Shink.Mobile.NotificationService/Shink.Mobile.NotificationService.csproj"
+                      IsAppExtension="true"
+                      AdditionalProperties="ApplicationDisplayVersion=$(ApplicationDisplayVersion);ApplicationVersion=$(ApplicationVersion)" />
   </ItemGroup>
 
   <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' and '$(Configuration)' == 'Debug'">

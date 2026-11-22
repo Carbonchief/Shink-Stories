@@ -6,9 +6,15 @@ Users enable push through **Kennisgewings → Skakel selfoonkennisgewings aan** 
 
 ## Activation (requires approval)
 
-Implementation and tests are local. No provider credential, live schema, deployment, app distribution or actual recipient send was changed for this work. Live rollout and any test notification require explicit approval under `AGENTS.md`.
+On 22 November 2026, the Schink production database had both push tables and the enqueue trigger. The Azure backend was enabled with its APNs and FCM settings. Firebase project `schink-stories-push` uses the Spark plan and the registered Android package `com.schink.stories.mobile`. The FCM sender passed a validation-only request. The Apple key is restricted to that bundle ID in the production APNs environment, which TestFlight uses. An actual device notification requires an approved recipient.
 
-1. Apply only `Shink/Database/migrations/20261029135259_mobile_push_notifications.sql` to the Shink project `btpsoyiyhtfbeznonygn`, after approval and a current schema check. This migration does not depend on the other pending egress migrations. It creates server-only device and delivery tables, restricted RPCs and an insert trigger; it does not send or backfill existing notifications.
+Beta 1.2 (42) was the first verified push-enabled build on Google Play Internal testing and both TestFlight groups. Use `SchinkPushEnabled=true` for subsequent notification-enabled builds.
+
+The current App Store profile is `Schink Stories App Store Connect 2026` (`fab09d1d-6c0a-4cc2-8e15-f9ac06567c59`). The current Ad Hoc profile is `Schink Stories Luan iPhone Ad Hoc` (`7d39586b-c4e9-4103-a515-312e5836f379`). Both include the production push entitlement. The dedicated Firebase sender certificate expires on 21 November 2028. Rotate it before expiry.
+
+For a new environment or replacement credentials, follow these steps:
+
+1. The push worker requires `20261029135259_mobile_push_notifications.sql` followed by `20261122210000_mobile_push_artwork.sql` from `Shink/Database/migrations/`. The first creates the delivery queue and enqueue trigger. The second lets the worker read the artwork saved with each queued inbox item.
 2. Configure provider credentials securely on the backend. Do not put private keys, service account JSON, registration secrets or device tokens in source control, chat or logs.
 3. Deploy the backend with `MobilePush:Enabled=false`. Keep the ASP.NET process running (Azure App Service Always On, if supported by the hosting plan), since its hosted worker drains the queue.
 4. Prepare push-enabled mobile builds using the existing signed build scripts, with `SchinkPushEnabled=true` in their environment. Complete the Apple/Firebase prerequisites below first. Increment the build number for each shareable build as usual. Verify the signed output's entitlements and configuration before distribution.
@@ -47,6 +53,14 @@ Set `SchinkPushEnabled=true` for the existing Android build scripts. `SchinkFire
 
 Android 13+ requests notification permission. Android 8+ uses the **Schink-kennisgewings** channel. FCM requires working Google Play services; devices without those services retain the in-app inbox but do not receive this FCM delivery. Huawei-specific HMS delivery is not implemented.
 
+## Story and character artwork
+
+New-story and character-unlock alerts use the artwork saved with the inbox item. The iOS notification service extension prepares a thumbnail attachment. Android displays the image as the notification’s large icon. If the artwork is missing or unavailable, the alert displays its usual text.
+
+The scheduled website deployment applies the artwork migration before activating the updated worker. The original claim function remains available to older workers. Push-enabled iOS builds embed `com.schink.stories.mobile.notificationservice`, which needs a matching Schink provisioning profile for each distribution method. The extension inherits the host’s version and build number. Supply `SchinkNotificationServiceProvision` to select a specific installed extension profile. Build 42 displays text alerts.
+
+Blog pushes use the post title as the alert title. The worker omits the body when it repeats that title and preserves a distinct excerpt. This applies to both APNs and FCM.
+
 ## Delivery and account behavior
 
 - The insert trigger creates at most one delivery per notification and installation, within the notification transaction. Read, cleared, disabled-account, stale-device and expired notifications are excluded or cancelled. No new delivery is created for an inbox deduplication conflict.
@@ -76,6 +90,6 @@ psql -h 127.0.0.1 -p PORT -d schink_push_test -v ON_ERROR_STOP=1 -f scripts/test
 
 It exercises the actual migration, RLS/grants, recipient targeting, deduplication, leases, retry scheduling, registration proof, sign-out revocation, account reassignment, token rotation, invalidation, expiry, read/cleared suppression and disabled accounts. Use a fresh disposable database for each run. No production migration is needed to run it.
 
-Build verification uses iOS Simulator with push enabled and signing disabled, Android Debug with push disabled, and Android Debug with push enabled using a clearly fake local Firebase client configuration. The fake configuration is only a compiler fixture and must never be distributed. Real APNs/FCM receipt, signed distribution profiles and device permission/tap behavior still require approved device testing.
+On 22 November 2026, direct APNs previews on an iPhone 15 Pro running TestFlight 1.2 (43) displayed the Kaptein Knopkop cover and the Roomie portrait. The corrected blog preview also displayed its title once. Android artwork has build and payload coverage. Its appearance on a physical Android phone is unverified.
 
 Provider references: [Apple APNs token authentication](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns), [Firebase HTTP v1](https://firebase.google.com/docs/cloud-messaging/send/v1-api), [Firebase Android setup and permission](https://firebase.google.com/docs/cloud-messaging/android/client), [Microsoft MAUI native push guidance](https://learn.microsoft.com/en-us/dotnet/maui/data-cloud/push-notifications?view=net-maui-10.0), [Firebase version requirements](https://firebase.google.com/support/release-notes/android#messaging_v25-0-0).

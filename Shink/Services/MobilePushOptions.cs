@@ -38,6 +38,6 @@ public sealed record MobilePushRevocationRequest(Guid InstallationId, string Ins
 
 public sealed record MobilePushDelivery(
     Guid DeliveryId, Guid LeaseId, Guid InstallationId, Guid RegistrationId, Guid NotificationId,
-    string Platform, string Environment, string Token, string Title, string? Body, string NotificationType, string? Href);
+    string Platform, string Environment, string Token, string Title, string? Body, string NotificationType, string? Href, string? ImagePath = null);
 
 public sealed record MobilePushSendResult(string Result, string? Error = null, int RetrySeconds = 60);

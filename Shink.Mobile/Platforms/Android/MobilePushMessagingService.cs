@@ -1,5 +1,6 @@
 using Android.App;
 using Android.Content;
+using Android.Graphics;
 using AndroidX.Core.App;
 using Firebase.Messaging;
 using Shink.Mobile.Services;
@@ -42,6 +43,13 @@ public sealed class MobilePushMessagingService : FirebaseMessagingService
         builder.SetAutoCancel(true);
         builder.SetOnlyAlertOnce(true);
         builder.SetVisibility(NotificationCompat.VisibilityPrivate);
+        // FCM invokes this callback on a worker thread. Finish the bounded download before
+        // returning so Android does not suspend the process before we post the notification.
+        var bytes = MobilePushArtworkDownload.TryDownloadAsync(push.Type, Value(data, "image_url"), CancellationToken.None)
+            .GetAwaiter().GetResult();
+        using var artwork = DecodeLargeIcon(bytes);
+        if (artwork is not null) builder.SetLargeIcon(artwork);
+        if (!MobilePushInstallation.CanDisplay(push.RegistrationId.ToString("D"))) return;
         var notification = builder.Build();
         // A stable tag prevents a retry from creating a second tray entry.
         if (notification is not null)
@@ -49,6 +57,20 @@ public sealed class MobilePushMessagingService : FirebaseMessagingService
             try { NotificationManagerCompat.From(this)?.Notify(push.NotificationId.ToString("D"), 0, notification); }
             catch (Java.Lang.SecurityException) { /* Permission can be revoked between receipt and display. */ }
         }
+    }
+
+    private static Bitmap? DecodeLargeIcon(byte[]? bytes)
+    {
+        if (bytes is null || bytes.Length == 0) return null;
+        using var bounds = new BitmapFactory.Options { InJustDecodeBounds = true };
+        BitmapFactory.DecodeByteArray(bytes, 0, bytes.Length, bounds);
+        if (bounds.OutWidth <= 0 || bounds.OutHeight <= 0) return null;
+
+        var longestEdge = Math.Max(bounds.OutWidth, bounds.OutHeight);
+        var sampleSize = 1;
+        while (longestEdge / sampleSize > 256) sampleSize *= 2;
+        using var options = new BitmapFactory.Options { InSampleSize = sampleSize };
+        return BitmapFactory.DecodeByteArray(bytes, 0, bytes.Length, options);
     }
 
     public static void HandleNotificationIntent(Intent? intent)
