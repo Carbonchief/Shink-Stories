@@ -14,6 +14,12 @@ public sealed class SupabaseMobilePushStore(HttpClient httpClient, IOptions<Supa
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
+    public async Task<int> ProcessPublicationBatchAsync(CancellationToken cancellationToken)
+    {
+        using var response = await RpcAsync("process_notification_publication_batch", new { }, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<int>(cancellationToken);
+    }
+
     public async Task<Guid> RegisterAsync(string email, MobilePushRegistrationRequest device, CancellationToken cancellationToken)
     {
         if (!device.IsValid) throw new ArgumentException("Invalid push registration.", nameof(device));
@@ -48,6 +54,14 @@ public sealed class SupabaseMobilePushStore(HttpClient httpClient, IOptions<Supa
             p_delivery_id = delivery.DeliveryId, p_lease_id = delivery.LeaseId
         }, cancellationToken);
         return await response.Content.ReadFromJsonAsync<bool>(cancellationToken);
+    }
+
+    public async Task RecordAcceptanceAsync(MobilePushDelivery delivery, CancellationToken cancellationToken)
+    {
+        using var response = await RpcAsync("record_mobile_push_acceptance", new
+        {
+            p_delivery_id = delivery.DeliveryId, p_registration_id = delivery.RegistrationId
+        }, cancellationToken);
     }
 
     public async Task CompleteAsync(MobilePushDelivery delivery, MobilePushSendResult result, CancellationToken cancellationToken)

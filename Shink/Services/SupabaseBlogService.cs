@@ -14,7 +14,6 @@ public sealed partial class SupabaseBlogService(
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
     IBlogContentRenderer blogContentRenderer,
-    IUserNotificationService userNotificationService,
     ILogger<SupabaseBlogService> logger,
     IPublicContentVersions? contentVersions = null) : IBlogCatalogService, IBlogAdminService
 {
@@ -26,7 +25,6 @@ public sealed partial class SupabaseBlogService(
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
     private readonly IBlogContentRenderer _blogContentRenderer = blogContentRenderer;
-    private readonly IUserNotificationService _userNotificationService = userNotificationService;
     private readonly ILogger<SupabaseBlogService> _logger = logger;
     // Typed HTTP clients are transient, but their catalogue cache is shared across requests.
     private static readonly SemaphoreSlim RefreshLock = new(1, 1);
@@ -212,16 +210,6 @@ public sealed partial class SupabaseBlogService(
             publishedAt = DateTimeOffset.UtcNow;
         }
 
-        BlogPostRow? existingPost = null;
-        if (request.PostId is Guid currentPostId && currentPostId != Guid.Empty)
-        {
-            existingPost = await FetchBlogPostByIdAsync(baseUri, apiKey, currentPostId, cancellationToken);
-        }
-
-        var shouldCreatePublishedBlogNotifications =
-            IsBlogPostPubliclyPublished(request.IsPublished, publishedAt) &&
-            !IsBlogPostPubliclyPublished(existingPost);
-
         try
         {
             var categoryId = await UpsertCategoryAsync(baseUri, apiKey, request.CategoryName, cancellationToken);
@@ -237,6 +225,7 @@ public sealed partial class SupabaseBlogService(
                 ["featured_image_url"] = featuredImageUrl,
                 ["author_name"] = authorName,
                 ["category_id"] = categoryId,
+                ["queue_publication_notification"] = IsBlogPostPubliclyPublished(request.IsPublished, publishedAt),
                 ["is_published"] = request.IsPublished,
                 ["published_at"] = publishedAt?.UtcDateTime,
                 ["seo_title"] = seoTitle,
@@ -302,18 +291,6 @@ public sealed partial class SupabaseBlogService(
             }
 
             InvalidatePublishedBlogCache();
-
-            if (shouldCreatePublishedBlogNotifications)
-            {
-                await _userNotificationService.CreatePublishedBlogNotificationsAsync(
-                    new PublishedBlogNotificationRequest(
-                        postId,
-                        normalizedSlug,
-                        normalizedTitle,
-                        summary,
-                        featuredImageUrl),
-                    cancellationToken);
-            }
 
             return new AdminOperationResult(true, EntityId: postId);
         }
@@ -741,30 +718,6 @@ public sealed partial class SupabaseBlogService(
         return await FetchRowsAsync<BlogPostTagRow>(uri, apiKey, cancellationToken);
     }
 
-    private async Task<BlogPostRow?> FetchBlogPostByIdAsync(
-        Uri baseUri,
-        string apiKey,
-        Guid postId,
-        CancellationToken cancellationToken)
-    {
-        if (postId == Guid.Empty)
-        {
-            return null;
-        }
-
-        var escapedPostId = Uri.EscapeDataString(postId.ToString("D"));
-        var queryBuilder = new StringBuilder(
-            "rest/v1/blog_posts" +
-            "?select=post_id,is_published,published_at" +
-            $"&post_id=eq.{escapedPostId}" +
-            "&limit=1");
-
-        var rows = await FetchRowsAsync<BlogPostRow>(new Uri(baseUri, queryBuilder.ToString()), apiKey, cancellationToken);
-        return rows
-            .Where(row => row.PostId != Guid.Empty)
-            .FirstOrDefault();
-    }
-
     private async Task<IReadOnlyList<T>> FetchRowsAsync<T>(Uri uri, string apiKey, CancellationToken cancellationToken)
     {
         try
@@ -1085,10 +1038,6 @@ public sealed partial class SupabaseBlogService(
         isPublished &&
         publishedAt is DateTimeOffset publishAt &&
         publishAt <= DateTimeOffset.UtcNow;
-
-    private static bool IsBlogPostPubliclyPublished(BlogPostRow? post) =>
-        post is not null &&
-        IsBlogPostPubliclyPublished(post.IsPublished, post.PublishedAt);
 
     [GeneratedRegex("^[a-z0-9]+(?:-[a-z0-9]+)*$", RegexOptions.CultureInvariant)]
     private static partial Regex BlogSlugRegex();

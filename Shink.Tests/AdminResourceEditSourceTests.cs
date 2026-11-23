@@ -37,7 +37,7 @@ public class AdminResourceEditSourceTests
         StringAssert.Contains(updateMethod, "new HttpMethod(\"PATCH\")");
         StringAssert.Contains(updateMethod, "resource_documents?resource_document_id=eq.");
         Assert.IsFalse(
-            updateMethod.Contains("CreatePublishedResourceDocumentNotificationsAsync", StringComparison.Ordinal),
+            updateMethod.Contains("queue_publication_notification", StringComparison.Ordinal),
             "Editing an existing resource must not create published resource notifications.");
     }
 

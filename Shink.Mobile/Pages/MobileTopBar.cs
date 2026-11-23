@@ -165,14 +165,13 @@ internal static class MobileTopBar
         return bar;
     }
 
-    public static void ApplyStoriesBackdrop(View overlay, View? captureExclusion = null)
+    private static void ApplyStoriesBackdrop(View overlay)
     {
         overlay.Background = BuildMaterialBackdropBrush(
             MobileAndroidChromePalette.TopBarBackground);
         MobileLiquidGlass.ApplyTopBar(
             overlay,
-            MobileAndroidChromePalette.TopBarNativeBlurTint,
-            captureExclusion);
+            MobileAndroidChromePalette.TopBarNativeBlurTint);
     }
 
     public static View BuildStoriesBackdropLayer(View safeAreaOverlay)
@@ -201,7 +200,7 @@ internal static class MobileTopBar
             InputTransparent = true,
             ZIndex = 99
         };
-        ApplyStoriesBackdrop(backdropLayer, safeAreaOverlay);
+        ApplyStoriesBackdrop(backdropLayer);
         return backdropLayer;
     }
 

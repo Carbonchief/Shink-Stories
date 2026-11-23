@@ -19,11 +19,11 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(source, "MobileAndroidIcon.CaretDown");
         StringAssert.Contains(source, "applyMaterial: false");
         StringAssert.Contains(source, "Background = applyMaterial");
-        StringAssert.Contains(source, "public static void ApplyStoriesBackdrop(View overlay, View? captureExclusion = null)");
+        StringAssert.Contains(source, "ApplyStoriesBackdrop(View overlay)");
         StringAssert.Contains(source, "public static View BuildStoriesBackdropLayer(View safeAreaOverlay)");
         StringAssert.Contains(source, "internal const double StoriesBackdropHeight = 92;");
         StringAssert.Contains(source, "DeviceInfo.Current.Platform != DevicePlatform.Android");
-        StringAssert.Contains(source, "ApplyStoriesBackdrop(backdropLayer, safeAreaOverlay)");
+        StringAssert.Contains(source, "ApplyStoriesBackdrop(backdropLayer)");
         StringAssert.Contains(source, "overlay.Background = BuildMaterialBackdropBrush(");
         StringAssert.Contains(source, "MobileLiquidGlass.ApplyTopBar(");
         StringAssert.Contains(source, "TopBarNativeBlurTint");
@@ -196,7 +196,7 @@ public sealed class MobilePlatformChromeSourceTests
     }
 
     [TestMethod]
-    public void AndroidTopAndBottomBarsRefreshDuringScrollFromReusableViewportBuffers()
+    public void AndroidBarsDrawTheCurrentScrollFrameWithoutHidingControls()
     {
         var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileLiquidGlass.cs"));
         var chrome = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileAndroidIcons.cs"));
@@ -206,40 +206,32 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(source, "AndroidBarGlassView");
         StringAssert.Contains(source, ": Android.Views.View(context)");
         StringAssert.Contains(source, "private void CaptureBackdrop()");
-        StringAssert.Contains(source, "captureExclusion?.Handler?.PlatformView as Android.Views.View");
-        StringAssert.Contains(source, "blurRoot.Draw(captureCanvas)");
-        StringAssert.Contains(source, "ApplyBoxBlur(bitmap, BackdropBlurRadius, BackdropBlurPasses)");
-        StringAssert.Contains(source, "BackdropDownsample = 20");
-        StringAssert.Contains(source, "BackdropBlurRadius = 1");
-        StringAssert.Contains(source, "BackdropBlurPasses = 3");
+        StringAssert.Contains(source, "OperatingSystem.IsAndroidVersionAtLeast(31)");
+        StringAssert.Contains(source, "canvas.DrawRect(0, 0, Width, Height, _fallbackPaint)");
+        StringAssert.Contains(source, "recording.DrawRenderNode(_backdropNode)");
+        Assert.DoesNotContain("Android.Graphics.Bitmap", source, StringComparison.Ordinal);
         StringAssert.Contains(source, "Alpha = NativeBarBlurOpacity");
-        StringAssert.Contains(source, "fadeFromTop: false,\n            fadeFromBottom: true");
-        StringAssert.Contains(source, "fadeFromTop: true,\n            fadeFromBottom: false");
+        StringAssert.Contains(source, "AttachAndroid(view, tint, fadeFromTop: false)");
+        StringAssert.Contains(source, "AttachAndroid(view, tint, fadeFromTop: true)");
         StringAssert.Contains(source, "Android.Graphics.PorterDuff.Mode.DstIn");
         StringAssert.Contains(source, "new[] { 0f, 0.24f, 0.68f, 0.94f, 1f, 1f }");
         StringAssert.Contains(source, "new[] { 1f, 1f, 0.78f, 0.32f, 0f }");
-        StringAssert.Contains(source, "private bool _scrollCapturePosted;");
-        StringAssert.Contains(source, "private Java.Lang.Runnable? _scrollCaptureRunnable;");
-        StringAssert.Contains(source, "_scrollCaptureRunnable ??= new(RefreshBackdropForScroll);");
-        StringAssert.Contains(source, "BackdropFrameMilliseconds = 32");
-        StringAssert.Contains(source, "PostOnAnimationDelayed(ScrollFrameRunnable, delay)");
-        StringAssert.Contains(source, "if (!_isDetached) Post(ScrollCaptureRunnable)");
-        StringAssert.Contains(source, "RemoveCallbacks(_scrollFrameRunnable)");
-        StringAssert.Contains(source, "_captureCanvas!.SetBitmap(_captureBitmap)");
-        Assert.DoesNotContain("ScrollBackdropIdleMilliseconds", source, StringComparison.Ordinal);
-        StringAssert.Contains(source, "var liveSource = FindLiveBackdropSource()");
+        StringAssert.Contains(source, "public void OnScrollChanged() => CaptureBackdrop();");
+        Assert.DoesNotContain("PostOnAnimationDelayed(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PostInvalidateOnAnimation()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Visibility =", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("blurRoot.Draw(", source, StringComparison.Ordinal);
+        StringAssert.Contains(source, "EnsureAndroidGlass(nativeView, pageRoot, tint, fadeFromTop)");
+        StringAssert.Contains(source, "var source = FindLiveBackdropSource() ?? glassHost");
         StringAssert.Contains(source, "candidate.FindViewWithTag(AndroidGlassViewTag) is null");
-        StringAssert.Contains(source, "DrawScrollingContent(captureCanvas, liveSource)");
+        StringAssert.Contains(source, "canvas.DrawRenderNode(surface)");
+        StringAssert.Contains(source, "DrawBackdropContent(recording, source)");
         StringAssert.Contains(source, "DrawUnderlaySiblings(canvas, ancestor,");
         StringAssert.Contains(source, "_rootLocation[0] - source.ScrollX, _rootLocation[1] - source.ScrollY");
         StringAssert.Contains(source, "_liveBackdropSource.GetGlobalVisibleRect(_sourceVisibleBounds)");
         StringAssert.Contains(source, "return IsShown && GetGlobalVisibleRect(_barVisibleBounds)");
-        StringAssert.Contains(source, "RemoveCallbacks(_scrollCaptureRunnable)");
-        StringAssert.Contains(source, "private void RefreshBackdropForScroll()");
-        Assert.DoesNotContain("refreshDelay = fadeFromTop ? 180L : 260L", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("_scrollRefreshGeneration", source, StringComparison.Ordinal);
         StringAssert.Contains(source, "ScheduleBackdropCapture(650)");
-        StringAssert.Contains(source, "PostInvalidateOnAnimation()");
+        StringAssert.Contains(source, "Invalidate();");
         StringAssert.Contains(chrome, "BarSurfaceTint = Color.FromArgb(\"#10FFFEFA\")");
         StringAssert.Contains(chrome, "BarNativeBlurTint = Color.FromArgb(\"#14005E68\")");
         StringAssert.Contains(chrome, "TopBarNativeBlurTint = Color.FromArgb(\"#14005E68\")");

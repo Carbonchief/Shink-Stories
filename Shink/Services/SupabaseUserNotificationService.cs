@@ -467,218 +467,6 @@ public sealed class SupabaseUserNotificationService(
         }
     }
 
-    public async Task<int> CreatePublishedStoryNotificationsAsync(
-        PublishedStoryNotificationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        if (request.StoryId == Guid.Empty ||
-            string.IsNullOrWhiteSpace(request.Slug) ||
-            string.IsNullOrWhiteSpace(request.Title))
-        {
-            return 0;
-        }
-
-        if (!TryBuildSupabaseBaseUri(out var baseUri))
-        {
-            _logger.LogWarning("Supabase story notification sync skipped: URL is not configured.");
-            return 0;
-        }
-
-        var apiKey = ResolveApiKey();
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            _logger.LogWarning("Supabase story notification sync skipped: SecretKey is not configured.");
-            return 0;
-        }
-
-        try
-        {
-            var subscriberIds = await GetActiveSubscriberIdsAsync(baseUri, apiKey, cancellationToken);
-            if (subscriberIds.Count == 0)
-            {
-                return 0;
-            }
-
-            var normalizedAccessLevel = string.IsNullOrWhiteSpace(request.AccessLevel)
-                ? "subscriber"
-                : request.AccessLevel.Trim().ToLowerInvariant();
-            var normalizedSlug = request.Slug.Trim().ToLowerInvariant();
-            var imagePath = ResolveStoryNotificationImagePath(request);
-            var body = BuildPublishedStoryNotificationBody(request);
-            var href = BuildPublishedStoryNotificationHref(normalizedSlug, normalizedAccessLevel);
-            var sourceKey = BuildPublishedStorySourceKey(request.StoryId);
-
-            var notificationsToInsert = subscriberIds
-                .Select(subscriberId => new
-                {
-                    subscriber_id = subscriberId,
-                    notification_type = "story_published",
-                    source_key = sourceKey,
-                    title = "Nuwe storie beskikbaar",
-                    body,
-                    image_path = imagePath,
-                    image_alt = $"Voorblad van {request.Title.Trim()}",
-                    href,
-                    metadata = new
-                    {
-                        story_id = request.StoryId,
-                        story_slug = normalizedSlug,
-                        story_title = request.Title.Trim(),
-                        access_level = normalizedAccessLevel
-                    }
-                })
-                .Cast<object>()
-                .ToArray();
-
-            return await InsertNotificationsAsync(baseUri, apiKey, notificationsToInsert, cancellationToken);
-        }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            _logger.LogWarning(exception, "Supabase story notification sync failed unexpectedly.");
-            return 0;
-        }
-    }
-
-    public async Task<int> CreatePublishedBlogNotificationsAsync(
-        PublishedBlogNotificationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        if (request.PostId == Guid.Empty ||
-            string.IsNullOrWhiteSpace(request.Slug) ||
-            string.IsNullOrWhiteSpace(request.Title))
-        {
-            return 0;
-        }
-
-        if (!TryBuildSupabaseBaseUri(out var baseUri))
-        {
-            _logger.LogWarning("Supabase blog notification sync skipped: URL is not configured.");
-            return 0;
-        }
-
-        var apiKey = ResolveApiKey();
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            _logger.LogWarning("Supabase blog notification sync skipped: SecretKey is not configured.");
-            return 0;
-        }
-
-        try
-        {
-            var subscriberIds = await GetActiveSubscriberIdsAsync(baseUri, apiKey, cancellationToken);
-            if (subscriberIds.Count == 0)
-            {
-                return 0;
-            }
-
-            var normalizedSlug = request.Slug.Trim().ToLowerInvariant();
-            var normalizedTitle = request.Title.Trim();
-            var imagePath = ResolveBlogNotificationImagePath(request);
-            var href = BuildPublishedBlogNotificationHref(normalizedSlug);
-            var sourceKey = BuildPublishedBlogSourceKey(request.PostId);
-
-            var notificationsToInsert = subscriberIds
-                .Select(subscriberId => new
-                {
-                    subscriber_id = subscriberId,
-                    notification_type = "blog_published",
-                    source_key = sourceKey,
-                    title = normalizedTitle,
-                    body = normalizedTitle,
-                    image_path = imagePath,
-                    image_alt = $"Hoofprent vir {normalizedTitle}",
-                    href,
-                    metadata = new
-                    {
-                        post_id = request.PostId,
-                        post_slug = normalizedSlug,
-                        post_title = normalizedTitle
-                    }
-                })
-                .Cast<object>()
-                .ToArray();
-
-            return await InsertNotificationsAsync(baseUri, apiKey, notificationsToInsert, cancellationToken);
-        }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            _logger.LogWarning(exception, "Supabase blog notification sync failed unexpectedly.");
-            return 0;
-        }
-    }
-
-    public async Task<int> CreatePublishedResourceDocumentNotificationsAsync(
-        PublishedResourceDocumentNotificationRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        if (request.ResourceDocumentId == Guid.Empty ||
-            string.IsNullOrWhiteSpace(request.ResourceTypeSlug) ||
-            string.IsNullOrWhiteSpace(request.Title))
-        {
-            return 0;
-        }
-
-        if (!TryBuildSupabaseBaseUri(out var baseUri))
-        {
-            _logger.LogWarning("Supabase resource notification sync skipped: URL is not configured.");
-            return 0;
-        }
-
-        var apiKey = ResolveApiKey();
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            _logger.LogWarning("Supabase resource notification sync skipped: SecretKey is not configured.");
-            return 0;
-        }
-
-        try
-        {
-            var subscriberIds = await GetActiveSubscriberIdsAsync(baseUri, apiKey, cancellationToken);
-            if (subscriberIds.Count == 0)
-            {
-                return 0;
-            }
-
-            var normalizedResourceTypeSlug = request.ResourceTypeSlug.Trim().ToLowerInvariant();
-            var normalizedResourceTypeName = string.IsNullOrWhiteSpace(request.ResourceTypeName)
-                ? "Hulpbronne"
-                : request.ResourceTypeName.Trim();
-            var normalizedTitle = request.Title.Trim();
-            var href = BuildPublishedResourceDocumentNotificationHref(normalizedResourceTypeSlug);
-            var sourceKey = BuildPublishedResourceDocumentSourceKey(request.ResourceDocumentId);
-            var imagePath = ResolveResourceDocumentNotificationImagePath(request);
-
-            var notificationsToInsert = subscriberIds
-                .Select(subscriberId => new
-                {
-                    subscriber_id = subscriberId,
-                    notification_type = "resource_document_published",
-                    source_key = sourceKey,
-                    title = "Nuwe hulpbron beskikbaar",
-                    body = $"{normalizedTitle} is nou beskikbaar.",
-                    image_path = imagePath,
-                    image_alt = $"Voorskou van {normalizedTitle}",
-                    href,
-                    metadata = new
-                    {
-                        resource_document_id = request.ResourceDocumentId,
-                        resource_type_slug = normalizedResourceTypeSlug,
-                        resource_type_name = normalizedResourceTypeName,
-                        resource_document_title = normalizedTitle
-                    }
-                })
-                .Cast<object>()
-                .ToArray();
-
-            return await InsertNotificationsAsync(baseUri, apiKey, notificationsToInsert, cancellationToken);
-        }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            _logger.LogWarning(exception, "Supabase resource notification sync failed unexpectedly.");
-            return 0;
-        }
-    }
-
     public async Task<NotificationSyncResult> SyncCharacterUnlockNotificationsAsync(
         string? email,
         string? storySlug = null,
@@ -775,8 +563,13 @@ public sealed class SupabaseUserNotificationService(
 
                     if (isUnlocked)
                     {
-                        var nextUnlockCount = trackedUnlockCount + 1;
-                        notificationsToInsert.Add(BuildCharacterUnlockNotificationPayload(subscriberId, character, nextUnlockCount));
+                        // If a prior sync inserted the inbox row but lost its state
+                        // write, finish that transition using its existing source key.
+                        var nextUnlockCount = Math.Max(trackedState.UnlockCount + 1, historicalUnlockCount);
+                        if (historicalUnlockCount < nextUnlockCount)
+                        {
+                            notificationsToInsert.Add(BuildCharacterUnlockNotificationPayload(subscriberId, character, nextUnlockCount));
+                        }
                         stateUpdates.Add(BuildCharacterUnlockStatePayload(
                             subscriberId,
                             character.CharacterId,
@@ -889,15 +682,7 @@ public sealed class SupabaseUserNotificationService(
             notifications,
             "resolution=ignore-duplicates,return=representation");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning(
-                "Supabase notifications insert failed. Status={StatusCode} Body={Body}",
-                (int)response.StatusCode,
-                body);
-            return 0;
-        }
+        response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var insertedRows = await JsonSerializer.DeserializeAsync<List<InsertedNotificationRow>>(stream, JsonOptions, cancellationToken)
@@ -920,19 +705,8 @@ public sealed class SupabaseUserNotificationService(
 
         using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            if (response.StatusCode != HttpStatusCode.NotFound)
-            {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning(
-                    "Supabase character unlock state lookup failed. Status={StatusCode} Body={Body}",
-                    (int)response.StatusCode,
-                    body);
-            }
-
-            return new Dictionary<Guid, CharacterUnlockTrackedState>();
-        }
+        if (response.StatusCode == HttpStatusCode.NotFound) return new Dictionary<Guid, CharacterUnlockTrackedState>();
+        response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var rows = await JsonSerializer.DeserializeAsync<List<CharacterUnlockStateRow>>(stream, JsonOptions, cancellationToken)
@@ -967,19 +741,8 @@ public sealed class SupabaseUserNotificationService(
 
         using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            if (response.StatusCode != HttpStatusCode.NotFound)
-            {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning(
-                    "Supabase character unlock notification history lookup failed. Status={StatusCode} Body={Body}",
-                    (int)response.StatusCode,
-                    body);
-            }
-
-            return new Dictionary<Guid, int>();
-        }
+        if (response.StatusCode == HttpStatusCode.NotFound) return new Dictionary<Guid, int>();
+        response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var rows = await JsonSerializer.DeserializeAsync<List<NotificationSourceKeyRow>>(stream, JsonOptions, cancellationToken)
@@ -1071,68 +834,6 @@ public sealed class SupabaseUserNotificationService(
         return TryParseContentRangeCount(response, out var count)
             ? count
             : 0;
-    }
-
-    private async Task<IReadOnlyList<string>> GetActiveSubscriberIdsAsync(
-        Uri baseUri,
-        string apiKey,
-        CancellationToken cancellationToken)
-    {
-        var subscriberIds = new List<string>();
-        const int pageSize = 1000;
-        var offset = 0;
-        var nowUtc = DateTimeOffset.UtcNow;
-
-        while (true)
-        {
-            var requestUri = new Uri(
-                baseUri,
-                "rest/v1/subscribers" +
-                "?select=subscriber_id,subscriptions!inner(status,next_renewal_at,cancelled_at)" +
-                "&disabled_at=is.null" +
-                "&subscriptions.status=eq.active" +
-                $"&limit={pageSize}" +
-                $"&offset={offset}");
-
-            using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning(
-                    "Supabase subscriber list lookup for notifications failed. Status={StatusCode} Body={Body}",
-                    (int)response.StatusCode,
-                    body);
-                break;
-            }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var rows = await JsonSerializer.DeserializeAsync<List<ActiveSubscriberLookupRow>>(stream, JsonOptions, cancellationToken)
-                ?? [];
-            var pageSubscriberIds = rows
-                .Where(row => row.Subscriptions?.Any(subscription => IsCurrentlyActiveSubscription(subscription, nowUtc)) == true)
-                .Select(row => row.SubscriberId)
-                .Where(static value => !string.IsNullOrWhiteSpace(value))
-                .Cast<string>()
-                .ToArray();
-
-            if (rows.Count == 0)
-            {
-                break;
-            }
-
-            subscriberIds.AddRange(pageSubscriberIds);
-            if (rows.Count < pageSize)
-            {
-                break;
-            }
-
-            offset += pageSize;
-        }
-
-        return subscriberIds
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
     }
 
     private async Task<string?> ResolveActiveSubscriberIdAsync(
@@ -1398,76 +1099,6 @@ public sealed class SupabaseUserNotificationService(
 
         return true;
     }
-
-    private static string BuildPublishedBlogSourceKey(Guid postId) =>
-        $"blog-published-{postId:N}";
-
-    private static string BuildPublishedResourceDocumentSourceKey(Guid resourceDocumentId) =>
-        $"resource-document-published-{resourceDocumentId:N}";
-
-    private static string BuildPublishedStorySourceKey(Guid storyId) =>
-        $"story-published-{storyId:N}";
-
-    private static string BuildPublishedStoryNotificationBody(PublishedStoryNotificationRequest request)
-    {
-        var normalizedTitle = request.Title.Trim();
-        var summary = string.IsNullOrWhiteSpace(request.Summary)
-            ? null
-            : request.Summary.Trim();
-
-        if (string.IsNullOrWhiteSpace(summary))
-        {
-            return $"{normalizedTitle} is nou beskikbaar. Tik om te luister.";
-        }
-
-        return $"{normalizedTitle} is nou beskikbaar. {summary}";
-    }
-
-    private static string ResolveBlogNotificationImagePath(PublishedBlogNotificationRequest request)
-    {
-        if (!string.IsNullOrWhiteSpace(request.FeaturedImageUrl))
-        {
-            return NormalizeNotificationImagePath(request.FeaturedImageUrl);
-        }
-
-        return StoryItem.PlaceholderImagePath;
-    }
-
-    private static string ResolveStoryNotificationImagePath(PublishedStoryNotificationRequest request)
-    {
-        if (!string.IsNullOrWhiteSpace(request.ThumbnailImagePath))
-        {
-            return NormalizeNotificationImagePath(request.ThumbnailImagePath);
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.CoverImagePath))
-        {
-            return NormalizeNotificationImagePath(request.CoverImagePath);
-        }
-
-        return StoryItem.PlaceholderImagePath;
-    }
-
-    private static string ResolveResourceDocumentNotificationImagePath(PublishedResourceDocumentNotificationRequest request)
-    {
-        if (!string.IsNullOrWhiteSpace(request.PreviewImageUrl))
-        {
-            return NormalizeNotificationImagePath(request.PreviewImageUrl);
-        }
-
-        return StoryItem.PlaceholderImagePath;
-    }
-
-    private static string BuildPublishedStoryNotificationHref(string slug, string accessLevel) =>
-        string.Equals(accessLevel, "free", StringComparison.OrdinalIgnoreCase)
-            ? $"/luister/{Uri.EscapeDataString(slug)}"
-            : $"/luister/{Uri.EscapeDataString(slug)}";
-
-    private static string BuildPublishedBlogNotificationHref(string slug) =>
-        $"/blog/{Uri.EscapeDataString(slug)}";
-
-    private static string BuildPublishedResourceDocumentNotificationHref(string resourceTypeSlug) =>
-        $"/resources?tipe={Uri.EscapeDataString(resourceTypeSlug)}";
 
     private static string ResolveNotificationImagePath(StoryCharacterItem character)
     {

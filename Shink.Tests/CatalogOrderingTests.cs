@@ -49,7 +49,7 @@ public sealed class CatalogOrderingTests
             ]
             """);
         using var client = new HttpClient(handler);
-        var service = new SupabaseBlogService(client, Options(), cache, new BlogContentRenderer(), null!,
+        var service = new SupabaseBlogService(client, Options(), cache, new BlogContentRenderer(),
             NullLogger<SupabaseBlogService>.Instance);
         CollectionAssert.AreEqual(new[] { "alpha", "beta", "old" },
             (await service.GetPublishedPostsAsync()).Select(post => post.Slug).ToArray());

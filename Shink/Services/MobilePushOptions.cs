@@ -3,6 +3,7 @@ namespace Shink.Services;
 public sealed class MobilePushOptions
 {
     public const string SectionName = "MobilePush";
+    public string? ReceiptDirectory { get; set; }
     public bool Enabled { get; set; }
     public string AppleTeamId { get; set; } = string.Empty;
     public string AppleKeyId { get; set; } = string.Empty;

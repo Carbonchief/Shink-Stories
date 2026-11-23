@@ -53,8 +53,7 @@ internal static class MobileLiquidGlass
 
     public static void ApplyTopBar(
         Microsoft.Maui.Controls.View view,
-        Microsoft.Maui.Graphics.Color? tint = null,
-        Microsoft.Maui.Controls.View? captureExclusion = null)
+        Microsoft.Maui.Graphics.Color? tint = null)
     {
 #if IOS
         if (!IsNativeBarBlurSupported)
@@ -75,12 +74,7 @@ internal static class MobileLiquidGlass
             return;
         }
 
-        AttachAndroid(
-            view,
-            tint,
-            captureExclusion,
-            fadeFromTop: false,
-            fadeFromBottom: true);
+        AttachAndroid(view, tint, fadeFromTop: false);
 #endif
     }
 
@@ -107,12 +101,7 @@ internal static class MobileLiquidGlass
             return;
         }
 
-        AttachAndroid(
-            view,
-            tint,
-            captureExclusion: null,
-            fadeFromTop: true,
-            fadeFromBottom: false);
+        AttachAndroid(view, tint, fadeFromTop: true);
 #endif
     }
 
@@ -123,36 +112,26 @@ internal static class MobileLiquidGlass
     private static void AttachAndroid(
         Microsoft.Maui.Controls.View view,
         Microsoft.Maui.Graphics.Color? tint,
-        Microsoft.Maui.Controls.View? captureExclusion,
-        bool fadeFromTop,
-        bool fadeFromBottom)
+        bool fadeFromTop)
     {
         view.HandlerChanged += (_, _) => ConfigureAndroid(
             view,
             tint,
-            captureExclusion,
-            fadeFromTop,
-            fadeFromBottom);
+            fadeFromTop);
         view.Loaded += (_, _) => ConfigureAndroid(
             view,
             tint,
-            captureExclusion,
-            fadeFromTop,
-            fadeFromBottom);
+            fadeFromTop);
         ConfigureAndroid(
             view,
             tint,
-            captureExclusion,
-            fadeFromTop,
-            fadeFromBottom);
+            fadeFromTop);
     }
 
     private static void ConfigureAndroid(
         Microsoft.Maui.Controls.View view,
         Microsoft.Maui.Graphics.Color? tint,
-        Microsoft.Maui.Controls.View? captureExclusion,
-        bool fadeFromTop,
-        bool fadeFromBottom)
+        bool fadeFromTop)
     {
         if (!IsAndroidBarBlurSupported ||
             view.Handler?.PlatformView is not Android.Views.ViewGroup nativeView)
@@ -160,20 +139,26 @@ internal static class MobileLiquidGlass
             return;
         }
 
-        nativeView.Post(() => EnsureAndroidGlass(
-            nativeView,
-            tint,
-            captureExclusion,
-            fadeFromTop,
-            fadeFromBottom));
+        nativeView.Post(() =>
+        {
+            // Shell can keep several pages attached. Only the page that owns
+            // this bar can supply its artwork, including during tab changes.
+            for (Element? element = view; element is not null; element = element.Parent)
+            {
+                if (element is Page && element.Handler?.PlatformView is Android.Views.ViewGroup pageRoot)
+                {
+                    EnsureAndroidGlass(nativeView, pageRoot, tint, fadeFromTop);
+                    return;
+                }
+            }
+        });
     }
 
     private static void EnsureAndroidGlass(
         Android.Views.ViewGroup nativeView,
+        Android.Views.ViewGroup blurRoot,
         Microsoft.Maui.Graphics.Color? tint,
-        Microsoft.Maui.Controls.View? captureExclusion,
-        bool fadeFromTop,
-        bool fadeFromBottom)
+        bool fadeFromTop)
     {
         if (!nativeView.IsAttachedToWindow)
         {
@@ -186,22 +171,13 @@ internal static class MobileLiquidGlass
             return;
         }
 
-        var blurRoot = nativeView.RootView?.FindViewById(Android.Resource.Id.Content) as Android.Views.ViewGroup
-            ?? nativeView.RootView as Android.Views.ViewGroup;
-        if (blurRoot is null)
-        {
-            return;
-        }
-
         var glassTint = (tint ?? Colors.Transparent).ToPlatform();
         var glassView = new AndroidBarGlassView(
             nativeView.Context!,
             blurRoot,
             nativeView,
-            captureExclusion,
             glassTint,
-            fadeFromTop,
-            fadeFromBottom)
+            fadeFromTop)
         {
             Tag = AndroidGlassViewTag,
             Alpha = NativeBarBlurOpacity,
@@ -245,33 +221,16 @@ internal static class MobileLiquidGlass
         Android.Content.Context context,
         Android.Views.ViewGroup blurRoot,
         Android.Views.ViewGroup glassHost,
-        Microsoft.Maui.Controls.View? captureExclusion,
         Android.Graphics.Color tint,
-        bool fadeFromTop,
-        bool fadeFromBottom)
+        bool fadeFromTop)
         : Android.Views.View(context),
           Android.Views.ViewTreeObserver.IOnScrollChangedListener
     {
-        // Three radius-one passes at this scale keep the existing soft spread
-        // with very few pixels, so the material can follow the scrolling content.
         private const int BackdropDownsample = 20;
-        private const int BackdropBlurRadius = 1;
-        private const int BackdropBlurPasses = 3;
-        private const long BackdropFrameMilliseconds = 32;
-
-        private readonly Android.Graphics.Paint _bitmapPaint =
-            new(Android.Graphics.PaintFlags.FilterBitmap | Android.Graphics.PaintFlags.Dither);
-        private readonly Android.Graphics.Paint _tintPaint =
-            new(Android.Graphics.PaintFlags.AntiAlias)
-            {
-                Color = tint
-            };
-        private readonly Android.Graphics.Paint _fadePaint =
-            CreateFadePaint();
-        private Android.Graphics.Bitmap? _blurredBackdrop;
-        private Android.Graphics.Bitmap? _captureBitmap;
-        private Android.Graphics.Bitmap? _spareBitmap;
-        private Android.Graphics.Canvas? _captureCanvas;
+        private readonly Android.Graphics.Paint _tintPaint = new() { Color = tint };
+        private readonly Android.Graphics.Paint _fallbackPaint = new(Android.Graphics.PaintFlags.Dither);
+        private Android.Graphics.RenderNode? _backdropNode;
+        private Android.Graphics.RenderNode? _surfaceNode;
         private Android.Views.View? _liveBackdropSource;
         private Android.Views.View? _backgroundSource;
         private readonly List<Android.Views.View> _backgroundAncestors = [];
@@ -279,46 +238,20 @@ internal static class MobileLiquidGlass
         private readonly int[] _rootLocation = new int[2];
         private Android.Graphics.Rect? _sourceVisibleBounds;
         private Android.Graphics.Rect? _barVisibleBounds;
-        private Android.Graphics.LinearGradient? _fadeShader;
-        private int[]? _pixelBuffer;
-        private int[]? _blurBuffer;
         private bool _scrollObserverAttached;
         private bool _isDetached;
         private bool _isCapturingBackdrop;
-        private bool _scrollCapturePosted;
-        private long _lastBackdropCaptureUptime;
-        private Java.Lang.Runnable? _scrollCaptureRunnable;
-        private Java.Lang.Runnable? _scrollFrameRunnable;
-
-        private Java.Lang.Runnable ScrollCaptureRunnable =>
-            _scrollCaptureRunnable ??= new(RefreshBackdropForScroll);
-
-        private Java.Lang.Runnable ScrollFrameRunnable =>
-            _scrollFrameRunnable ??= new(() =>
-            {
-                // A Handler message runs after this frame's layout/draw phases.
-                if (!_isDetached) Post(ScrollCaptureRunnable);
-            });
-
-        private static Android.Graphics.Paint CreateFadePaint()
-        {
-            var paint = new Android.Graphics.Paint(
-                Android.Graphics.PaintFlags.AntiAlias |
-                Android.Graphics.PaintFlags.Dither);
-            paint.SetXfermode(new Android.Graphics.PorterDuffXfermode(
-                Android.Graphics.PorterDuff.Mode.DstIn!));
-            return paint;
-        }
 
         protected override void OnAttachedToWindow()
         {
             _isDetached = false;
             base.OnAttachedToWindow();
             SetWillNotDraw(false);
-            // Cache the composed bitmap/tint/fade between live captures. Without
-            // a layer Android replays both offscreen alpha/mask passes whenever
-            // the list scrolls, even if this bar's bitmap has not changed.
-            SetLayerType(Android.Views.LayerType.Hardware, null);
+            if (!OperatingSystem.IsAndroidVersionAtLeast(31) || !IsHardwareAccelerated)
+            {
+                return;
+            }
+
             if (!_scrollObserverAttached && ViewTreeObserver?.IsAlive == true)
             {
                 ViewTreeObserver.AddOnScrollChangedListener(this);
@@ -337,15 +270,6 @@ internal static class MobileLiquidGlass
             }
 
             _isDetached = true;
-            _scrollCapturePosted = false;
-            if (_scrollCaptureRunnable is not null)
-            {
-                RemoveCallbacks(_scrollCaptureRunnable);
-            }
-            if (_scrollFrameRunnable is not null)
-            {
-                RemoveCallbacks(_scrollFrameRunnable);
-            }
             _scrollObserverAttached = false;
             _liveBackdropSource = null;
             _backgroundSource = null;
@@ -354,49 +278,34 @@ internal static class MobileLiquidGlass
             _sourceVisibleBounds = null;
             _barVisibleBounds?.Dispose();
             _barVisibleBounds = null;
-            _captureCanvas?.Dispose();
-            _captureCanvas = null;
-            _blurredBackdrop?.Dispose();
-            _blurredBackdrop = null;
-            _captureBitmap?.Dispose();
-            _captureBitmap = null;
-            _spareBitmap?.Dispose();
-            _spareBitmap = null;
-            _fadeShader?.Dispose();
-            _fadeShader = null;
+            if (OperatingSystem.IsAndroidVersionAtLeast(31))
+            {
+                _surfaceNode?.DiscardDisplayList();
+                _surfaceNode?.Dispose();
+                _surfaceNode = null;
+                _backdropNode?.DiscardDisplayList();
+                _backdropNode?.Dispose();
+                _backdropNode = null;
+            }
+
             base.OnDetachedFromWindow();
         }
 
         protected override void OnSizeChanged(int width, int height, int oldWidth, int oldHeight)
         {
             base.OnSizeChanged(width, height, oldWidth, oldHeight);
-            _fadeShader?.Dispose();
-            _fadeShader = CreateFadeShader(Math.Max(height, 1));
+            // On devices without native backdrop blur, use a steady translucent
+            // surface so older phones never have to rasterize the feed on scroll.
+            using var fallback = CreateFadeShader(Math.Max(height, 1),
+                Android.Graphics.Color.Argb(160, tint.R, tint.G, tint.B));
+            _fallbackPaint.SetShader(fallback);
             ScheduleBackdropCapture(16);
         }
 
-        public void OnScrollChanged()
-        {
-            if (_isDetached || _isCapturingBackdrop || !IsBackdropVisible() || _scrollCapturePosted)
-            {
-                return;
-            }
-
-            // Keep refreshing throughout a drag/fling, at a bounded cadence.
-            // New scroll events do not postpone an already scheduled refresh.
-            _scrollCapturePosted = true;
-            var delay = Math.Max(0, BackdropFrameMilliseconds -
-                (Android.OS.SystemClock.UptimeMillis() - _lastBackdropCaptureUptime));
-            // Use the animation callback only to enqueue a Handler message. The
-            // snapshot then runs after this frame's layout/draw work is submitted.
-            PostOnAnimationDelayed(ScrollFrameRunnable, delay);
-        }
-
-        private void RefreshBackdropForScroll()
-        {
-            _scrollCapturePosted = false;
-            CaptureBackdrop();
-        }
+        // Android dispatches this once during a draw traversal, after scroll
+        // positions have settled for the frame. Posting the capture from here
+        // lets an old backdrop appear over a newer position in the feed.
+        public void OnScrollChanged() => CaptureBackdrop();
 
         private bool IsBackdropVisible()
         {
@@ -422,36 +331,24 @@ internal static class MobileLiquidGlass
         protected override void OnDraw(Android.Graphics.Canvas canvas)
         {
             base.OnDraw(canvas);
-            if ((!fadeFromTop && !fadeFromBottom) || Width <= 0 || Height <= 0)
+            if (OperatingSystem.IsAndroidVersionAtLeast(31) && canvas.IsHardwareAccelerated &&
+                _surfaceNode is { HasDisplayList: true } surface)
             {
-                DrawBackdropAndTint(canvas);
-                return;
+                var checkpoint = canvas.Save();
+                canvas.Scale(Width / (float)surface.Width, Height / (float)surface.Height);
+                canvas.DrawRenderNode(surface);
+                canvas.RestoreToCount(checkpoint);
             }
-
-            _fadeShader ??= CreateFadeShader(Height);
-            _fadePaint.SetShader(_fadeShader);
-
-            var layerCheckpoint = canvas.SaveLayer(0, 0, Width, Height, null);
-            DrawBackdropAndTint(canvas);
-            canvas.DrawRect(0, 0, Width, Height, _fadePaint);
-            canvas.RestoreToCount(layerCheckpoint);
-        }
-
-        private void DrawBackdropAndTint(Android.Graphics.Canvas canvas)
-        {
-            if (_blurredBackdrop is not null && !_blurredBackdrop.IsRecycled)
+            else
             {
-                using var destination = new Android.Graphics.RectF(0, 0, Width, Height);
-                canvas.DrawBitmap(_blurredBackdrop, null, destination, _bitmapPaint);
+                canvas.DrawRect(0, 0, Width, Height, _fallbackPaint);
             }
-
-            canvas.DrawRect(0, 0, Width, Height, _tintPaint);
         }
 
         private void CaptureBackdrop()
         {
-            if (_isDetached ||
-                _isCapturingBackdrop ||
+            if (!OperatingSystem.IsAndroidVersionAtLeast(31) || !IsHardwareAccelerated ||
+                _isDetached || _isCapturingBackdrop ||
                 !IsBackdropVisible() ||
                 Width <= 0 ||
                 Height <= 0 ||
@@ -460,95 +357,76 @@ internal static class MobileLiquidGlass
                 return;
             }
 
-            // Initial/resize captures share the pending animation-frame refresh.
-            if (_scrollCapturePosted)
-            {
-                return;
-            }
-
             _isCapturingBackdrop = true;
-            _lastBackdropCaptureUptime = Android.OS.SystemClock.UptimeMillis();
-            var liveSource = FindLiveBackdropSource();
-            var bitmapWidth = Math.Max(1, (int)Math.Ceiling(Width / (double)BackdropDownsample));
-            var bitmapHeight = Math.Max(1, (int)Math.Ceiling(Height / (double)BackdropDownsample));
-            EnsureBackdropBitmap(bitmapWidth, bitmapHeight);
-            var bitmap = _captureBitmap;
-            if (bitmap is null)
-            {
-                _isCapturingBackdrop = false;
-                return;
-            }
-
-            bitmap.EraseColor(Android.Graphics.Color.Transparent);
-            GetLocationInWindow(_selfLocation);
-            blurRoot.GetLocationInWindow(_rootLocation);
-
-            var exclusionView = liveSource is null ? FindCaptureExclusionView() : null;
-            var previousVisibility = exclusionView?.Visibility;
-            var additionalExclusion = liveSource is null
-                ? captureExclusion?.Handler?.PlatformView as Android.Views.View
-                : null;
-            var previousAdditionalVisibility = additionalExclusion?.Visibility;
             try
             {
-                if (exclusionView is not null)
-                    exclusionView.Visibility = Android.Views.ViewStates.Invisible;
-                if (additionalExclusion is not null && additionalExclusion != exclusionView)
-                {
-                    additionalExclusion.Visibility = Android.Views.ViewStates.Invisible;
-                }
-                var captureCanvas = _captureCanvas!;
-                var checkpoint = captureCanvas.Save();
+                var source = FindLiveBackdropSource() ?? glassHost;
+                var width = (Width + BackdropDownsample - 1) / BackdropDownsample;
+                var height = (Height + BackdropDownsample - 1) / BackdropDownsample;
+                EnsureBackdropSurface(width, height);
+                GetLocationInWindow(_selfLocation);
+                var recording = _backdropNode!.BeginRecording();
                 try
                 {
-                    captureCanvas.Scale(
-                        1f / BackdropDownsample,
-                        1f / BackdropDownsample);
-                    captureCanvas.Translate(-_selfLocation[0], -_selfLocation[1]);
-                    if (liveSource is not null)
-                    {
-                        // Snapshot only the scrolling viewport beneath the bar.
-                        // Keep bar overlays visible and leave the MAUI window's
-                        // other pages, toolbars and layout state untouched.
-                        DrawScrollingContent(captureCanvas, liveSource);
-                    }
-                    else
-                    {
-                        captureCanvas.Translate(_rootLocation[0], _rootLocation[1]);
-                        blurRoot.Draw(captureCanvas);
-                    }
+                    recording.Scale(width / (float)Width, height / (float)Height);
+                    recording.Translate(-_selfLocation[0], -_selfLocation[1]);
+                    DrawBackdropContent(recording, source);
                 }
                 finally
                 {
-                    captureCanvas.RestoreToCount(checkpoint);
+                    _backdropNode.EndRecording();
                 }
-
-                ApplyBoxBlur(bitmap, BackdropBlurRadius, BackdropBlurPasses);
-                // Keep the displayed bitmap immutable while RenderThread may
-                // still be reading it. Reuse three small buffers in rotation.
-                var previousDisplay = _blurredBackdrop;
-                _blurredBackdrop = bitmap;
-                _captureBitmap = _spareBitmap;
-                _spareBitmap = previousDisplay;
-                _captureCanvas!.SetBitmap(_captureBitmap);
             }
             finally
             {
-                if (additionalExclusion is not null &&
-                    additionalExclusion != exclusionView &&
-                    previousAdditionalVisibility is not null)
-                {
-                    additionalExclusion.Visibility = previousAdditionalVisibility.Value;
-                }
-                if (exclusionView is not null && previousVisibility is not null)
-                    exclusionView.Visibility = previousVisibility.Value;
                 _isCapturingBackdrop = false;
             }
 
-            PostInvalidateOnAnimation();
+            Invalidate();
         }
 
-        private void DrawScrollingContent(Android.Graphics.Canvas canvas, Android.Views.View source)
+        [System.Runtime.Versioning.SupportedOSPlatform("android31.0")]
+        private void EnsureBackdropSurface(int width, int height)
+        {
+            if (_surfaceNode is { HasDisplayList: true } surface &&
+                surface.Width == width && surface.Height == height)
+            {
+                return;
+            }
+
+            if (_backdropNode is null)
+            {
+                _backdropNode = new Android.Graphics.RenderNode("Schink bar artwork");
+                using var blur = Android.Graphics.RenderEffect.CreateBlurEffect(
+                    1.5f, 1.5f, Android.Graphics.Shader.TileMode.Clamp!);
+                _backdropNode.SetRenderEffect(blur);
+            }
+            _backdropNode.SetPosition(0, 0, width, height);
+
+            // Composite the tint and edge fade once at the sampling resolution.
+            // The display list references the artwork node as its contents change.
+            _surfaceNode ??= new Android.Graphics.RenderNode("Schink bar surface");
+            _surfaceNode.SetUseCompositingLayer(true, null);
+            _surfaceNode.SetPosition(0, 0, width, height);
+            var recording = _surfaceNode.BeginRecording();
+            try
+            {
+                recording.DrawRenderNode(_backdropNode);
+                recording.DrawRect(0, 0, width, height, _tintPaint);
+                using var shader = CreateFadeShader(height, Android.Graphics.Color.Black);
+                using var blend = new Android.Graphics.PorterDuffXfermode(Android.Graphics.PorterDuff.Mode.DstIn!);
+                using var mask = new Android.Graphics.Paint(Android.Graphics.PaintFlags.Dither);
+                mask.SetShader(shader);
+                mask.SetXfermode(blend);
+                recording.DrawRect(0, 0, width, height, mask);
+            }
+            finally
+            {
+                _surfaceNode.EndRecording();
+            }
+        }
+
+        private void DrawBackdropContent(Android.Graphics.Canvas canvas, Android.Views.View source)
         {
             if (!ReferenceEquals(_backgroundSource, source))
             {
@@ -578,6 +456,15 @@ internal static class MobileLiquidGlass
                 DrawUnderlaySiblings(canvas, ancestor,
                     index == 0 ? source : _backgroundAncestors[index - 1]);
             }
+
+            // An embedded toolbar can be inside the only scrolling view. In
+            // that case its ancestor backgrounds and underlays are the backdrop.
+            // Drawing the host itself would feed the glass and icons back in.
+            if (source == glassHost)
+            {
+                return;
+            }
+
             source.GetLocationInWindow(_rootLocation);
             canvas.ClipRect(_rootLocation[0], _rootLocation[1],
                 _rootLocation[0] + source.Width, _rootLocation[1] + source.Height);
@@ -630,9 +517,9 @@ internal static class MobileLiquidGlass
 
                 // Shell's pager also contains a RecyclerView. Select page content
                 // rather than navigation containers that include glass overlays.
-                if (candidate.FindViewWithTag(AndroidGlassViewTag) is null &&
-                    candidate is (AndroidX.RecyclerView.Widget.RecyclerView or
-                        AndroidX.Core.Widget.NestedScrollView or Android.Widget.ScrollView))
+                if (candidate is (AndroidX.RecyclerView.Widget.RecyclerView or
+                        AndroidX.Core.Widget.NestedScrollView or Android.Widget.ScrollView) &&
+                    candidate.FindViewWithTag(AndroidGlassViewTag) is null)
                 {
                     var area = (long)candidate.Width * candidate.Height;
                     // Prefer the page viewport over its nested story carousels.
@@ -651,173 +538,7 @@ internal static class MobileLiquidGlass
             }
         }
 
-        private Android.Views.View FindCaptureExclusionView()
-        {
-            Android.Views.View candidate = glassHost;
-            var maximumOverlayHeight = Math.Max(Height, 1) * 2;
-
-            while (candidate.Parent is Android.Views.View parent &&
-                   parent != blurRoot &&
-                   parent.Height > 0 &&
-                   parent.Height <= maximumOverlayHeight)
-            {
-                candidate = parent;
-            }
-
-            return candidate;
-        }
-
-        private void EnsureBackdropBitmap(int width, int height)
-        {
-            if (_captureBitmap is not null &&
-                !_captureBitmap.IsRecycled &&
-                _captureBitmap.Width == width &&
-                _captureBitmap.Height == height)
-            {
-                return;
-            }
-
-            _captureCanvas?.Dispose();
-            _blurredBackdrop?.Dispose();
-            _captureBitmap?.Dispose();
-            _spareBitmap?.Dispose();
-            _blurredBackdrop = Android.Graphics.Bitmap.CreateBitmap(
-                width,
-                height,
-                Android.Graphics.Bitmap.Config.Argb8888!);
-            _captureBitmap = Android.Graphics.Bitmap.CreateBitmap(
-                width, height, Android.Graphics.Bitmap.Config.Argb8888!);
-            _spareBitmap = Android.Graphics.Bitmap.CreateBitmap(
-                width, height, Android.Graphics.Bitmap.Config.Argb8888!);
-            _captureCanvas = new Android.Graphics.Canvas(_captureBitmap!);
-            _pixelBuffer = new int[width * height];
-            _blurBuffer = new int[width * height];
-        }
-
-        private void ApplyBoxBlur(Android.Graphics.Bitmap bitmap, int radius, int passCount)
-        {
-            var width = bitmap.Width;
-            var height = bitmap.Height;
-            var pixelCount = width * height;
-            if (pixelCount <= 0 || radius <= 0)
-            {
-                return;
-            }
-
-            _pixelBuffer ??= new int[pixelCount];
-            _blurBuffer ??= new int[pixelCount];
-            if (_pixelBuffer.Length != pixelCount || _blurBuffer.Length != pixelCount)
-            {
-                _pixelBuffer = new int[pixelCount];
-                _blurBuffer = new int[pixelCount];
-            }
-
-            bitmap.GetPixels(_pixelBuffer, 0, width, 0, 0, width, height);
-            for (var pass = 0; pass < passCount; pass++)
-            {
-                BoxBlurHorizontal(_pixelBuffer, _blurBuffer, width, height, radius);
-                BoxBlurVertical(_blurBuffer, _pixelBuffer, width, height, radius);
-            }
-
-            bitmap.SetPixels(_pixelBuffer, 0, width, 0, 0, width, height);
-        }
-
-        private static void BoxBlurHorizontal(
-            int[] source,
-            int[] destination,
-            int width,
-            int height,
-            int radius)
-        {
-            var windowSize = radius * 2 + 1;
-            for (var y = 0; y < height; y++)
-            {
-                var rowOffset = y * width;
-                var alpha = 0;
-                var red = 0;
-                var green = 0;
-                var blue = 0;
-                for (var sample = -radius; sample <= radius; sample++)
-                {
-                    AddColor(source[rowOffset + Math.Clamp(sample, 0, width - 1)], ref alpha, ref red, ref green, ref blue);
-                }
-
-                for (var x = 0; x < width; x++)
-                {
-                    destination[rowOffset + x] = ComposeColor(alpha, red, green, blue, windowSize);
-                    RemoveColor(source[rowOffset + Math.Clamp(x - radius, 0, width - 1)], ref alpha, ref red, ref green, ref blue);
-                    AddColor(source[rowOffset + Math.Clamp(x + radius + 1, 0, width - 1)], ref alpha, ref red, ref green, ref blue);
-                }
-            }
-        }
-
-        private static void BoxBlurVertical(
-            int[] source,
-            int[] destination,
-            int width,
-            int height,
-            int radius)
-        {
-            var windowSize = radius * 2 + 1;
-            for (var x = 0; x < width; x++)
-            {
-                var alpha = 0;
-                var red = 0;
-                var green = 0;
-                var blue = 0;
-                for (var sample = -radius; sample <= radius; sample++)
-                {
-                    AddColor(source[Math.Clamp(sample, 0, height - 1) * width + x], ref alpha, ref red, ref green, ref blue);
-                }
-
-                for (var y = 0; y < height; y++)
-                {
-                    var index = y * width + x;
-                    destination[index] = ComposeColor(alpha, red, green, blue, windowSize);
-                    RemoveColor(source[Math.Clamp(y - radius, 0, height - 1) * width + x], ref alpha, ref red, ref green, ref blue);
-                    AddColor(source[Math.Clamp(y + radius + 1, 0, height - 1) * width + x], ref alpha, ref red, ref green, ref blue);
-                }
-            }
-        }
-
-        private static void AddColor(
-            int color,
-            ref int alpha,
-            ref int red,
-            ref int green,
-            ref int blue)
-        {
-            alpha += (color >>> 24) & 0xff;
-            red += (color >>> 16) & 0xff;
-            green += (color >>> 8) & 0xff;
-            blue += color & 0xff;
-        }
-
-        private static void RemoveColor(
-            int color,
-            ref int alpha,
-            ref int red,
-            ref int green,
-            ref int blue)
-        {
-            alpha -= (color >>> 24) & 0xff;
-            red -= (color >>> 16) & 0xff;
-            green -= (color >>> 8) & 0xff;
-            blue -= color & 0xff;
-        }
-
-        private static int ComposeColor(
-            int alpha,
-            int red,
-            int green,
-            int blue,
-            int divisor) =>
-            ((alpha / divisor) << 24) |
-            ((red / divisor) << 16) |
-            ((green / divisor) << 8) |
-            (blue / divisor);
-
-        private Android.Graphics.LinearGradient CreateFadeShader(int height)
+        private Android.Graphics.LinearGradient CreateFadeShader(int height, Android.Graphics.Color color)
         {
             var alphaStops = fadeFromTop
                 ? new[] { 0f, 0.24f, 0.68f, 0.94f, 1f, 1f }
@@ -827,10 +548,7 @@ internal static class MobileLiquidGlass
                 : new[] { 0f, 0.58f, 0.78f, 0.92f, 1f };
             var colors = alphaStops
                 .Select(alpha => Android.Graphics.Color.Argb(
-                    (int)Math.Round(alpha * 255),
-                    0,
-                    0,
-                    0).ToArgb())
+                    (int)Math.Round(alpha * color.A), color.R, color.G, color.B).ToArgb())
                 .ToArray();
 
             return new Android.Graphics.LinearGradient(

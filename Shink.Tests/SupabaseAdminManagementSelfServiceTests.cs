@@ -399,8 +399,7 @@ public partial class SupabaseAdminManagementSelfServiceTests
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
-        var notificationService = new RecordingUserNotificationService();
-        var service = CreateService(handler, notificationService);
+        var service = CreateService(handler);
 
         var result = await service.CreateResourceDocumentAsync(
             "admin@example.com",
@@ -423,12 +422,9 @@ public partial class SupabaseAdminManagementSelfServiceTests
                 IsEnabled: true));
 
         Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
-        Assert.IsNotNull(notificationService.PublishedResourceDocumentRequest);
-        Assert.AreEqual(resourceDocumentId, notificationService.PublishedResourceDocumentRequest.ResourceDocumentId);
-        Assert.AreEqual("aktiwiteite", notificationService.PublishedResourceDocumentRequest.ResourceTypeSlug);
-        Assert.AreEqual("Aktiwiteite", notificationService.PublishedResourceDocumentRequest.ResourceTypeName);
-        Assert.AreEqual("Nuwe Aktiwiteit", notificationService.PublishedResourceDocumentRequest.Title);
-        Assert.AreEqual($"/media/resources/{resourceDocumentId:D}/preview", notificationService.PublishedResourceDocumentRequest.PreviewImageUrl);
+        Assert.AreEqual(resourceDocumentId, result.EntityId);
+        var payload = JsonSerializer.Deserialize<JsonElement>(handler.ResourceDocumentPostPayload!);
+        Assert.IsTrue(payload.GetProperty("queue_publication_notification").GetBoolean());
     }
 
     [TestMethod]
@@ -451,8 +447,7 @@ public partial class SupabaseAdminManagementSelfServiceTests
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
-        var notificationService = new RecordingUserNotificationService();
-        var service = CreateService(handler, notificationService);
+        var service = CreateService(handler);
 
         var result = await service.UpdateResourceDocumentAsync(
             "admin@example.com",
@@ -466,10 +461,10 @@ public partial class SupabaseAdminManagementSelfServiceTests
                 IsEnabled: false));
 
         Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
-        Assert.IsNull(notificationService.PublishedResourceDocumentRequest);
         Assert.IsNotNull(handler.ResourceDocumentPatchPayload);
 
         var patchPayload = JsonSerializer.Deserialize<JsonElement>(handler.ResourceDocumentPatchPayload!);
+        Assert.IsFalse(patchPayload.TryGetProperty("queue_publication_notification", out _));
         Assert.AreEqual("nuwe-naam", patchPayload.GetProperty("slug").GetString());
         Assert.AreEqual("Nuwe Naam", patchPayload.GetProperty("title").GetString());
         Assert.AreEqual("Opgedateerde beskrywing", patchPayload.GetProperty("description").GetString());
@@ -498,8 +493,7 @@ public partial class SupabaseAdminManagementSelfServiceTests
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
-        var notificationService = new RecordingUserNotificationService();
-        var service = CreateService(handler, notificationService);
+        var service = CreateService(handler);
 
         var result = await service.CreateStoryAsync(
             "admin@example.com",
@@ -527,16 +521,9 @@ public partial class SupabaseAdminManagementSelfServiceTests
 
         Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
         Assert.AreEqual(storyId, result.EntityId);
-        Assert.IsNotNull(notificationService.PublishedStoryRequest);
-        Assert.AreEqual(storyId, notificationService.PublishedStoryRequest.StoryId);
-        Assert.AreEqual("nuwe-gepubliseerde-storie", notificationService.PublishedStoryRequest.Slug);
-        Assert.AreEqual("Nuwe gepubliseerde storie", notificationService.PublishedStoryRequest.Title);
-        Assert.AreEqual("subscriber", notificationService.PublishedStoryRequest.AccessLevel);
-        Assert.AreEqual("Kort opsomming", notificationService.PublishedStoryRequest.Summary);
-        Assert.AreEqual("/stories/nuwe/thumb.webp", notificationService.PublishedStoryRequest.ThumbnailImagePath);
-        Assert.AreEqual("/stories/nuwe/cover.webp", notificationService.PublishedStoryRequest.CoverImagePath);
         Assert.IsNotNull(handler.StoryPostPayload);
         var storyPayload = JsonSerializer.Deserialize<JsonElement>(handler.StoryPostPayload);
+        Assert.IsTrue(storyPayload.GetProperty("queue_publication_notification").GetBoolean());
         Assert.AreEqual("video", storyPayload.GetProperty("story_type").GetString());
         Assert.AreEqual(JsonValueKind.Null, storyPayload.GetProperty("audio_object_key").ValueKind);
         Assert.AreEqual(
@@ -563,8 +550,7 @@ public partial class SupabaseAdminManagementSelfServiceTests
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
-        var notificationService = new RecordingUserNotificationService();
-        var service = CreateService(handler, notificationService);
+        var service = CreateService(handler);
 
         var result = await service.CreateStoryAsync(
             "admin@example.com",
@@ -591,7 +577,8 @@ public partial class SupabaseAdminManagementSelfServiceTests
 
         Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
         Assert.AreEqual(storyId, result.EntityId);
-        Assert.IsNull(notificationService.PublishedStoryRequest);
+        var payload = JsonSerializer.Deserialize<JsonElement>(handler.StoryPostPayload!);
+        Assert.IsFalse(payload.GetProperty("queue_publication_notification").GetBoolean());
     }
 
     [TestMethod]
@@ -996,7 +983,6 @@ public partial class SupabaseAdminManagementSelfServiceTests
 
     private static SupabaseAdminManagementService CreateService(
         HttpMessageHandler handler,
-        IUserNotificationService? userNotificationService = null,
         ISubscriptionPaymentRecoveryEmailService? subscriptionPaymentRecoveryEmailService = null,
         IMemoryCache? memoryCache = null)
     {
@@ -1041,7 +1027,6 @@ public partial class SupabaseAdminManagementSelfServiceTests
                 PublicBaseUrl = "https://www.schink.co.za"
             }),
             memoryCache,
-            userNotificationService ?? new NoopUserNotificationService(),
             new NoopWordPressMigrationService(),
             new NoopSupabaseAuthService(),
             new NoopSchoolSeatNotificationEmailService(),
@@ -1072,6 +1057,7 @@ public partial class SupabaseAdminManagementSelfServiceTests
         public string? PaystackDisablePayload { get; private set; }
         public PayFastCancelRequest? PayFastCancelRequest { get; private set; }
         public string? SubscriptionPatchPayload { get; private set; }
+        public string? ResourceDocumentPostPayload { get; private set; }
         public string? ResourceDocumentPatchPayload { get; private set; }
         public string? StoryPostPayload { get; private set; }
 
@@ -1086,6 +1072,10 @@ public partial class SupabaseAdminManagementSelfServiceTests
                      request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
             {
                 SubscriptionPatchPayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+            }
+            else if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/rest/v1/resource_documents")
+            {
+                ResourceDocumentPostPayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
             }
             else if (request.Method == new HttpMethod("PATCH") &&
                      request.RequestUri?.AbsolutePath == "/rest/v1/resource_documents")
@@ -1115,91 +1105,6 @@ public partial class SupabaseAdminManagementSelfServiceTests
     }
 
     private sealed record PayFastCancelRequest(string Url, Dictionary<string, string> Headers);
-
-    private sealed class NoopUserNotificationService : IUserNotificationService
-    {
-        public Task<UserNotificationPageResult> GetNotificationsAsync(
-            string? email,
-            int take = 10,
-            DateTimeOffset? before = null,
-            bool history = false,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new UserNotificationPageResult([], 0, false, false));
-
-        public Task<NotificationSyncResult> SyncCharacterUnlockNotificationsAsync(
-            string? email,
-            string? storySlug = null,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NotificationSyncResult(0));
-
-        public Task<int> MarkAllNotificationsReadAsync(string? email, CancellationToken cancellationToken = default) =>
-            Task.FromResult(0);
-
-        public Task<bool> MarkNotificationReadAsync(string? email, Guid notificationId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(false);
-
-        public Task<int> ClearNotificationsAsync(string? email, CancellationToken cancellationToken = default) =>
-            Task.FromResult(0);
-
-        public Task<bool> ClearNotificationAsync(string? email, Guid notificationId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(false);
-
-        public Task<int> CreatePublishedBlogNotificationsAsync(PublishedBlogNotificationRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(0);
-
-        public Task<int> CreatePublishedStoryNotificationsAsync(PublishedStoryNotificationRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(0);
-
-        public Task<int> CreatePublishedResourceDocumentNotificationsAsync(PublishedResourceDocumentNotificationRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(0);
-    }
-
-    private sealed class RecordingUserNotificationService : IUserNotificationService
-    {
-        public PublishedStoryNotificationRequest? PublishedStoryRequest { get; private set; }
-        public PublishedResourceDocumentNotificationRequest? PublishedResourceDocumentRequest { get; private set; }
-
-        public Task<UserNotificationPageResult> GetNotificationsAsync(
-            string? email,
-            int take = 10,
-            DateTimeOffset? before = null,
-            bool history = false,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new UserNotificationPageResult([], 0, false, false));
-
-        public Task<NotificationSyncResult> SyncCharacterUnlockNotificationsAsync(
-            string? email,
-            string? storySlug = null,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NotificationSyncResult(0));
-
-        public Task<int> MarkAllNotificationsReadAsync(string? email, CancellationToken cancellationToken = default) =>
-            Task.FromResult(0);
-
-        public Task<bool> MarkNotificationReadAsync(string? email, Guid notificationId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(false);
-
-        public Task<int> ClearNotificationsAsync(string? email, CancellationToken cancellationToken = default) =>
-            Task.FromResult(0);
-
-        public Task<bool> ClearNotificationAsync(string? email, Guid notificationId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(false);
-
-        public Task<int> CreatePublishedBlogNotificationsAsync(PublishedBlogNotificationRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(0);
-
-        public Task<int> CreatePublishedStoryNotificationsAsync(PublishedStoryNotificationRequest request, CancellationToken cancellationToken = default)
-        {
-            PublishedStoryRequest = request;
-            return Task.FromResult(1);
-        }
-
-        public Task<int> CreatePublishedResourceDocumentNotificationsAsync(PublishedResourceDocumentNotificationRequest request, CancellationToken cancellationToken = default)
-        {
-            PublishedResourceDocumentRequest = request;
-            return Task.FromResult(1);
-        }
-    }
 
     private sealed class NoopWordPressMigrationService : IWordPressMigrationService
     {

@@ -1,9 +1,12 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Shink.Services;
 
 namespace Shink.Tests;
@@ -252,6 +255,117 @@ public sealed class MobilePushTests
         Assert.IsNotNull(push);
         Assert.AreEqual(id, push.NotificationId);
         Assert.AreEqual(registration, push.RegistrationId);
+    }
+
+    [TestMethod]
+    public async Task PublicationWorker_DrainsCommittedBatchesWithPushDisabled()
+    {
+        var calls = 0;
+        var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var storage = new Handler(async request =>
+        {
+            Assert.AreEqual("/rest/v1/rpc/process_notification_publication_batch", request.RequestUri!.AbsolutePath);
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            Assert.IsEmpty(body.RootElement.EnumerateObject().ToArray());
+            if (++calls <= 2) return JsonResponse(HttpStatusCode.OK, "200");
+            drained.TrySetResult();
+            return JsonResponse(HttpStatusCode.OK, "0");
+        });
+        using var http = new HttpClient(storage);
+        var settings = Options.Create(new SupabaseOptions { Url = "https://storage.invalid", SecretKey = "fixture" });
+        using var services = new ServiceCollection().AddSingleton(new SupabaseMobilePushStore(http, settings)).BuildServiceProvider();
+        using var worker = new NotificationPublicationWorker(services.GetRequiredService<IServiceScopeFactory>(), settings,
+            NullLogger<NotificationPublicationWorker>.Instance);
+        await worker.StartAsync(TestContext.CancellationToken);
+        try { await drained.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken); }
+        finally { await worker.StopAsync(TestContext.CancellationToken); }
+        Assert.AreEqual(3, calls);
+    }
+
+    [TestMethod]
+    public async Task Worker_ResumesAfterAcknowledgementOutage_WithoutRepeatingAcceptedPushes()
+    {
+        // Every HTTP client is backed by an in-process handler. No sockets or real devices.
+        var devices = Enumerable.Range(0, 2621).Select(i => Delivery(i % 2 == 0 ? "fcm" : "apns")).ToArray();
+        var interrupted = devices[3];
+        var lostReply = devices[4];
+        var throttled = devices[5];
+        var accepted = new ConcurrentDictionary<Guid, int>();
+        var acknowledgements = new ConcurrentDictionary<Guid, bool>();
+        var ackAttempts = new ConcurrentDictionary<Guid, int>();
+        var scheduledRetries = new ConcurrentDictionary<Guid, bool>();
+        var throttleRequests = 0;
+        var directory = Directory.CreateTempSubdirectory("schink-receipts-");
+        try
+        {
+            using var appleKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var settings = AppleSettings(appleKey);
+            settings.FirebaseProjectId = "fixture";
+            settings.FirebaseServiceAccountJson = "{}";
+            settings.ReceiptDirectory = directory.FullName;
+            using var cache = new MemoryCache(new MemoryCacheOptions());
+            cache.Set("mobile-push:google-token", "fixture-token");
+            using var services = new ServiceCollection().BuildServiceProvider();
+            using var provider = new Handler(async request =>
+            {
+                using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+                var id = request.RequestUri!.Host == "fcm.googleapis.com"
+                    ? payload.RootElement.GetProperty("message").GetProperty("data").GetProperty("notification_id").GetGuid()
+                    : payload.RootElement.GetProperty("notification_id").GetGuid();
+                if (id == throttled.NotificationId && Interlocked.Increment(ref throttleRequests) == 1)
+                    return JsonResponse(HttpStatusCode.TooManyRequests, "{}");
+                accepted.AddOrUpdate(id, 1, (_, count) => count + 1);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            });
+            using var storage = new Handler(async request =>
+            {
+                using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+                var id = payload.RootElement.GetProperty("p_delivery_id").GetGuid();
+                switch (request.RequestUri!.Segments.Last())
+                {
+                    case "can_send_mobile_push_delivery":
+                        return JsonResponse(HttpStatusCode.OK, JsonSerializer.Serialize(!acknowledgements.ContainsKey(id)));
+                    case "complete_mobile_push_delivery":
+                        if (payload.RootElement.GetProperty("p_result").GetString() == "retry") scheduledRetries[id] = true;
+                        return new HttpResponseMessage(HttpStatusCode.NoContent);
+                    case "record_mobile_push_acceptance":
+                        var attempt = ackAttempts.AddOrUpdate(id, 1, (_, count) => count + 1);
+                        if (id == interrupted.DeliveryId && attempt <= 3)
+                            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+                        acknowledgements[id] = true;
+                        if (id == lostReply.DeliveryId && attempt == 1)
+                            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+                        return new HttpResponseMessage(HttpStatusCode.NoContent);
+                    default: throw new InvalidOperationException("Unexpected storage request.");
+                }
+            });
+            using var http = new HttpClient(storage);
+            var store = new SupabaseMobilePushStore(http, Options.Create(new SupabaseOptions {
+                Url = "https://storage.invalid", SecretKey = "fixture"
+            }));
+            MobilePushWorker NewWorker() => new(services.GetRequiredService<IServiceScopeFactory>(), Options.Create(settings),
+                new MobilePushSender(new ClientFactory(provider), Options.Create(settings), cache), NullLogger<MobilePushWorker>.Instance);
+
+            using (var firstWorker = NewWorker())
+            {
+                var journal = MobilePushReceiptJournal.Open(settings);
+                foreach (var batch in devices.Chunk(20))
+                    await firstWorker.ProcessBatchAsync(store, journal, batch, TestContext.CancellationToken);
+            }
+            Assert.HasCount(devices.Length - 2, acknowledgements);
+            Assert.IsTrue(scheduledRetries.ContainsKey(throttled.DeliveryId));
+            Assert.IsTrue(MobilePushReceiptJournal.Open(settings).HasReceipt(interrupted));
+            Assert.AreEqual(2, ackAttempts[lostReply.DeliveryId]);
+            using var restarted = NewWorker();
+            var reclaimed = new[] { interrupted with { LeaseId = Guid.NewGuid() }, throttled with { LeaseId = Guid.NewGuid() } };
+            await restarted.ProcessBatchAsync(store, MobilePushReceiptJournal.Open(settings), reclaimed, TestContext.CancellationToken);
+            CollectionAssert.AreEquivalent(devices.Select(d => d.NotificationId).ToArray(), accepted.Keys.ToArray());
+            Assert.IsTrue(accepted.Values.All(count => count == 1), "Every simulated phone must be accepted exactly once.");
+            CollectionAssert.AreEquivalent(devices.Select(d => d.DeliveryId).ToArray(), acknowledgements.Keys.ToArray());
+            Assert.AreEqual(2, throttleRequests);
+            Assert.IsEmpty(directory.GetFiles());
+        }
+        finally { directory.Delete(recursive: true); }
     }
 
     private static MobilePushOptions AppleSettings(ECDsa key) => new()

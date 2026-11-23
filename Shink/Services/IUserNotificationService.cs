@@ -35,18 +35,6 @@ public interface IUserNotificationService
         string? email,
         Guid notificationId,
         CancellationToken cancellationToken = default);
-
-    Task<int> CreatePublishedBlogNotificationsAsync(
-        PublishedBlogNotificationRequest request,
-        CancellationToken cancellationToken = default);
-
-    Task<int> CreatePublishedStoryNotificationsAsync(
-        PublishedStoryNotificationRequest request,
-        CancellationToken cancellationToken = default);
-
-    Task<int> CreatePublishedResourceDocumentNotificationsAsync(
-        PublishedResourceDocumentNotificationRequest request,
-        CancellationToken cancellationToken = default);
 }
 
 public sealed record NotificationSyncResult(int CreatedCount);
@@ -68,26 +56,3 @@ public sealed record UserAppNotificationItem(
     DateTimeOffset CreatedAtUtc,
     bool IsRead,
     bool IsCleared);
-
-public sealed record PublishedStoryNotificationRequest(
-    Guid StoryId,
-    string Slug,
-    string Title,
-    string AccessLevel,
-    string? Summary,
-    string? ThumbnailImagePath,
-    string? CoverImagePath);
-
-public sealed record PublishedBlogNotificationRequest(
-    Guid PostId,
-    string Slug,
-    string Title,
-    string? Summary,
-    string? FeaturedImageUrl);
-
-public sealed record PublishedResourceDocumentNotificationRequest(
-    Guid ResourceDocumentId,
-    string ResourceTypeSlug,
-    string ResourceTypeName,
-    string Title,
-    string? PreviewImageUrl);

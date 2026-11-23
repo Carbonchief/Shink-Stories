@@ -169,6 +169,36 @@ public class SupabaseUserNotificationCharacterUnlockTests
         Assert.AreEqual(1, statePayload[0].GetProperty("unlock_count").GetInt32());
     }
 
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task SyncCharacterUnlockNotificationsAsync_ResumesPartialUnlockWithoutSkippingOrDuplicating(bool inboxAlreadyCommitted)
+    {
+        var handler = new CharacterUnlockSyncHandler
+        {
+            StateResponseJson = $$"""[{"character_id":"{{CharacterId}}","is_unlocked":false,"unlock_count":1}]""",
+            NotificationHistoryResponseJson = inboxAlreadyCommitted
+                ? $$"""[{"source_key":"character-unlocked-{{CharacterId:N}}-2"}]""" : "[]",
+            FailNextInsert = !inboxAlreadyCommitted
+        };
+        var service = CreateService(handler, [CreateCharacter()], [
+            new UserStoryProgressItem("diekwaaigrommel", "/luister/diekwaaigrommel", "luister",
+                DateTimeOffset.UtcNow, 301.2m, 3, 1, 285.832m, 285.858m, true)
+        ], []);
+        if (!inboxAlreadyCommitted)
+        {
+            var failed = await service.SyncCharacterUnlockNotificationsAsync(SubscriberEmail);
+            Assert.AreEqual(0, failed.CreatedCount);
+            Assert.IsNull(handler.StateUpsertPayload, "A rejected inbox insert must leave the unlock available for retry.");
+        }
+        var resumed = await service.SyncCharacterUnlockNotificationsAsync(SubscriberEmail);
+        Assert.AreEqual(inboxAlreadyCommitted ? 0 : 1, resumed.CreatedCount);
+        if (inboxAlreadyCommitted) Assert.IsNull(handler.NotificationInsertPayload);
+        var state = JsonSerializer.Deserialize<JsonElement>(handler.StateUpsertPayload!)[0];
+        Assert.AreEqual(2, state.GetProperty("unlock_count").GetInt32());
+        Assert.IsTrue(state.GetProperty("is_unlocked").GetBoolean());
+    }
+
     private static SupabaseUserNotificationService CreateService(
         CharacterUnlockSyncHandler handler,
         IReadOnlyList<StoryCharacterItem> characters,
@@ -238,6 +268,7 @@ public class SupabaseUserNotificationCharacterUnlockTests
 
     private sealed class CharacterUnlockSyncHandler : HttpMessageHandler
     {
+        public bool FailNextInsert { get; set; }
         public string StateResponseJson { get; init; } = "[]";
         public string NotificationHistoryResponseJson { get; init; } = "[]";
         public string? NotificationInsertPayload { get; private set; }
@@ -280,6 +311,11 @@ public class SupabaseUserNotificationCharacterUnlockTests
             if (request.Method == HttpMethod.Post &&
                 path.EndsWith("/rest/v1/subscriber_notifications", StringComparison.Ordinal))
             {
+                if (FailNextInsert)
+                {
+                    FailNextInsert = false;
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+                }
                 NotificationInsertPayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
                 return Task.FromResult(JsonResponse(
                     """

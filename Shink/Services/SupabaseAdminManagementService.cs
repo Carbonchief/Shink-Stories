@@ -18,7 +18,6 @@ public sealed partial class SupabaseAdminManagementService(
     IOptions<SupabaseOptions> supabaseOptions,
     IOptions<SiteOptions> siteOptions,
     IMemoryCache memoryCache,
-    IUserNotificationService userNotificationService,
     IWordPressMigrationService wordPressMigrationService,
     ISupabaseAuthService supabaseAuthService,
     ISchoolSeatNotificationEmailService schoolSeatNotificationEmailService,
@@ -38,7 +37,6 @@ public sealed partial class SupabaseAdminManagementService(
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly SiteOptions _siteOptions = siteOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
-    private readonly IUserNotificationService _userNotificationService = userNotificationService;
     private readonly IWordPressMigrationService _wordPressMigrationService = wordPressMigrationService;
     private readonly ISupabaseAuthService _supabaseAuthService = supabaseAuthService;
     private readonly ISchoolSeatNotificationEmailService _schoolSeatNotificationEmailService = schoolSeatNotificationEmailService;
@@ -1376,10 +1374,6 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         var existingStory = await FetchStoryByIdAsync(baseUri, apiKey, request.StoryId, cancellationToken);
-        var shouldCreatePublishedStoryNotifications =
-            string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase) &&
-            !HasStoryBeenPublished(existingStory);
-
         var payload = new Dictionary<string, object?>
         {
             ["slug"] = normalizedSlug,
@@ -1399,6 +1393,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["status"] = normalizedStatus,
             ["sort_order"] = normalizedSortOrder,
             ["published_at"] = normalizedPublishedAt?.UtcDateTime,
+            ["queue_publication_notification"] = normalizedStatus == "published",
             ["duration_seconds"] = normalizedDurationSeconds
         };
 
@@ -1426,20 +1421,6 @@ public sealed partial class SupabaseAdminManagementService(
         if (updateResponse.IsSuccessStatusCode)
         {
             InvalidateStoryCatalogCache();
-            if (shouldCreatePublishedStoryNotifications)
-            {
-                await _userNotificationService.CreatePublishedStoryNotificationsAsync(
-                    new PublishedStoryNotificationRequest(
-                        request.StoryId,
-                        normalizedSlug,
-                        normalizedTitle,
-                        normalizedAccessLevel,
-                        normalizedSummary,
-                        normalizedThumbnailPath,
-                        normalizedCoverImagePath),
-                    cancellationToken);
-            }
-
             return new AdminOperationResult(true);
         }
 
@@ -1458,20 +1439,6 @@ public sealed partial class SupabaseAdminManagementService(
             if (compatibilityUpdateResponse.IsSuccessStatusCode)
             {
                 InvalidateStoryCatalogCache();
-                if (shouldCreatePublishedStoryNotifications)
-                {
-                    await _userNotificationService.CreatePublishedStoryNotificationsAsync(
-                        new PublishedStoryNotificationRequest(
-                            request.StoryId,
-                            normalizedSlug,
-                            normalizedTitle,
-                            normalizedAccessLevel,
-                            normalizedSummary,
-                            normalizedThumbnailPath,
-                            normalizedCoverImagePath),
-                        cancellationToken);
-                }
-
                 return new AdminOperationResult(true);
             }
 
@@ -1709,6 +1676,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["status"] = normalizedStatus,
             ["sort_order"] = normalizedSortOrder,
             ["published_at"] = normalizedPublishedAt?.UtcDateTime,
+            ["queue_publication_notification"] = shouldCreatePublishedStoryNotifications,
             ["duration_seconds"] = normalizedDurationSeconds
         };
 
@@ -1733,21 +1701,6 @@ public sealed partial class SupabaseAdminManagementService(
             var createdStoryId = TryReadFirstGuidProperty(responseBody, "story_id");
             InvalidateStoryCatalogCache();
 
-            if (createdStoryId.HasValue &&
-                shouldCreatePublishedStoryNotifications)
-            {
-                await _userNotificationService.CreatePublishedStoryNotificationsAsync(
-                    new PublishedStoryNotificationRequest(
-                        createdStoryId.Value,
-                        normalizedSlug,
-                        normalizedTitle,
-                        normalizedAccessLevel,
-                        normalizedSummary,
-                        normalizedThumbnailPath,
-                        normalizedCoverImagePath),
-                    cancellationToken);
-            }
-
             return new AdminOperationResult(true, EntityId: createdStoryId);
         }
 
@@ -1768,21 +1721,6 @@ public sealed partial class SupabaseAdminManagementService(
                 var compatibilityResponseBody = await compatibilityCreateResponse.Content.ReadAsStringAsync(cancellationToken);
                 var createdStoryId = TryReadFirstGuidProperty(compatibilityResponseBody, "story_id");
                 InvalidateStoryCatalogCache();
-
-                if (createdStoryId.HasValue &&
-                    shouldCreatePublishedStoryNotifications)
-                {
-                    await _userNotificationService.CreatePublishedStoryNotificationsAsync(
-                        new PublishedStoryNotificationRequest(
-                            createdStoryId.Value,
-                            normalizedSlug,
-                            normalizedTitle,
-                            normalizedAccessLevel,
-                            normalizedSummary,
-                            normalizedThumbnailPath,
-                            normalizedCoverImagePath),
-                        cancellationToken);
-                }
 
                 return new AdminOperationResult(true, EntityId: createdStoryId);
             }
@@ -3517,6 +3455,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["preview_generated_at"] = DateTimeOffset.UtcNow,
             ["required_tier_code"] = normalizedRequiredTierCode,
             ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
+            ["queue_publication_notification"] = request.IsEnabled,
             ["is_enabled"] = request.IsEnabled
         };
 
@@ -3528,23 +3467,6 @@ public sealed partial class SupabaseAdminManagementService(
             var body = await createResponse.Content.ReadAsStringAsync(cancellationToken);
             var createdResourceDocumentId = TryReadFirstGuidProperty(body, "resource_document_id");
             InvalidateResourceCatalogCache();
-
-            if (request.IsEnabled && createdResourceDocumentId.HasValue)
-            {
-                var resourceType = (await FetchResourceTypesAsync(baseUri, apiKey, cancellationToken))
-                    .FirstOrDefault(type => type.ResourceTypeId == request.ResourceTypeId);
-                if (resourceType is not null && !string.IsNullOrWhiteSpace(resourceType.Slug))
-                {
-                    await _userNotificationService.CreatePublishedResourceDocumentNotificationsAsync(
-                        new PublishedResourceDocumentNotificationRequest(
-                            createdResourceDocumentId.Value,
-                            resourceType.Slug.Trim(),
-                            string.IsNullOrWhiteSpace(resourceType.Name) ? "Hulpbronne" : resourceType.Name.Trim(),
-                            normalizedTitle,
-                            $"/media/resources/{createdResourceDocumentId.Value:D}/preview"),
-                        cancellationToken);
-                }
-            }
 
             return new AdminOperationResult(true, EntityId: createdResourceDocumentId);
         }
@@ -4279,11 +4201,6 @@ public sealed partial class SupabaseAdminManagementService(
             : $"{query.TrimStart('?')}&limit={limit}&offset={offset}";
         return builder.Uri;
     }
-
-    private static bool HasStoryBeenPublished(StoryRow? story) =>
-        story is not null &&
-        (story.PublishedAt.HasValue ||
-         string.Equals(story.Status, "published", StringComparison.OrdinalIgnoreCase));
 
     private static bool ShouldCreatePublishedStoryNotifications(string status, bool sendPublishedNotification) =>
         sendPublishedNotification &&

@@ -241,6 +241,7 @@ builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificatio
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 if (builder.Configuration.GetValue("BackgroundJobs:Enabled", true))
 {
+    builder.Services.AddHostedService<NotificationPublicationWorker>();
     if (postHogSettings.IsConfigured)
     {
         builder.Services.AddHttpClient<StorePurchaseAnalytics>(client => client.Timeout = TimeSpan.FromSeconds(10));

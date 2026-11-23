@@ -119,7 +119,7 @@ public sealed class CatalogRefreshTests
             "story_characters" => token => new SupabaseCharacterService(client, options, cache,
                 NullLogger<SupabaseCharacterService>.Instance).GetPublishedCharactersAsync(token),
             // Public catalogue reads must never invoke notifications; a null dependency makes that fail loudly.
-            "blog_posts" => token => new SupabaseBlogService(client, options, cache, new BlogContentRenderer(), null!,
+            "blog_posts" => token => new SupabaseBlogService(client, options, cache, new BlogContentRenderer(),
                 NullLogger<SupabaseBlogService>.Instance).GetPublishedPostsAsync(token),
             _ => throw new ArgumentOutOfRangeException(nameof(table))
         };
