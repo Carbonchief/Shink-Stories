@@ -11,7 +11,6 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
     private const string BackIconGlyph = "\uf060";
     private const string PlaylistPlayIconGlyph = "\uf144";
     private const string DownIconGlyph = "\uf107";
-    private const string PlayIconGlyph = "\uf04b";
     private const string LockIconGlyph = "\uf023";
     private const string HeartIconGlyph = "\uf004";
     private const double StoryCardMaximumWidth = 174;
@@ -61,6 +60,9 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
     private Color _pageTextColor = DefaultTextColor;
     private double _lastPageWidth;
     private double _lastPageHeight;
+
+    public double StoryCardWidth { get; private set; } = StoryCardMaximumWidth;
+    public double StoryCoverHeight => StoryCardWidth * 4d / 3d;
 
     public PlaylistStoriesPage(
         MobileApiClient apiClient,
@@ -182,7 +184,12 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         if (width > 0 && Math.Abs(width - _lastPageWidth) >= 1)
         {
             _lastPageWidth = width;
-            _storiesLayout.Span = GetStoryGridSpan(width);
+            var span = GetStoryGridSpan(width);
+            var columnWidth = (width - (span - 1) * StoryGridHorizontalSpacing) / span;
+            StoryCardWidth = Math.Clamp(columnWidth - 2 * StoryCardHorizontalMargin, 1, StoryCardMaximumWidth);
+            OnPropertyChanged(nameof(StoryCardWidth));
+            OnPropertyChanged(nameof(StoryCoverHeight));
+            _storiesLayout.Span = span;
         }
 
         if (_hero is null || height <= 0 || Math.Abs(height - _lastPageHeight) < 1)
@@ -279,16 +286,16 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
 
         if (!string.IsNullOrWhiteSpace(appearance.LogoUrl))
         {
-            heroGrid.Children.Add(new ProgressiveCachedImage(
+            var logo = new ProgressiveCachedImage(
                 _apiClient,
                 new ProgressiveImageRequest(appearance.LogoUrl))
             {
                 Aspect = Aspect.AspectFit,
                 HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.Center,
-                WidthRequest = 346,
+                WidthRequest = 0,
                 HeightRequest = 360,
-                Margin = new Thickness(24, 34, 24, 82),
+                Margin = new Thickness(0, 34, 0, 82),
                 Shadow = IsAndroid
                     ? null!
                     : new Shadow
@@ -298,7 +305,10 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
                         Radius = 28,
                         Opacity = 0.36f
                     }
-            });
+            };
+            // Reserve 24 units on each side and center the resulting image in the full hero.
+            heroGrid.SizeChanged += (_, _) => logo.WidthRequest = Math.Clamp(heroGrid.Width - 48, 0, 346);
+            heroGrid.Children.Add(logo);
         }
 
         var actions = new Border
@@ -386,7 +396,10 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
             Aspect = Aspect.AspectFill
         };
         var imageGrid = new Grid { Children = { image } };
-        imageGrid.Children.Add(BuildPlayBadge(story.IsLocked, 64));
+        if (story.IsLocked)
+        {
+            imageGrid.Children.Add(BuildLockBadge());
+        }
         imageGrid.Children.Add(BuildFavoriteButton(story, topMargin: 8, rightMargin: 8));
 
         var cover = new Border
@@ -477,7 +490,6 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
             BackgroundColor = Color.FromArgb("#0F1116"),
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 16 },
-            HeightRequest = 220,
             Content = coverGrid,
             Shadow = IsAndroid
                 ? null!
@@ -489,6 +501,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
                     Opacity = 0.23f
                 }
         };
+        cover.SetBinding(HeightRequestProperty, static (PlaylistStoriesPage page) => page.StoryCoverHeight, source: this);
 
         var title = new Label
         {
@@ -506,17 +519,10 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         {
             Spacing = 8,
             Margin = new Thickness(StoryCardHorizontalMargin, 0),
-            MaximumWidthRequest = StoryCardMaximumWidth,
             HorizontalOptions = LayoutOptions.Center,
             Children = { cover, title }
         };
-        card.SizeChanged += (_, _) =>
-        {
-            if (card.Width > 0)
-            {
-                cover.HeightRequest = card.Width * 4d / 3d;
-            }
-        };
+        card.SetBinding(WidthRequestProperty, static (PlaylistStoriesPage page) => page.StoryCardWidth, source: this);
         var tap = new TapGestureRecognizer();
         tap.Tapped += async (sender, _) =>
         {
@@ -529,21 +535,21 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         return card;
     }
 
-    private static Border BuildPlayBadge(bool isLocked, double size) =>
+    private static Border BuildLockBadge() =>
         new()
         {
             BackgroundColor = AccentColor,
             StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = size / 2 },
-            WidthRequest = size,
-            HeightRequest = size,
+            StrokeShape = new RoundRectangle { CornerRadius = 32 },
+            WidthRequest = 64,
+            HeightRequest = 64,
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center,
             Content = new Label
             {
-                Text = isLocked ? LockIconGlyph : PlayIconGlyph,
+                Text = LockIconGlyph,
                 FontFamily = "FontAwesomeSolid",
-                FontSize = size * 0.28,
+                FontSize = 18,
                 TextColor = Color.FromArgb("#1A1A1A"),
                 HorizontalTextAlignment = TextAlignment.Center,
                 VerticalTextAlignment = TextAlignment.Center

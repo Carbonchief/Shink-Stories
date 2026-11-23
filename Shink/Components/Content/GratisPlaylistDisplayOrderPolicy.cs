@@ -2,10 +2,13 @@ namespace Shink.Components.Content;
 
 public static class GratisPlaylistDisplayOrderPolicy
 {
+    public const string GratisPlaylistSlug = "gratis-stories";
+
     public static IReadOnlyList<TItem> MoveGratisPlaylistNearTop<TItem>(
         IReadOnlyList<TItem> items,
         bool isGratisOnlyUser,
-        Func<TItem, string?> playlistSlugSelector)
+        Func<TItem, string?> playlistSlugSelector,
+        bool isFirstVisit = false)
     {
         ArgumentNullException.ThrowIfNull(items);
         ArgumentNullException.ThrowIfNull(playlistSlugSelector);
@@ -20,7 +23,7 @@ public static class GratisPlaylistDisplayOrderPolicy
         {
             if (string.Equals(
                     playlistSlugSelector(items[index])?.Trim(),
-                    StoryAccessPolicy.GratisPlaylistSlug,
+                    GratisPlaylistSlug,
                     StringComparison.OrdinalIgnoreCase))
             {
                 gratisIndex = index;
@@ -28,7 +31,8 @@ public static class GratisPlaylistDisplayOrderPolicy
             }
         }
 
-        if (gratisIndex <= 0)
+        var targetIndex = isFirstVisit ? 0 : 1;
+        if (gratisIndex <= targetIndex)
         {
             return items;
         }
@@ -36,7 +40,7 @@ public static class GratisPlaylistDisplayOrderPolicy
         var reordered = items.ToList();
         var gratisItem = reordered[gratisIndex];
         reordered.RemoveAt(gratisIndex);
-        reordered.Insert(1, gratisItem);
+        reordered.Insert(targetIndex, gratisItem);
         return reordered.ToArray();
     }
 }

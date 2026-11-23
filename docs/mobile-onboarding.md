@@ -23,7 +23,11 @@ at the top left after the first screen, opposite the skip control.
 The first screen also has “Het jy reeds ’n rekening? Teken in” below Next.
 It completes onboarding and opens the existing account sign-in form directly.
 The final screen shows “Begin gratis luister” and “Kry volle toegang” above the
-progress dots. They open free sign-up and the subscription plans, respectively.
+progress dots. “Begin gratis luister” opens Luister as a guest. Free stories play immediately.
+Choosing a locked story opens account sign-up and remembers the story for the paywall.
+“Kry volle toegang” opens sign-up directly. After authentication and any required
+profile picture selection, listeners without a paid subscription see the parent
+check and subscription plans. Guests return to Luister when they reopen the app.
 The sign-in link also appears on the final screen.
 The gold progress marker stretches and glides between dots in either direction
 over 420 ms, with its width capped at 24 points (18 points at rest). Rapid

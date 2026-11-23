@@ -17,7 +17,7 @@ public static class StoryAccessPolicy
     public const string SchoolMediumYearlyTierCode = "school_medium_yearly";
     public const string SchoolLargeYearlyTierCode = "school_large_yearly";
     public const string SchoolTwentyYearlyTierCode = "school_20_yearly";
-    public const string GratisPlaylistSlug = "gratis-stories";
+    public const string GratisPlaylistSlug = GratisPlaylistDisplayOrderPolicy.GratisPlaylistSlug;
     public const string StoryCornerPlaylistSlug = "storie-hoekie";
 
     public static IReadOnlyList<string> AllStoriesTierCodes { get; } =

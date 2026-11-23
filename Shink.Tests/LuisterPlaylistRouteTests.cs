@@ -242,12 +242,12 @@ public sealed class LuisterPlaylistRouteTests
     private sealed class TestAudio : IAudioAccessService
     {
         public List<string> SignedSlugs { get; } = [];
-        public string CreateSignedAudioUrl(string slug, TimeSpan? lifetime = null)
+        public string CreateSignedAudioUrl(string slug, TimeSpan? lifetime = null, bool allowsGuestPlayback = false)
         {
             SignedSlugs.Add(slug);
             return $"/media/audio/{slug}?token=test-signed";
         }
-        public bool IsTokenValid(string slug, string? token) => throw new NotSupportedException();
+        public bool IsTokenValid(string slug, string? token, out bool allowsGuestPlayback) => throw new NotSupportedException();
     }
 
     private sealed class NoFavorites : IStoryFavoriteService

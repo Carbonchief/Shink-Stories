@@ -53,7 +53,7 @@ public sealed class MobilePerformanceReliabilitySourceTests
             "LuisterPage.cs"));
 
         StringAssert.Contains(source, "_apiClient.GetSessionAsync(cancellationToken)");
-        StringAssert.Contains(source, "_apiClient.GetLuisterAsync(cancellationToken)");
+        StringAssert.Contains(source, "_apiClient.GetLuisterAsync(cancellationToken, _luisterVisitId)");
     }
 
     [TestMethod]

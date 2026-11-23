@@ -485,8 +485,20 @@ public sealed class MobileApiClient
     public Task<MobileStoryCollectionResponse?> GetGratisAsync(CancellationToken cancellationToken = default) =>
         GetAsync<MobileStoryCollectionResponse>("/api/mobile/gratis", cancellationToken);
 
-    public Task<MobileLuisterResponse?> GetLuisterAsync(CancellationToken cancellationToken = default) =>
-        GetAndCacheLuisterAsync(cancellationToken);
+    public async Task<MobileLuisterResponse?> GetLuisterAsync(CancellationToken cancellationToken = default, Guid? visitId = null)
+    {
+        var cacheKey = BuildStoryAccessCacheKey();
+        var path = "/api/mobile/luister?compact=true";
+        if (visitId.HasValue && _sessionState.Current.IsSignedIn)
+            path += $"&visitId={visitId.Value:D}";
+
+        var response = await GetAsync<MobileLuisterResponse>(path, cancellationToken);
+        if (cacheKey != BuildStoryAccessCacheKey()) return null;
+        if (response is not null)
+            await SaveLuisterCacheAsync(cacheKey, response, cancellationToken);
+
+        return response;
+    }
 
     public Task<MobileCharactersResponse?> GetCharactersAsync(CancellationToken cancellationToken = default) =>
         GetAndCacheCharactersAsync(cancellationToken);
@@ -582,13 +594,14 @@ public sealed class MobileApiClient
         TimeSpan maxAge,
         CancellationToken cancellationToken = default)
     {
-        if (_memoryLuisterCache is { Response: { } memoryResponse } &&
+        var cacheKey = BuildStoryAccessCacheKey();
+        if (_memoryLuisterCache is { Response: { } memoryResponse } && _memoryLuisterCache.CacheKey == cacheKey &&
             DateTimeOffset.UtcNow - _memoryLuisterCache.CachedAtUtc <= maxAge)
         {
             return memoryResponse;
         }
 
-        var cachePath = BuildLuisterCachePath();
+        var cachePath = BuildLuisterCachePath(cacheKey);
         if (!File.Exists(cachePath))
         {
             return null;
@@ -653,7 +666,7 @@ public sealed class MobileApiClient
             return memoryEntry.Response;
         }
 
-        var cachePath = BuildStoryDetailCachePath(slug, source);
+        var cachePath = BuildStoryDetailCachePath(cacheKey);
         if (!File.Exists(cachePath))
         {
             return null;
@@ -1173,17 +1186,6 @@ public sealed class MobileApiClient
             HttpStatusCode.ServiceUnavailable or
             HttpStatusCode.GatewayTimeout;
 
-    private async Task<MobileLuisterResponse?> GetAndCacheLuisterAsync(CancellationToken cancellationToken)
-    {
-        var response = await GetAsync<MobileLuisterResponse>("/api/mobile/luister?compact=true", cancellationToken);
-        if (response is not null)
-        {
-            await SaveLuisterCacheAsync(response, cancellationToken);
-        }
-
-        return response;
-    }
-
     private async Task<MobileCharactersResponse?> GetAndCacheCharactersAsync(CancellationToken cancellationToken)
     {
         var response = await GetAsync<MobileCharactersResponse>("/api/mobile/karakters", cancellationToken);
@@ -1200,12 +1202,14 @@ public sealed class MobileApiClient
         string source,
         CancellationToken cancellationToken)
     {
+        var cacheKey = BuildStoryDetailCacheKey(slug, source);
         var response = await GetAsync<MobileStoryDetailResponse>(
             $"/api/mobile/stories/{Uri.EscapeDataString(slug)}?source={Uri.EscapeDataString(source)}",
             cancellationToken);
         if (response is not null)
         {
-            await SaveStoryDetailCacheAsync(slug, source, response, cancellationToken);
+            if (cacheKey != BuildStoryDetailCacheKey(slug, source)) return null;
+            await SaveStoryDetailCacheAsync(cacheKey, response, cancellationToken);
         }
 
         return response;
@@ -1228,9 +1232,9 @@ public sealed class MobileApiClient
         return response;
     }
 
-    private async Task SaveLuisterCacheAsync(MobileLuisterResponse response, CancellationToken cancellationToken)
+    private async Task SaveLuisterCacheAsync(string cacheKey, MobileLuisterResponse response, CancellationToken cancellationToken)
     {
-        var cacheEntry = new MobileLuisterCacheEntry(DateTimeOffset.UtcNow, response);
+        var cacheEntry = new MobileLuisterCacheEntry(cacheKey, DateTimeOffset.UtcNow, response);
         _memoryLuisterCache = cacheEntry;
 
         var cacheLockAcquired = false;
@@ -1238,7 +1242,7 @@ public sealed class MobileApiClient
         {
             await _luisterCacheLock.WaitAsync(cancellationToken);
             cacheLockAcquired = true;
-            var cachePath = BuildLuisterCachePath();
+            var cachePath = BuildLuisterCachePath(cacheKey);
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(cachePath)!);
             var temporaryPath = $"{cachePath}.tmp";
             await using (var stream = File.Create(temporaryPath))
@@ -1318,12 +1322,10 @@ public sealed class MobileApiClient
     }
 
     private async Task SaveStoryDetailCacheAsync(
-        string slug,
-        string source,
+        string cacheKey,
         MobileStoryDetailResponse response,
         CancellationToken cancellationToken)
     {
-        var cacheKey = BuildStoryDetailCacheKey(slug, source);
         var cacheEntry = new MobileStoryDetailCacheEntry(DateTimeOffset.UtcNow, response);
         _memoryStoryDetailCache[cacheKey] = cacheEntry;
 
@@ -1332,7 +1334,7 @@ public sealed class MobileApiClient
         {
             await _storyDetailCacheLock.WaitAsync(cancellationToken);
             cacheLockAcquired = true;
-            var cachePath = BuildStoryDetailCachePath(slug, source);
+            var cachePath = BuildStoryDetailCachePath(cacheKey);
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(cachePath)!);
             var temporaryPath = $"{cachePath}.tmp";
             await using (var stream = File.Create(temporaryPath))
@@ -2625,10 +2627,9 @@ public sealed class MobileApiClient
     private static string BuildImageCacheDirectory() =>
         System.IO.Path.Combine(FileSystem.CacheDirectory, "story-images");
 
-    private string BuildLuisterCachePath()
+    private static string BuildLuisterCachePath(string cacheKey)
     {
         var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "story-data");
-        var cacheKey = BuildStableCacheKey(_settings.BaseUrl);
         return System.IO.Path.Combine(cacheDirectory, $"luister-{cacheKey}.json");
     }
 
@@ -2646,14 +2647,20 @@ public sealed class MobileApiClient
         return $"{_settings.BaseUrl}|{accountKey}";
     }
 
-    private string BuildStoryDetailCachePath(string slug, string source)
+    private static string BuildStoryDetailCachePath(string cacheKey)
     {
         var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "story-data");
-        return System.IO.Path.Combine(cacheDirectory, $"story-{BuildStoryDetailCacheKey(slug, source)}.json");
+        return System.IO.Path.Combine(cacheDirectory, $"story-{cacheKey}.json");
     }
 
     private string BuildStoryDetailCacheKey(string slug, string source) =>
-        BuildStableCacheKey($"{_settings.BaseUrl}|{source}|{slug}");
+        BuildStableCacheKey($"{BuildStoryAccessCacheKey()}|{source}|{slug}");
+
+    private string BuildStoryAccessCacheKey()
+    {
+        var session = _sessionState.Current;
+        return BuildStableCacheKey($"{BuildCharactersCacheKey()}|{session.HasPaidSubscription}|{session.HasFullStoryAccess}");
+    }
 
     private string BuildNotificationCachePath()
     {
@@ -2795,7 +2802,7 @@ public sealed class MobileApiClient
     private sealed record FavoriteResponse(bool IsFavorite);
     private sealed record TrackingResponse(bool Tracked, int NewNotificationsCreated = 0);
     private sealed record MobileAccountDeletionResponse(string Message);
-    private sealed record MobileLuisterCacheEntry(DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);
+    private sealed record MobileLuisterCacheEntry(string CacheKey, DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);
 
     private sealed record MobileCharactersCacheEntry(
         string CacheKey,

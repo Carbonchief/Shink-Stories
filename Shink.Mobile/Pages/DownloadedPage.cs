@@ -11,7 +11,7 @@ public sealed class DownloadedPage : ContentPage
     private const double BottomBarContentInset = 216;
     private const double BottomBarOverlayHeight = MobileBottomBar.NavigationHeight;
     private const string DownloadOrderPreferenceKey = "schink_downloaded_story_order_v1";
-    private const string DraggedDownloadOrderKeyProperty = "schink.downloaded-story-order-key";
+    private const string DraggedDownloadRowProperty = "schink.downloaded-story-row";
     private static readonly Color PageBackgroundColor = Color.FromArgb("#46969E");
     private static readonly Color TextColor = Color.FromArgb("#1B2231");
     private static readonly Color MutedTextColor = Color.FromArgb("#69716D");
@@ -26,12 +26,11 @@ public sealed class DownloadedPage : ContentPage
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly VerticalStackLayout _content;
     private readonly Border _topBarHost;
-    private readonly Dictionary<string, Border> _downloadRowsByKey = new(StringComparer.OrdinalIgnoreCase);
+    private readonly VerticalStackLayout _rows = new() { Spacing = 18 };
     private List<OfflineStoryDownload> _orderedDownloads = [];
     private Border? _draggingRow;
     private int? _pendingDropDestinationIndex;
     private bool _reloadAfterDrag;
-    private bool _suppressNextRowTap;
     private bool _isStartingPlaylist;
 
     public DownloadedPage(
@@ -61,6 +60,10 @@ public sealed class DownloadedPage : ContentPage
             Spacing = 18
         };
         MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
+        var drop = new DropGestureRecognizer();
+        drop.DragOver += HandleDragOver;
+        drop.Drop += HandleRowDrop;
+        _rows.GestureRecognizers.Add(drop);
 
         var scrollView = new ScrollView
         {
@@ -190,7 +193,6 @@ public sealed class DownloadedPage : ContentPage
             return;
         }
 
-        _downloadRowsByKey.Clear();
         _content.Children.Clear();
         _content.Children.Add(BuildHeader());
         _content.Children.Add(new ActivityIndicator
@@ -203,8 +205,15 @@ public sealed class DownloadedPage : ContentPage
         try
         {
             var downloads = await _offlineDownloadService.GetPlayableDownloadsAsync();
+            if (_draggingRow is not null)
+            {
+                _reloadAfterDrag = true;
+                return;
+            }
+
             _orderedDownloads = ApplySavedOrder(downloads);
             _content.Children.Clear();
+            _rows.Children.Clear();
             _content.Children.Add(BuildHeader(_orderedDownloads));
 
             if (_orderedDownloads.Count == 0)
@@ -215,8 +224,9 @@ public sealed class DownloadedPage : ContentPage
 
             foreach (var download in _orderedDownloads)
             {
-                _content.Children.Add(BuildDownloadRow(download));
+                _rows.Children.Add(BuildDownloadRow(download));
             }
+            _content.Children.Add(_rows);
         }
         catch (Exception ex)
         {
@@ -485,6 +495,7 @@ public sealed class DownloadedPage : ContentPage
 
         var grid = new Grid
         {
+            InputTransparent = true,
             ColumnDefinitions =
             {
                 new ColumnDefinition(GridLength.Auto),
@@ -526,118 +537,76 @@ public sealed class DownloadedPage : ContentPage
         };
 
         var rowTap = new TapGestureRecognizer();
-        rowTap.Tapped += async (_, _) => await HandleRowTapAsync(download);
+        rowTap.Tapped += async (_, _) =>
+        {
+            if (_draggingRow is null)
+                await OpenDownloadedStoryAsync(download);
+        };
         row.GestureRecognizers.Add(rowTap);
 
-        var orderKey = BuildDownloadOrderKey(download);
-        _downloadRowsByKey[orderKey] = row;
-
         var drag = new DragGestureRecognizer();
-        drag.DragStarting += (_, args) =>
-        {
-            if (_draggingRow is not null)
-            {
-                args.Cancel = true;
-                return;
-            }
-
-            args.Data.Properties.Add(DraggedDownloadOrderKeyProperty, orderKey);
-            StartDragging(row);
-        };
+        drag.DragStarting += (_, args) => args.Data.Properties.Add(DraggedDownloadRowProperty, row);
         drag.DropCompleted += (_, _) => FinishDragging(row);
         row.GestureRecognizers.Add(drag);
 
-        var drop = new DropGestureRecognizer();
-        drop.Drop += (_, args) => HandleRowDrop(row, args);
-        row.GestureRecognizers.Add(drop);
         SemanticProperties.SetDescription(
             row,
             $"{download.Title}. Tik om te speel. Hou vas en sleep om die volgorde te verander.");
 
-        var playTap = new TapGestureRecognizer();
-        playTap.Tapped += async (_, _) => await OpenDownloadedStoryAsync(download);
-        playButton.GestureRecognizers.Add(playTap);
         return row;
     }
 
-    private async Task HandleRowTapAsync(OfflineStoryDownload download)
+    private void HandleDragOver(object? sender, DragEventArgs args)
     {
-        if (_suppressNextRowTap)
+        if (args.Data?.Properties.TryGetValue(DraggedDownloadRowProperty, out var source) != true ||
+            source is not Border row || row.Parent != _rows ||
+            (_draggingRow is not null && _draggingRow != row))
         {
-            _suppressNextRowTap = false;
+            args.AcceptedOperation = DataPackageOperation.None;
             return;
         }
 
-        await OpenDownloadedStoryAsync(download);
-    }
+        if (_draggingRow == row)
+            return;
 
-    private void StartDragging(Border row)
-    {
+        // UIKit can request drag data for a stationary hold without starting a
+        // session or sending DropCompleted. Only an actual drag enters this state.
         _draggingRow = row;
-        _pendingDropDestinationIndex = null;
-        _suppressNextRowTap = true;
-        row.ZIndex = 10;
         row.Opacity = 0.86;
         row.Scale = 1.02;
         SafeHapticFeedback.TryPerform(HapticFeedbackType.LongPress);
     }
 
-    private void HandleRowDrop(Border targetRow, DropEventArgs args)
+    private void HandleRowDrop(object? sender, DropEventArgs args)
     {
-        if (!args.Data.Properties.TryGetValue(DraggedDownloadOrderKeyProperty, out var draggedKeyValue) ||
-            draggedKeyValue is not string draggedKey ||
-            !_downloadRowsByKey.TryGetValue(draggedKey, out var draggedRow) ||
-            !ReferenceEquals(_draggingRow, draggedRow))
-        {
-            return;
-        }
-
-        var sourceIndex = _orderedDownloads.FindIndex(download =>
-            string.Equals(BuildDownloadOrderKey(download), draggedKey, StringComparison.OrdinalIgnoreCase));
-        var targetViewIndex = _content.Children.IndexOf(targetRow);
-        var targetIndex = targetViewIndex - 1;
-        if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= _orderedDownloads.Count)
+        if (_draggingRow is not { } row ||
+            args.Data?.Properties.TryGetValue(DraggedDownloadRowProperty, out var source) != true ||
+            !ReferenceEquals(source, row) || args.GetPosition(_rows) is not { } position)
         {
             return;
         }
 
         args.Handled = true;
-        var dropPosition = args.GetPosition(targetRow);
-        var insertAfterTarget = dropPosition is { } position && position.Y >= targetRow.Height / 2;
-        var destinationIndex = targetIndex + (insertAfterTarget ? 1 : 0);
-        if (sourceIndex < destinationIndex)
-        {
-            destinationIndex--;
-        }
-
-        destinationIndex = Math.Clamp(destinationIndex, 0, _orderedDownloads.Count - 1);
-        if (sourceIndex == destinationIndex)
-        {
-            return;
-        }
-
-        // Keep the native child tree intact until Android finishes the drag.
-        _pendingDropDestinationIndex = destinationIndex;
+        // Each card's midpoint separates "before" from "after", including
+        // the space between cards. Exclude the source from the final index.
+        _pendingDropDestinationIndex = _rows.Children.Count(child =>
+            !ReferenceEquals(child, row) && child.Frame.Center.Y <= position.Y);
     }
 
-    private void MoveRow(Border row, int newViewIndex)
+    private void MoveRow(Border row, int newIndex)
     {
-        var oldViewIndex = _content.Children.IndexOf(row);
-        if (oldViewIndex <= 0 || oldViewIndex > _orderedDownloads.Count ||
-            newViewIndex <= 0 || newViewIndex > _orderedDownloads.Count ||
-            oldViewIndex == newViewIndex)
+        var oldIndex = _rows.Children.IndexOf(row);
+        if (oldIndex < 0 || oldIndex == newIndex)
         {
             return;
         }
 
-        _content.Children.RemoveAt(oldViewIndex);
-        _content.Children.Insert(newViewIndex, row);
-        var oldDownloadIndex = oldViewIndex - 1;
-        var newDownloadIndex = newViewIndex - 1;
-        var download = _orderedDownloads[oldDownloadIndex];
-        _orderedDownloads.RemoveAt(oldDownloadIndex);
-        _orderedDownloads.Insert(newDownloadIndex, download);
-        row.TranslationY = 0;
+        _rows.Children.RemoveAt(oldIndex);
+        _rows.Children.Insert(newIndex, row);
+        var download = _orderedDownloads[oldIndex];
+        _orderedDownloads.RemoveAt(oldIndex);
+        _orderedDownloads.Insert(newIndex, download);
+        SaveDownloadOrder();
     }
 
     private void FinishDragging(Border row)
@@ -664,22 +633,11 @@ public sealed class DownloadedPage : ContentPage
             _pendingDropDestinationIndex = null;
             if (destinationIndex is { } index)
             {
-                MoveRow(row, index + 1);
-                SaveDownloadOrder();
+                MoveRow(row, index);
             }
 
             row.Scale = 1;
             row.Opacity = 1;
-            row.ZIndex = 0;
-            Dispatcher.StartTimer(TimeSpan.FromMilliseconds(700), () =>
-            {
-                if (_draggingRow is null)
-                {
-                    _suppressNextRowTap = false;
-                }
-
-                return false;
-            });
 
             if (_reloadAfterDrag)
             {

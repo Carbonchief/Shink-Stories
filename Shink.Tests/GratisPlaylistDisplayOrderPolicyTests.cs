@@ -1,5 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shink.Components.Content;
+using Shink.Mobile.Models;
 
 namespace Shink.Tests;
 
@@ -98,6 +99,40 @@ public class GratisPlaylistDisplayOrderPolicyTests
                 "bybelstories"
             },
             reordered.Select(section => section.PlaylistSlug).ToArray());
+    }
+
+    [TestMethod]
+    [DataRow(false, true, 2)]
+    [DataRow(true, true, 0)]
+    [DataRow(true, false, 1)]
+    public void FirstVisitOnlyPromotesTheConfiguredGratisSection(bool gratisOnly, bool firstVisit, int expectedIndex)
+    {
+        var configured = new[] { "speellyste", "slaaptyd", StoryAccessPolicy.GratisPlaylistSlug, "bybelstories" };
+        var sections = GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
+            configured, gratisOnly, static slug => slug, firstVisit);
+
+        Assert.AreEqual(StoryAccessPolicy.GratisPlaylistSlug, sections[expectedIndex]);
+        CollectionAssert.AreEqual(new[] { "speellyste", "slaaptyd", "bybelstories" },
+            sections.Where(slug => slug != StoryAccessPolicy.GratisPlaylistSlug).ToArray());
+        Assert.AreEqual(StoryAccessPolicy.GratisPlaylistSlug, configured[2]);
+    }
+
+    [TestMethod]
+    public void CachedMobileCataloguePromotesGratisOnlyOnTheVisitThatEarnedIt()
+    {
+        var gratis = new MobilePlaylist(StoryAccessPolicy.GratisPlaylistSlug, "Gratis", null, "", "", []);
+        MobileLuisterSection[] sections =
+        [
+            new("speellyste", "Speellyste", 0, null, [gratis]),
+            new("playlist", "Gratis", 10, gratis, [])
+        ];
+        var first = Guid.NewGuid();
+        var catalogue = new Shink.Mobile.Models.MobileLuisterResponse(false, [], sections, first);
+
+        Assert.AreSame(gratis, catalogue.GetSectionsForVisit(first)[0].Playlist);
+        Assert.AreSame(sections, catalogue.GetSectionsForVisit(Guid.NewGuid()));
+        Assert.AreSame(sections, (catalogue with { FirstGratisVisitId = null }).GetSectionsForVisit(first));
+        Assert.AreSame(sections, (catalogue with { HasPaidSubscription = true }).GetSectionsForVisit(first));
     }
 
     private static StoryPlaylist CreatePlaylist(string slug, string title) =>

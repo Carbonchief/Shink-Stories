@@ -97,7 +97,21 @@ public sealed record MobilePlaylist(
 public sealed record MobileLuisterResponse(
     bool HasPaidSubscription,
     IReadOnlyList<MobilePlaylist> Playlists,
-    IReadOnlyList<MobileLuisterSection>? Sections);
+    IReadOnlyList<MobileLuisterSection>? Sections,
+    Guid? FirstGratisVisitId = null)
+{
+    public IReadOnlyList<MobileLuisterSection> GetSectionsForVisit(Guid visitId)
+    {
+        var sections = Sections is { Count: > 0 } ? Sections : Playlists
+            .Select((playlist, index) => new MobileLuisterSection("playlist", playlist.Title, index, playlist, []))
+            .ToArray();
+        if (FirstGratisVisitId != visitId || HasPaidSubscription)
+            return sections;
+
+        return Shink.Components.Content.GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
+            sections, isGratisOnlyUser: true, static section => section.Playlist?.Slug, isFirstVisit: true);
+    }
+}
 
 public sealed record MobileLuisterSection(
     string Kind,

@@ -2289,6 +2289,27 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
     }
 
+    public async Task<bool> RecordFirstLuisterVisitAsync(string email, Guid visitId, CancellationToken cancellationToken = default)
+    {
+        var apiKey = ResolveApiKey();
+        if (!TryBuildSupabaseBaseUri(out var baseUri) || string.IsNullOrWhiteSpace(apiKey))
+            return false;
+
+        using var request = CreateJsonRequest(HttpMethod.Post, new Uri(baseUri, "rest/v1/rpc/record_first_luister_visit"),
+            apiKey, new { p_email = email, p_visit_id = visitId }, "return=representation");
+        try
+        {
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<bool>(cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested && ex is (HttpRequestException or JsonException or OperationCanceledException))
+        {
+            _logger.LogWarning(ex, "Could not record the first Luister visit.");
+            return false;
+        }
+    }
+
     public async Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(email))

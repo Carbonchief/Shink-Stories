@@ -496,8 +496,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
-            if (detail.RequiresSubscription && _sessionState.Current.IsSignedIn && !_sessionState.Current.HasPaidSubscription)
+            if (detail.RequiresSubscription && !_sessionState.Current.HasPaidSubscription)
             {
+                // Keep a usable locked screen behind sign-up when a guest goes back.
+                RenderDetail(detail, trackView: false);
+                _needsLoadRetry = false;
                 await PageHelpers.OpenPlansForStoryAsync(detail.Story, _sessionState);
                 return;
             }
@@ -2001,17 +2004,9 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         if (_sessionState.Current.HasPaidSubscription)
             return BuildMessage("Jou intekening is aktief. Hierdie storie is nie by jou huidige plan ingesluit nie.");
 
-        var loginButton = BuildPrimaryButton("Teken in");
-        loginButton.Clicked += async (_, _) =>
-        {
-            var returnPath = PageHelpers.BuildStoryReturnPath(detail.Story);
-            await Shell.Current.GoToAsync(
-                $"{nameof(AccountPage)}?returnUrl={Uri.EscapeDataString(returnPath)}",
-                animate: true);
-        };
-
-        var plansButton = BuildSecondaryButton("Sien planne");
-        plansButton.Clicked += async (_, _) => await PageHelpers.OpenPlansForStoryAsync(detail.Story, _sessionState);
+        var signedIn = _sessionState.Current.IsSignedIn;
+        var unlockButton = BuildPrimaryButton(signedIn ? "Sien planne" : "Skep rekening");
+        unlockButton.Clicked += async (_, _) => await PageHelpers.OpenPlansForStoryAsync(detail.Story, _sessionState);
 
         return new Border
         {
@@ -2033,15 +2028,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                     },
                     new Label
                     {
-                        Text = "Teken in of kies 'n plan om hierdie storie op die app oop te maak.",
+                        Text = signedIn ? "Kies ’n plan om hierdie storie te ontsluit." : "Skep ’n rekening om volle toegang te kry.",
                         FontSize = 15,
                         TextColor = PlayerMutedTextColor
                     },
-                    new HorizontalStackLayout
-                    {
-                        Spacing = 10,
-                        Children = { loginButton, plansButton }
-                    }
+                    unlockButton
                 }
             }
         };
@@ -2597,19 +2588,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 16 },
             Shadow = null!,
-            Content = new Grid
+            Content = new Image
             {
-                HeightRequest = coverHeight,
-                Children =
-                {
-                    new Image
-                    {
-                        Source = PageHelpers.ResolveStoryCardImageSource(story, _apiClient),
-                        Aspect = Aspect.AspectFill,
-                        HeightRequest = coverHeight
-                    },
-                    BuildCarouselPlayBadge()
-                }
+                Source = PageHelpers.ResolveStoryCardImageSource(story, _apiClient),
+                Aspect = Aspect.AspectFill,
+                HeightRequest = coverHeight
             }
         };
 
@@ -2647,30 +2630,6 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
         return card;
     }
-
-    private static View BuildCarouselPlayBadge() =>
-        new Border
-        {
-            WidthRequest = 38,
-            HeightRequest = 38,
-            BackgroundColor = Color.FromArgb("#8AF3B23F"),
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 999 },
-            HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center,
-            InputTransparent = true,
-            Content = new Label
-            {
-                Text = "▶",
-                Opacity = 0.78,
-                TextColor = Color.FromArgb("#2A1C05"),
-                FontSize = 17,
-                FontAttributes = FontAttributes.Bold,
-                HorizontalTextAlignment = TextAlignment.Center,
-                VerticalTextAlignment = TextAlignment.Center,
-                Margin = new Thickness(2, 0, 0, 0)
-            }
-        };
 
     private sealed class PlaylistQueueCarouselItemView(Func<MobileStorySummary, View> buildItem) : ContentView
     {

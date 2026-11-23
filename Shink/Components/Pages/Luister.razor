@@ -306,6 +306,7 @@ else
     private string? PageLoadErrorMessage { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
     private bool ShowCharacterUnlockPopup { get; set; }
+    private bool IsFirstLuisterVisit { get; set; }
     private bool IsLoadingPage { get; set; } = true;
     private bool AllowEmptyState { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
@@ -360,6 +361,8 @@ else
             try
             {
                 var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
+                IsFirstLuisterVisit = playlists.Count > 0 && !string.IsNullOrWhiteSpace(SignedInEmail) &&
+                    await SubscriptionLedgerService.RecordFirstLuisterVisitAsync(SignedInEmail, Guid.NewGuid());
                 LuisterPlaylists = playlists
                     .Where(playlist => !AccessProfile.HasStoryCornerOrAll ||
                         !string.Equals(GetPlaylistSlug(playlist), StoryAccessPolicy.GratisPlaylistSlug, StringComparison.OrdinalIgnoreCase))
@@ -548,7 +551,8 @@ else
         return GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
             orderedSections,
             IsGratisOnlyUser(),
-            static section => section.Playlist?.Slug);
+            static section => section.Playlist?.Slug,
+            isFirstVisit: IsFirstLuisterVisit);
     }
 
     private RenderFragment RenderPlaylistShowcaseContent(string title, string imagePath, string iconClass, string? imageSources = null) => @<text>

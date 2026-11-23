@@ -14,7 +14,7 @@ public class R2AudioDeliverySourceTests
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
 
-        StringAssert.Contains(program, "audioAccessService.IsTokenValid(slug, token)");
+        StringAssert.Contains(program, "audioAccessService.IsTokenValid(slug, token, out var allowsGuestPlayback)");
         StringAssert.Contains(program, "HasRequiredStoryAccessAsync(");
         StringAssert.Contains(program, "ApplyAudioResponseSecurityHeaders(httpContext);");
         StringAssert.Contains(program, "CreateAudioReadUrlAsync(");

@@ -92,7 +92,20 @@ public sealed class LuisterGratisPlaylistVisibilityTests
         Assert.IsNotNull(carousel.QuerySelector("a.luister-speellyste-link[href*='gratis-stories']"));
     }
 
-    private static async Task<string> RenderAsync(bool signedIn, string[] activeTiers, bool includeGratis = true, bool featureGratis = false)
+    [TestMethod]
+    [DataRow(true, 2, 0)]
+    [DataRow(false, 2, 1)]
+    [DataRow(false, -1, 0)]
+    public async Task GratisSectionFollowsVisitOrder(bool firstVisit, int adminSortOrder, int expectedSection)
+    {
+        var html = await RenderAsync(signedIn: true, activeTiers: ["gratis"], featureGratis: true,
+            firstVisit: firstVisit, gratisSortOrder: adminSortOrder);
+        using var document = new HtmlParser().ParseDocument(html);
+        var sections = document.QuerySelectorAll("section.stories-carousel-section");
+        Assert.IsTrue(sections[expectedSection].ClassList.Contains("luister-gratis-stories-section"));
+    }
+
+    private static async Task<string> RenderAsync(bool signedIn, string[] activeTiers, bool includeGratis = true, bool featureGratis = false, bool firstVisit = false, int gratisSortOrder = 2)
     {
         var freeStory = new StoryItem("gratis-storie", "Gratis storie", "", "/cover.png", "audio.mp3", AccessLevel: "free");
         var playlists = new List<StoryPlaylist>
@@ -101,7 +114,7 @@ public sealed class LuisterGratisPlaylistVisibilityTests
         };
         if (includeGratis)
         {
-            playlists.Add(new(StoryAccessPolicy.GratisPlaylistSlug, "Gratis uit die admin", "Die ingestelde beskrywing", 2,
+            playlists.Add(new(StoryAccessPolicy.GratisPlaylistSlug, "Gratis uit die admin", "Die ingestelde beskrywing", gratisSortOrder,
                 [freeStory], ShowcaseImagePath: "/gratis-playlist.png", IncludeInSpeellysteCarousel: true)
             {
                 PlaylistId = GratisPlaylistId
@@ -123,9 +136,12 @@ public sealed class LuisterGratisPlaylistVisibilityTests
             .AddSingleton(Service<IStoryCatalogService>(method => method.Name == nameof(IStoryCatalogService.GetLuisterPlaylistsAsync)
                 ? Task.FromResult<IReadOnlyList<StoryPlaylist>>(playlists)
                 : throw new InvalidOperationException("Unexpected catalog operation.")))
-            .AddSingleton(Service<ISubscriptionLedgerService>(method => method.Name == nameof(ISubscriptionLedgerService.GetActiveTierCodesAsync)
-                ? Task.FromResult<IReadOnlyList<string>>(activeTiers)
-                : throw new InvalidOperationException("Rendering must not change subscriptions.")))
+            .AddSingleton(Service<ISubscriptionLedgerService>(method => method.Name switch
+            {
+                nameof(ISubscriptionLedgerService.GetActiveTierCodesAsync) => Task.FromResult<IReadOnlyList<string>>(activeTiers),
+                nameof(ISubscriptionLedgerService.RecordFirstLuisterVisitAsync) when signedIn => Task.FromResult(firstVisit),
+                _ => throw new InvalidOperationException("Unexpected ledger operation.")
+            }))
             .AddSingleton(Service<IStoryFavoriteService>(method => method.Name == nameof(IStoryFavoriteService.GetFavoriteStorySlugsAsync)
                 ? Task.FromResult<IReadOnlyList<string>>([])
                 : throw new InvalidOperationException("Rendering must not change favorites.")))

@@ -45,6 +45,7 @@ public interface ISubscriptionLedgerService
         CancellationToken cancellationToken = default);
     Task<AccountClosureResult> CloseAccountAsync(string? email, CancellationToken cancellationToken = default);
     Task<AccountDataDeletionResult> DeleteAccountDataAsync(string? email, CancellationToken cancellationToken = default);
+    Task<bool> RecordFirstLuisterVisitAsync(string email, Guid visitId, CancellationToken cancellationToken = default);
     Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default);
     Task<bool> UpsertSubscriberProfileAsync(
         string? email,

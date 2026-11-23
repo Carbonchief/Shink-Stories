@@ -70,6 +70,8 @@ public sealed class AvatarSelectionPage : ContentPage, IQueryAttributable
             HeightRequest = 58, MaximumWidthRequest = 396, HorizontalOptions = LayoutOptions.Fill,
             Margin = new Thickness(0, 12, 0, 0)
         };
+        if (Preferences.Default.ContainsKey(AppShell.SignupPlansPreferenceKey))
+            _continueButton.Text = "Gaan voort";
         _continueButton.Clicked += async (_, _) => await SaveAsync();
         _status = new Label
         {
@@ -99,7 +101,7 @@ public sealed class AvatarSelectionPage : ContentPage, IQueryAttributable
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
         _isEditing = query.TryGetValue("mode", out var mode) && string.Equals(mode?.ToString(), "edit", StringComparison.Ordinal);
-        _continueButton.Text = _isEditing ? "Save" : "Begin luister";
+        if (_isEditing) _continueButton.Text = "Save";
         _backButton.IsVisible = _isEditing;
     }
 
@@ -199,7 +201,6 @@ public sealed class AvatarSelectionPage : ContentPage, IQueryAttributable
             await _apiClient.UpdateAvatarAsync(_selectedId, useRandomIfUnselected: !_isEditing, timeout.Token);
             if (_isEditing)
                 await Shell.Current.GoToAsync("..", animate: true);
-            // Completing onboarding changes AppShell's root to Luister via SessionState.
         }
         catch (Exception exception)
         {

@@ -51,19 +51,20 @@ public class MobilePlansSourceTests
     }
 
     [TestMethod]
-    public void MobileGratisPostAuthenticationOpensPlansUnlessFreeSignupWasSelected()
+    public void OnboardingOffersGuestListeningOrSignupBeforePlans()
     {
         var account = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
         var onboarding = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "OnboardingPage.cs"));
         var shell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
+        var helpers = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PageHelpers.cs"));
 
-        StringAssert.Contains(onboarding, "Complete(Destination.FreeSignup)");
-        StringAssert.Contains(shell, "else if (destination == OnboardingPage.Destination.FreeSignup)\n                    page.ShowFreeSignup();");
-        StringAssert.Contains(account, "_continueWithFreeStories = true;\n        SetAuthPanelMode(AuthPanelMode.SignUp);");
-        StringAssert.Contains(account, "var hasStoryReturnPath = PageHelpers.TryParseStoryReturnPath(ReturnUrl, out var source, out var slug);");
-        StringAssert.Contains(account, "if (!_sessionState.Current.HasPaidSubscription && !_continueWithFreeStories)");
-        StringAssert.Contains(account, "await Shell.Current.GoToAsync(plansRoute, animate: true);");
-        StringAssert.Contains(account, "await Shell.Current.GoToAsync(\"//Luister\", animate: true);");
+        StringAssert.Contains(onboarding, "freeButton.Clicked += (_, _) => Complete(Destination.Listen)");
+        StringAssert.Contains(onboarding, "plansButton.Clicked += (_, _) => Complete(Destination.Signup)");
+        StringAssert.Contains(shell, "BuildListeningShell();");
+        StringAssert.Contains(helpers, "route = nameof(AccountPage);");
+        StringAssert.Contains(helpers, "query[\"signup\"] = true;");
+        StringAssert.Contains(account, "SetAuthPanelMode(AuthPanelMode.SignUp);");
+        StringAssert.Contains(shell, "page.Appearing += OpenSignupPlans;");
     }
 
     [TestMethod]
@@ -198,7 +199,7 @@ public class MobilePlansSourceTests
         StringAssert.Contains(plans, "$\"../{storyRoute}\"");
         StringAssert.Contains(account, "PageHelpers.TryParseStoryReturnPath(ReturnUrl");
         StringAssert.Contains(account, "detail?.RequiresSubscription == true");
-        StringAssert.Contains(story, "detail.RequiresSubscription && _sessionState.Current.IsSignedIn");
+        StringAssert.Contains(story, "detail.RequiresSubscription && !_sessionState.Current.HasPaidSubscription");
         StringAssert.Contains(playlistStories, "PageHelpers.OpenPlansForStoryAsync(story, _sessionState)");
         StringAssert.Contains(playlistDetail, "PageHelpers.OpenPlansForStoryAsync(story, _sessionState)");
         StringAssert.Contains(playlistDetail, "PageHelpers.OpenPlansForStoryAsync(_currentStory, _sessionState)");

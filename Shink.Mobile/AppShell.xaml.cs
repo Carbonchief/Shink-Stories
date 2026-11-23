@@ -7,6 +7,8 @@ namespace Shink.Mobile;
 public partial class AppShell : Shell
 {
     private const string OnboardingCompletedPreferenceKey = "mobile_onboarding_completed_v1";
+    private const string GuestListeningPreferenceKey = "mobile_guest_listening";
+    internal const string SignupPlansPreferenceKey = "mobile_plans_after_signup";
     private readonly IServiceProvider _services;
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
@@ -105,7 +107,8 @@ public partial class AppShell : Shell
         var hasCompletedOnboarding = Preferences.Default.Get(OnboardingCompletedPreferenceKey, false);
         var shellState = isSignedIn
             ? _sessionState.Current.RequiresAvatarSelection ? "avatar_setup" : "signed_in"
-            : hasCompletedOnboarding ? "signed_out" : "onboarding";
+            : !hasCompletedOnboarding ? "onboarding"
+            : Preferences.Default.Get(GuestListeningPreferenceKey, false) ? "guest" : "signed_out";
         if (_renderedShellState == shellState)
         {
             return;
@@ -114,16 +117,28 @@ public partial class AppShell : Shell
         _isRendering = true;
         try
         {
+            if (!isSignedIn && _renderedShellState is "signed_in" or "avatar_setup")
+            {
+                Preferences.Default.Remove(SignupPlansPreferenceKey);
+                _services.GetRequiredService<StoryPlaybackSession>().Stop();
+                _services.GetRequiredService<PlaylistPlaybackState>().Clear();
+            }
             if (isSignedIn)
             {
                 // Existing accounts should not see first-run onboarding after
                 // a later sign-out, including when upgrading to this version.
                 if (!hasCompletedOnboarding)
                     Preferences.Default.Set(OnboardingCompletedPreferenceKey, true);
+                if (!_sessionState.Current.HasPaidSubscription && CurrentPage is AccountPage { IsFullAccessSignup: true } account)
+                    Preferences.Default.Set(SignupPlansPreferenceKey, account.ReturnUrl ?? "/luister");
                 if (_sessionState.Current.RequiresAvatarSelection)
                     BuildAvatarSetupShell();
                 else
-                    BuildSignedInShell();
+                    BuildListeningShell();
+            }
+            else if (shellState == "guest")
+            {
+                BuildListeningShell();
             }
             else if (shellState == "onboarding")
             {
@@ -169,18 +184,20 @@ public partial class AppShell : Shell
         page.Completed -= OnOnboardingCompleted;
 
         Preferences.Default.Set(OnboardingCompletedPreferenceKey, true);
+        if (page.CompletionDestination is OnboardingPage.Destination.Listen or OnboardingPage.Destination.Signup)
+            Preferences.Default.Set(GuestListeningPreferenceKey, true);
         RenderShellFromSessionState(page.CompletionDestination);
 
-        if (page.CompletionDestination == OnboardingPage.Destination.Plans && _renderedShellState == "signed_out")
+        if (page.CompletionDestination == OnboardingPage.Destination.Signup && _renderedShellState == "guest")
         {
             try
             {
-                await GoToAsync(nameof(PlansPage), animate: false);
+                await PageHelpers.OpenPlansAsync(_sessionState, "/luister");
             }
             catch (Exception ex)
             {
-                _analytics.TrackRecoverableFailure(ex, "mobile_onboarding_plans_navigation");
-                await DisplayAlertAsync("Intekeninge", "Ons kon nie nou die planne oopmaak nie.", "Reg so");
+                _analytics.TrackRecoverableFailure(ex, "mobile_onboarding_signup_navigation");
+                await DisplayAlertAsync("Skep rekening", "Ons kon nie die registrasieskerm oopmaak nie.", "Reg so");
             }
         }
     }
@@ -196,8 +213,6 @@ public partial class AppShell : Shell
                 var page = _services.GetRequiredService<AccountPage>();
                 if (destination == OnboardingPage.Destination.SignIn)
                     page.ShowSignIn();
-                else if (destination == OnboardingPage.Destination.FreeSignup)
-                    page.ShowFreeSignup();
                 return page;
             })
         });
@@ -214,14 +229,20 @@ public partial class AppShell : Shell
         });
     }
 
-    private void BuildSignedInShell()
+    private void BuildListeningShell()
     {
         Items.Clear();
         Items.Add(new ShellContent
         {
             Title = "Luister",
             Route = "Luister",
-            ContentTemplate = new DataTemplate(() => _services.GetRequiredService<LuisterPage>())
+            ContentTemplate = new DataTemplate(() =>
+            {
+                var page = _services.GetRequiredService<LuisterPage>();
+                if (_sessionState.Current.IsSignedIn && Preferences.Default.ContainsKey(SignupPlansPreferenceKey))
+                    page.Appearing += OpenSignupPlans;
+                return page;
+            })
         });
         var karaktersContent = new ShellContent
         {
@@ -231,6 +252,27 @@ public partial class AppShell : Shell
         };
         Shell.SetFlyoutItemIsVisible(karaktersContent, false);
         Items.Add(karaktersContent);
+    }
+
+    private void OpenSignupPlans(object? sender, EventArgs args)
+    {
+        if (sender is not LuisterPage page) return;
+        page.Appearing -= OpenSignupPlans;
+        page.Dispatcher.Dispatch(async () =>
+        {
+            var returnPath = Preferences.Default.Get(SignupPlansPreferenceKey, "/luister");
+            Preferences.Default.Remove(SignupPlansPreferenceKey);
+            if (!_sessionState.Current.IsSignedIn || _sessionState.Current.HasPaidSubscription) return;
+            try
+            {
+                await PageHelpers.OpenPlansAsync(_sessionState, returnPath);
+            }
+            catch (Exception ex)
+            {
+                _analytics.TrackRecoverableFailure(ex, "mobile_onboarding_plans_navigation");
+                await DisplayAlertAsync("Intekeninge", "Ons kon nie nou die planne oopmaak nie.", "Reg so");
+            }
+        });
     }
 
     private void OnShellNavigated(object? sender, ShellNavigatedEventArgs args)

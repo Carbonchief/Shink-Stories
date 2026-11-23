@@ -30,13 +30,12 @@ public sealed class MobilePlaylistDetailParitySourceTests
         StringAssert.Contains(source, "Stories in hierdie speellys");
         StringAssert.Contains(source, "BuildFeaturedStory(showcaseStory)");
         StringAssert.Contains(source, "new GridItemsLayout(2, ItemsLayoutOrientation.Vertical)");
-        StringAssert.Contains(source, "_storiesLayout.Span = GetStoryGridSpan(width);");
+        StringAssert.Contains(source, "var span = GetStoryGridSpan(width);");
+        StringAssert.Contains(source, "_storiesLayout.Span = span;");
         StringAssert.Contains(source, "private const double StoryCardMaximumWidth = 174;");
-        StringAssert.Contains(source, "MaximumWidthRequest = StoryCardMaximumWidth,");
         StringAssert.Contains(source, "(StoryCardMaximumWidth + StoryCardHorizontalMargin * 2 + StoryGridHorizontalSpacing)),");
         StringAssert.Contains(source, "MaxLines = 1,");
         StringAssert.Contains(source, "LineBreakMode = LineBreakMode.TailTruncation");
-        StringAssert.Contains(source, "cover.HeightRequest = card.Width * 4d / 3d;");
         StringAssert.Contains(source, "nameof(PlaylistDetailPage)");
         StringAssert.Contains(source, "nameof(StoryDetailPage)");
         StringAssert.Contains(source, "appearance.BackdropUrl");
@@ -48,12 +47,39 @@ public sealed class MobilePlaylistDetailParitySourceTests
     }
 
     [TestMethod]
+    public void PlaylistHeroLogoFitsNarrowScreensAndStaysCentered()
+    {
+        var source = File.ReadAllText(FindRepoFile("Shink.Mobile", "Pages", "PlaylistStoriesPage.cs"));
+        var logoStart = source.IndexOf("var logo = new ProgressiveCachedImage(", StringComparison.Ordinal);
+        var logoEnd = source.IndexOf("heroGrid.Children.Add(logo);", logoStart, StringComparison.Ordinal);
+        var logo = source[logoStart..logoEnd];
+
+        StringAssert.Contains(logo, "Aspect = Aspect.AspectFit");
+        StringAssert.Contains(logo, "HorizontalOptions = LayoutOptions.Center");
+        StringAssert.Contains(logo, "Margin = new Thickness(0, 34, 0, 82)");
+        StringAssert.Contains(logo, "logo.WidthRequest = Math.Clamp(heroGrid.Width - 48, 0, 346)");
+    }
+
+    [TestMethod]
+    public void PlaylistStoryCoversUseTheSameGridSizeRegardlessOfContent()
+    {
+        var source = File.ReadAllText(FindRepoFile("Shink.Mobile", "Pages", "PlaylistStoriesPage.cs"));
+
+        StringAssert.Contains(source, "var columnWidth = (width - (span - 1) * StoryGridHorizontalSpacing) / span;");
+        StringAssert.Contains(source, "StoryCardWidth = Math.Clamp(columnWidth - 2 * StoryCardHorizontalMargin, 1, StoryCardMaximumWidth);");
+        StringAssert.Contains(source, "StoryCoverHeight => StoryCardWidth * 4d / 3d;");
+        StringAssert.Contains(source, "card.SetBinding(WidthRequestProperty, static (PlaylistStoriesPage page) => page.StoryCardWidth");
+        StringAssert.Contains(source, "cover.SetBinding(HeightRequestProperty, static (PlaylistStoriesPage page) => page.StoryCoverHeight");
+        Assert.DoesNotContain("card.SizeChanged +=", source, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
     public void PlaylistStoryGridCardsDoNotRenderPlayBadgeOverlays()
     {
         var source = File.ReadAllText(FindRepoFile("Shink.Mobile", "Pages", "PlaylistStoriesPage.cs"));
 
         var storyCardStart = source.IndexOf("private View BuildStoryCard()", StringComparison.Ordinal);
-        var storyCardEnd = source.IndexOf("private static Border BuildPlayBadge", storyCardStart, StringComparison.Ordinal);
+        var storyCardEnd = source.IndexOf("return card;", storyCardStart, StringComparison.Ordinal);
 
         Assert.IsGreaterThanOrEqualTo(0, storyCardStart);
         Assert.IsGreaterThan(storyCardStart, storyCardEnd);

@@ -98,7 +98,7 @@ public class LuisterPlaylistResponsiveCssTests
     }
 
     [TestMethod]
-    public void GratisStoriesSectionUsesBadgeWrapperOnLuisterPage()
+    public void GratisStoriesSectionFramesTheHeadingShowcaseAndCarousel()
     {
         var markup = File.ReadAllText(GetRepoPath(
             "Shink",
@@ -114,9 +114,9 @@ public class LuisterPlaylistResponsiveCssTests
         StringAssert.Contains(markup, "BuildPlaylistSectionClass(playlist)");
         StringAssert.Contains(markup, "StoryAccessPolicy.GratisPlaylistSlug");
         StringAssert.Contains(markup, "luister-gratis-stories-section");
-        StringAssert.Contains(css, ".luister-gratis-stories-section .stories-carousel-shell");
-        StringAssert.Contains(css, "border: 4px solid #f2b705;");
-        StringAssert.Contains(css, "linear-gradient(180deg, #ffe970 0%, #ffdf41 55%, #ffd928 100%);");
+        var panel = System.Text.RegularExpressions.Regex.Match(css, @"(?m)^\.luister-gratis-stories-section \{[^}]+\}").Value;
+        StringAssert.Contains(panel, "border: 4px solid #f2b705;");
+        StringAssert.Contains(panel, "linear-gradient(180deg, #ffe970 0%, #ffdf41 55%, #ffd928 100%);");
         StringAssert.Contains(css, ".luister-gratis-stories-section .stories-carousel");
         StringAssert.Contains(css, "scroll-padding-inline: 0;");
     }

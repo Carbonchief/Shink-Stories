@@ -142,6 +142,7 @@
     <MauiImage Include="../Shink/wwwroot/branding/profile-avatars/*.png"
                Link="Resources/Images/profile_avatar_%(Filename)%(Extension)"
                Resize="False" />
+    <Compile Include="../Shink/Components/Content/GratisPlaylistDisplayOrderPolicy.cs" Link="Shared/GratisPlaylistDisplayOrderPolicy.cs" />
     <Compile Include="../Shink/Shared/ProfileAvatarOptions.cs" Link="Shared/ProfileAvatarOptions.cs" />
     <MauiImage Remove="Resources/Images/paywall_book.png;Resources/Images/paywall_forest.png;Resources/Images/paywall_oortjies.png;Resources/Images/paywall_prinses_panda.png;Resources/Images/paywall_skillie.png" />
     <MauiImage Update="Resources/Images/paywall_valley.png" Resize="False" />

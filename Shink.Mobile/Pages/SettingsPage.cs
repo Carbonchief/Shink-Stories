@@ -321,7 +321,14 @@ public sealed class SettingsPage : ContentPage
     {
         var choice = await DisplayActionSheetAsync("Selfoonkennisgewings", "Kanselleer", null,
             "Skakel aan", "Skakel af", "Selfoon se instellings");
-        if (choice == "Selfoon se instellings") AppInfo.Current.ShowSettingsUI();
+        if (choice == "Selfoon se instellings")
+        {
+#if ANDROID
+            MobilePushPlatform.OpenNotificationSettings();
+#else
+            AppInfo.Current.ShowSettingsUI();
+#endif
+        }
         else if (choice is "Skakel aan" or "Skakel af")
             await _push.SetEnabledAsync(choice == "Skakel aan");
     }

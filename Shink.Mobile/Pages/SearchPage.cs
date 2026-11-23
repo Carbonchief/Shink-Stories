@@ -919,11 +919,7 @@ public sealed class SearchPage : ContentPage
             });
             if (story.IsLocked)
             {
-                var source = ResolveStorySource(story);
-                var returnUrl = $"/{source}/{Uri.EscapeDataString(story.Slug)}";
-                await Shell.Current.GoToAsync(
-                    $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(returnUrl)}",
-                    animate: true);
+                await PageHelpers.OpenPlansForStoryAsync(story, _sessionState);
                 return;
             }
 

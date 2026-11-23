@@ -165,6 +165,7 @@ public sealed class MobilePersistentPlaybackSourceTests
     {
         var source = ReadSource("Shink.Mobile", "Pages", "DownloadedPage.cs");
         var drop = ExtractMethod(source, "private void HandleRowDrop(", "private void MoveRow(");
+        var move = ExtractMethod(source, "private void MoveRow(", "private void FinishDragging(");
         var finish = ExtractMethod(source, "private void FinishDragging(", "private static List<OfflineStoryDownload> ApplySavedOrder(");
         var load = ExtractMethod(source, "private async Task LoadAsync()", "private View BuildHeader(");
 
@@ -172,15 +173,30 @@ public sealed class MobilePersistentPlaybackSourceTests
         // Reparenting a row (including a ZIndex change) in that callback crashes
         // subsequent drags with java.util.ConcurrentModificationException.
         Assert.IsFalse(drop.Contains("MoveRow(", StringComparison.Ordinal));
-        StringAssert.Contains(drop, "_pendingDropDestinationIndex = destinationIndex;");
+        StringAssert.Contains(drop, "_pendingDropDestinationIndex =");
         var dispatchIndex = finish.IndexOf("Dispatcher.Dispatch(", StringComparison.Ordinal);
         Assert.IsGreaterThanOrEqualTo(0, dispatchIndex);
         Assert.IsGreaterThan(dispatchIndex, finish.IndexOf("MoveRow(", StringComparison.Ordinal));
-        Assert.IsGreaterThan(dispatchIndex, finish.IndexOf("row.ZIndex = 0;", StringComparison.Ordinal));
+        Assert.DoesNotContain("row.ZIndex", drop, StringComparison.Ordinal);
+        Assert.DoesNotContain("row.ZIndex", finish[..dispatchIndex], StringComparison.Ordinal);
         StringAssert.Contains(finish, "_pendingDropDestinationIndex = null;");
-        StringAssert.Contains(finish, "SaveDownloadOrder();");
+        StringAssert.Contains(move, "SaveDownloadOrder();");
         Assert.IsLessThan(load.IndexOf("_content.Children.Clear();", StringComparison.Ordinal),
             load.IndexOf("_reloadAfterDrag = true;", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void DownloadedRowsShareOneDropTargetAndOnlyTrackActiveDrags()
+    {
+        var source = ReadSource("Shink.Mobile", "Pages", "DownloadedPage.cs");
+        var row = ExtractMethod(source, "private View BuildDownloadRow(", "private void HandleDragOver(");
+        var over = ExtractMethod(source, "private void HandleDragOver(", "private void HandleRowDrop(");
+
+        // UIKit may prepare a drag on a stationary hold and never send DropCompleted.
+        Assert.DoesNotContain("_draggingRow =", row, StringComparison.Ordinal);
+        StringAssert.Contains(over, "_draggingRow = row;");
+        StringAssert.Contains(source, "_rows.GestureRecognizers.Add(drop);");
+        Assert.DoesNotContain("playButton.GestureRecognizers", row, StringComparison.Ordinal);
     }
 
     [TestMethod]

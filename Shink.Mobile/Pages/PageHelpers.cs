@@ -27,8 +27,15 @@ internal static class PageHelpers
             return;
         }
         var route = nameof(PlansPage);
-        if (!string.IsNullOrWhiteSpace(returnPath)) route += $"?returnUrl={Uri.EscapeDataString(returnPath)}";
-        await Shell.Current.GoToAsync(route, animate: true);
+        var query = new ShellNavigationQueryParameters();
+        if (!sessionState.Current.IsSignedIn)
+        {
+            route = nameof(AccountPage);
+            query["signup"] = true;
+        }
+        if (!string.IsNullOrWhiteSpace(returnPath))
+            query["returnUrl"] = returnPath;
+        await Shell.Current.GoToAsync(route, animate: true, parameters: query);
     }
 
     public static bool TryBuildStoryDetailRoute(string? returnPath, out string route)

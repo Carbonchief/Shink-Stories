@@ -9,7 +9,7 @@ public sealed class AudioAccessService(IDataProtectionProvider dataProtectionPro
     private static readonly TimeSpan DefaultTokenLifetime = TimeSpan.FromHours(4);
     private readonly IDataProtector _protector = dataProtectionProvider.CreateProtector(ProtectorPurpose);
 
-    public string CreateSignedAudioUrl(string slug, TimeSpan? lifetime = null)
+    public string CreateSignedAudioUrl(string slug, TimeSpan? lifetime = null, bool allowsGuestPlayback = false)
     {
         if (string.IsNullOrWhiteSpace(slug))
         {
@@ -17,15 +17,16 @@ public sealed class AudioAccessService(IDataProtectionProvider dataProtectionPro
         }
 
         var expiresAtUtc = DateTimeOffset.UtcNow.Add(lifetime ?? DefaultTokenLifetime);
-        var payload = new AudioTokenPayload(slug.Trim(), expiresAtUtc.ToUnixTimeSeconds());
+        var payload = new AudioTokenPayload(slug.Trim(), expiresAtUtc.ToUnixTimeSeconds(), allowsGuestPlayback);
         var json = JsonSerializer.Serialize(payload);
         var protectedToken = _protector.Protect(json);
 
         return $"/media/audio/{Uri.EscapeDataString(payload.Slug)}?token={Uri.EscapeDataString(protectedToken)}";
     }
 
-    public bool IsTokenValid(string slug, string? token)
+    public bool IsTokenValid(string slug, string? token, out bool allowsGuestPlayback)
     {
+        allowsGuestPlayback = false;
         if (string.IsNullOrWhiteSpace(token))
         {
             return false;
@@ -49,8 +50,12 @@ public sealed class AudioAccessService(IDataProtectionProvider dataProtectionPro
 
         var hasSameSlug = string.Equals(payload.Slug, slug, StringComparison.OrdinalIgnoreCase);
         var isNotExpired = DateTimeOffset.UtcNow.ToUnixTimeSeconds() <= payload.ExpiresAtUnixSeconds;
-        return hasSameSlug && isNotExpired;
+        if (!hasSameSlug || !isNotExpired)
+            return false;
+
+        allowsGuestPlayback = payload.AllowsGuestPlayback;
+        return true;
     }
 
-    private sealed record AudioTokenPayload(string Slug, long ExpiresAtUnixSeconds);
+    private sealed record AudioTokenPayload(string Slug, long ExpiresAtUnixSeconds, bool AllowsGuestPlayback = false);
 }

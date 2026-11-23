@@ -28,8 +28,8 @@ public class VideoAccessServiceTests
             payload.RootElement.GetProperty("ExpiresAtUnixSeconds").GetInt64());
 
         Assert.IsGreaterThanOrEqualTo(beforeCreate.AddHours(2), expiresAt);
-        Assert.IsTrue(service.IsTokenValid("video-storie", token));
-        Assert.IsFalse(service.IsTokenValid("ander-storie", token));
+        Assert.IsTrue(service.IsTokenValid("video-storie", token, out _));
+        Assert.IsFalse(service.IsTokenValid("ander-storie", token, out _));
     }
 
     [TestMethod]
@@ -41,7 +41,24 @@ public class VideoAccessServiceTests
         var audioService = new AudioAccessService(provider);
         var videoToken = ExtractToken(videoService.CreateSignedVideoUrl("video-storie"));
 
-        Assert.IsFalse(audioService.IsTokenValid("video-storie", videoToken));
+        Assert.IsFalse(audioService.IsTokenValid("video-storie", videoToken, out _));
+    }
+
+    [TestMethod]
+    public void GuestPermissionRequiresAValidGuestTokenForTheRequestedStory()
+    {
+        var service = new VideoAccessService(new EphemeralDataProtectionProvider());
+        var guestToken = ExtractToken(service.CreateSignedVideoUrl("gratis", allowsGuestPlayback: true));
+        Assert.IsTrue(service.IsTokenValid("gratis", guestToken, out var guest));
+        Assert.IsTrue(guest);
+        Assert.IsFalse(service.IsTokenValid("ander", guestToken, out guest));
+        Assert.IsFalse(guest);
+        var expired = ExtractToken(service.CreateSignedVideoUrl("gratis", TimeSpan.FromMinutes(-1), true));
+        Assert.IsFalse(service.IsTokenValid("gratis", expired, out guest));
+        Assert.IsFalse(guest);
+        var ordinary = ExtractToken(service.CreateSignedVideoUrl("gratis"));
+        Assert.IsTrue(service.IsTokenValid("gratis", ordinary, out guest));
+        Assert.IsFalse(guest);
     }
 
     private static string ExtractToken(string signedUrl)

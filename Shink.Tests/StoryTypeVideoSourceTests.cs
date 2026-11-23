@@ -75,7 +75,7 @@ public class StoryTypeVideoSourceTests
         StringAssert.Contains(catalogService, "? !string.IsNullOrWhiteSpace(row.VideoObjectKey)");
         StringAssert.Contains(catalogService, "VideoObjectKey: NormalizeOptionalText(row.VideoObjectKey)");
         StringAssert.Contains(program, "app.MapGet(\"/media/video/{slug}\"");
-        StringAssert.Contains(program, "videoAccessService.IsTokenValid(slug, token)");
+        StringAssert.Contains(program, "videoAccessService.IsTokenValid(slug, token, out var allowsGuestPlayback)");
         StringAssert.Contains(program, "CreateVideoReadUrlAsync(");
         StringAssert.Contains(program, ".RequireRateLimiting(\"video-stream\")");
         StringAssert.Contains(storyMarkup, "@if (IsVideoStory(CurrentStory))");

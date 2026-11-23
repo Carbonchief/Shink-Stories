@@ -642,7 +642,7 @@ app.MapGet("/media/audio/{slug}", async (
         return Results.Forbid();
     }
 
-    if (!audioAccessService.IsTokenValid(slug, token))
+    if (!audioAccessService.IsTokenValid(slug, token, out var allowsGuestPlayback))
     {
         return Results.Unauthorized();
     }
@@ -653,7 +653,7 @@ app.MapGet("/media/audio/{slug}", async (
         var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
                             ?? httpContext.User.Identity?.Name;
         var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
-        var hasStoryAccess = await HasRequiredStoryAccessAsync(
+        var hasStoryAccess = (allowsGuestPlayback && requirement == StoryAccessRequirement.Free) || await HasRequiredStoryAccessAsync(
             subscriptionLedgerService,
             signedInEmail,
             requirement,
@@ -757,7 +757,7 @@ app.MapGet("/media/video/{slug}", async (
         return Results.Forbid();
     }
 
-    if (!videoAccessService.IsTokenValid(slug, token))
+    if (!videoAccessService.IsTokenValid(slug, token, out var allowsGuestPlayback))
     {
         return Results.Unauthorized();
     }
@@ -773,7 +773,7 @@ app.MapGet("/media/video/{slug}", async (
     var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
                         ?? httpContext.User.Identity?.Name;
     var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
-    var hasStoryAccess = await HasRequiredStoryAccessAsync(
+    var hasStoryAccess = (allowsGuestPlayback && requirement == StoryAccessRequirement.Free) || await HasRequiredStoryAccessAsync(
         subscriptionLedgerService,
         signedInEmail,
         requirement,
@@ -4180,7 +4180,7 @@ app.MapGet("/api/mobile/home", async (
                 ToAbsoluteUri(httpContext, item.LinkPath)))
             .ToArray(),
         FreeStories: freeStoriesTask.Result
-            .Select(story => BuildMobileStorySummary(httpContext, story, source: "gratis", isLocked: !CanAccessStory(story, access, "gratis"), isFavorite: false))
+            .Select(story => BuildMobileStorySummary(httpContext, story, source: "gratis", isLocked: !access.CanPlay(story), isFavorite: false))
             .ToArray()));
 }).DisableAntiforgery();
 
@@ -4195,7 +4195,7 @@ app.MapGet("/api/mobile/gratis", async (
         Title: "Gratis stories",
         Description: "Drie gratis stories vir jou gesin.",
         Stories: freeStories
-            .Select(story => BuildMobileStorySummary(httpContext, story, source: "gratis", isLocked: !CanAccessStory(story, access, "gratis"), isFavorite: false))
+            .Select(story => BuildMobileStorySummary(httpContext, story, source: "gratis", isLocked: !access.CanPlay(story), isFavorite: false))
             .ToArray()));
 }).DisableAntiforgery();
 
@@ -4204,6 +4204,7 @@ app.MapGet("/api/mobile/luister", async (
     IStoryCatalogService storyCatalogService,
     ISubscriptionLedgerService subscriptionLedgerService,
     IStoryFavoriteService storyFavoriteService,
+    Guid? visitId,
     bool compact = false) =>
 {
     var signedInEmail = GetSignedInEmail(httpContext.User);
@@ -4225,7 +4226,7 @@ app.MapGet("/api/mobile/luister", async (
             httpContext,
             story,
             source: "luister",
-            isLocked: !CanAccessStory(story, access, "luister"),
+            isLocked: !access.CanPlay(story),
             isFavorite: favoriteSet.Contains(story.Slug));
 
     MobilePlaylistResponse MapPlaylist(StoryPlaylist playlist) =>
@@ -4248,16 +4249,16 @@ app.MapGet("/api/mobile/luister", async (
         .ToArray();
     var displayEntries = GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
         displayPlaylists.Select(playlist => (Source: playlist, Response: MapPlaylist(playlist))).ToArray(),
-        access.IsAuthenticated && !access.HasPaidSubscription,
+        !access.HasPaidSubscription,
         static entry => entry.Source.Slug);
     var mappedPlaylists = displayEntries.Select(entry => entry.Response).ToArray();
     var speellysteConfig = playlists.FirstOrDefault(IsMobileSpeellysteSystemPlaylist);
-    var sections = mappedPlaylists
-        .Select((playlist, index) => new MobileLuisterSectionResponse(
+    var sections = displayEntries
+        .Select(entry => new MobileLuisterSectionResponse(
             Kind: MobileLuisterSectionKinds.Playlist,
-            Title: playlist.Title,
-            SortOrder: displayPlaylists[index].SortOrder,
-            Playlist: playlist,
+            Title: entry.Response.Title,
+            SortOrder: entry.Source.SortOrder,
+            Playlist: entry.Response,
             Playlists: Array.Empty<MobilePlaylistResponse>()))
         .ToList();
     var speellystePlaylists = SpeellysteCarouselOrderPolicy.Apply(
@@ -4284,14 +4285,19 @@ app.MapGet("/api/mobile/luister", async (
         .ToArray();
     orderedSections = GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
             orderedSections,
-            access.IsAuthenticated && !access.HasPaidSubscription,
+            !access.HasPaidSubscription,
             static section => section.Playlist?.Slug)
         .ToArray();
 
+    // Only the open Luister screen supplies a visit ID. Search and prefetch use the same catalogue.
+    var isFirstVisit = visitId is Guid id && id != Guid.Empty && orderedSections.Length > 0 &&
+        !string.IsNullOrWhiteSpace(signedInEmail) &&
+        await subscriptionLedgerService.RecordFirstLuisterVisitAsync(signedInEmail, id, httpContext.RequestAborted);
     return Results.Ok(new MobileLuisterResponse(
         HasPaidSubscription: access.HasPaidSubscription,
         Playlists: compact ? Array.Empty<MobilePlaylistResponse>() : mappedPlaylists,
-        Sections: orderedSections));
+        Sections: orderedSections,
+        FirstGratisVisitId: isFirstVisit && !access.HasPaidSubscription ? visitId : null));
 }).DisableAntiforgery();
 
 app.MapGet("/api/mobile/karakters", async (
@@ -4428,7 +4434,7 @@ app.MapGet("/api/mobile/stories/{slug}", async (
 
     var signedInEmail = GetSignedInEmail(httpContext.User);
     var access = await ResolveMobileStoryAccessAsync(httpContext, subscriptionLedgerService);
-    var isLocked = !CanAccessStory(story, access, normalizedSource);
+    var isLocked = !access.CanPlay(story);
     var favoriteSlugs = !string.IsNullOrWhiteSpace(signedInEmail)
         ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
         : Array.Empty<string>();
@@ -4451,10 +4457,11 @@ app.MapGet("/api/mobile/stories/{slug}", async (
             httpContext,
             story,
             audioAccessService,
-            storyMediaStorageService);
+            storyMediaStorageService,
+            allowsGuestPlayback: !access.IsAuthenticated);
     var videoUrl = isLocked || !isVideoStory
         ? null
-        : ToAbsoluteUri(httpContext, videoAccessService.CreateSignedVideoUrl(story.Slug));
+        : ToAbsoluteUri(httpContext, videoAccessService.CreateSignedVideoUrl(story.Slug, allowsGuestPlayback: !access.IsAuthenticated));
     var characterTiles = await BuildMobileStoryCharacterTilesAsync(
         httpContext,
         story,
@@ -4469,8 +4476,8 @@ app.MapGet("/api/mobile/stories/{slug}", async (
         VideoUrl: videoUrl,
         ShareUrl: ToAbsoluteUri(httpContext, $"/luister/{Uri.EscapeDataString(story.Slug)}"),
         RequiresSubscription: isLocked,
-        PreviousStory: previousStory is null ? null : BuildMobileStorySummary(httpContext, previousStory, normalizedSource, !CanAccessStory(previousStory, access, normalizedSource), favoriteSlugs.Contains(previousStory.Slug, StringComparer.OrdinalIgnoreCase)),
-        NextStory: nextStory is null ? null : BuildMobileStorySummary(httpContext, nextStory, normalizedSource, !CanAccessStory(nextStory, access, normalizedSource), favoriteSlugs.Contains(nextStory.Slug, StringComparer.OrdinalIgnoreCase)),
+        PreviousStory: previousStory is null ? null : BuildMobileStorySummary(httpContext, previousStory, normalizedSource, !access.CanPlay(previousStory), favoriteSlugs.Contains(previousStory.Slug, StringComparer.OrdinalIgnoreCase)),
+        NextStory: nextStory is null ? null : BuildMobileStorySummary(httpContext, nextStory, normalizedSource, !access.CanPlay(nextStory), favoriteSlugs.Contains(nextStory.Slug, StringComparer.OrdinalIgnoreCase)),
         RelatedStories: Array.Empty<MobileStorySummaryResponse>(),
         Summary: story.Summary,
         Lessons: story.Lessons ?? Array.Empty<string>(),
@@ -8088,13 +8095,6 @@ static async Task<MobileStoryAccess> ResolveMobileStoryAccessAsync(
         ActiveTierCodes: activeTierCodesTask.Result);
 }
 
-static bool CanAccessStory(StoryItem story, MobileStoryAccess access, string source) =>
-    StoryAccessPolicy.ResolveRequirement(source, story) == StoryAccessRequirement.Free
-        ? access.IsAuthenticated
-        : StoryAccessPolicy.GetAllowedTierCodes(StoryAccessPolicy.ResolveRequirement(source, story))
-            .Any(requiredTierCode => access.ActiveTierCodes?.Any(activeTierCode =>
-                string.Equals(activeTierCode, requiredTierCode, StringComparison.OrdinalIgnoreCase)) == true);
-
 static string ToAbsoluteUri(HttpContext httpContext, string? pathOrUrl)
 {
     if (string.IsNullOrWhiteSpace(pathOrUrl))
@@ -8264,7 +8264,8 @@ static async Task<string?> ResolveMobileAudioUrlAsync(
     HttpContext httpContext,
     StoryItem story,
     IAudioAccessService audioAccessService,
-    IStoryMediaStorageService storyMediaStorageService)
+    IStoryMediaStorageService storyMediaStorageService,
+    bool allowsGuestPlayback)
 {
     if (string.Equals(story.AudioProvider, "r2", StringComparison.OrdinalIgnoreCase))
     {
@@ -8276,7 +8277,7 @@ static async Task<string?> ResolveMobileAudioUrlAsync(
         return readUri?.ToString();
     }
 
-    return ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug));
+    return ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug, allowsGuestPlayback: allowsGuestPlayback));
 }
 
 static MobileStorySummaryResponse BuildMobileStorySummary(
@@ -8729,7 +8730,16 @@ sealed record MobileStoryPreview(string Title, string ImageUrl, string DetailUrl
 sealed record MobileStoryAccess(
     bool IsAuthenticated,
     bool HasPaidSubscription,
-    IReadOnlyList<string>? ActiveTierCodes = null);
+    IReadOnlyList<string>? ActiveTierCodes = null)
+{
+    public bool CanPlay(StoryItem story)
+    {
+        var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
+        return requirement == StoryAccessRequirement.Free ||
+            (IsAuthenticated && StoryAccessPolicy.GetAllowedTierCodes(requirement)
+                .Any(tier => ActiveTierCodes?.Contains(tier, StringComparer.OrdinalIgnoreCase) == true));
+    }
+}
 sealed record MobileStorySummaryResponse(
     string Slug,
     string Title,
@@ -8771,7 +8781,8 @@ sealed record MobilePlaylistResponse(
 sealed record MobileLuisterResponse(
     bool HasPaidSubscription,
     IReadOnlyList<MobilePlaylistResponse> Playlists,
-    IReadOnlyList<MobileLuisterSectionResponse> Sections);
+    IReadOnlyList<MobileLuisterSectionResponse> Sections,
+    Guid? FirstGratisVisitId);
 sealed record MobileLuisterSectionResponse(
     string Kind,
     string Title,

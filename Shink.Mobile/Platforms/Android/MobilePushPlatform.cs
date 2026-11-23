@@ -43,10 +43,33 @@ public static partial class MobilePushPlatform
     {
         if (Build.VERSION.SdkInt < BuildVersionCodes.O) return;
         var manager = (NotificationManager?)Platform.AppContext.GetSystemService(global::Android.Content.Context.NotificationService);
-        manager?.CreateNotificationChannel(new NotificationChannel(ChannelId, "Schink-kennisgewings", NotificationImportance.Default)
+        manager?.CreateNotificationChannel(new NotificationChannel(ChannelId, "Schink-kennisgewings", NotificationImportance.High)
         {
             Description = "Nuwe stories, karakters, blogs en hulpbronne."
         });
+    }
+
+    public static void OpenNotificationSettings()
+    {
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+        {
+            var context = Platform.AppContext;
+            EnsureChannel();
+            var appEnabled = NotificationManagerCompat.From(context)?.AreNotificationsEnabled() == true;
+            using var intent = new global::Android.Content.Intent(appEnabled
+                ? global::Android.Provider.Settings.ActionChannelNotificationSettings
+                : global::Android.Provider.Settings.ActionAppNotificationSettings);
+            intent.PutExtra(global::Android.Provider.Settings.ExtraAppPackage, context.PackageName);
+            if (appEnabled) intent.PutExtra(global::Android.Provider.Settings.ExtraChannelId, ChannelId);
+            intent.AddFlags(global::Android.Content.ActivityFlags.NewTask);
+            try
+            {
+                context.StartActivity(intent);
+                return;
+            }
+            catch (global::Android.Content.ActivityNotFoundException) { /* Use app settings on devices without this screen. */ }
+        }
+        AppInfo.Current.ShowSettingsUI();
     }
 
     public static partial void ClearDeliveredNotifications() => NotificationManagerCompat.From(Platform.AppContext)?.CancelAll();

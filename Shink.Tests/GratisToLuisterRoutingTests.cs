@@ -161,7 +161,7 @@ public class GratisToLuisterRoutingTests
 
         StringAssert.Contains(program, "ISubscriptionLedgerService subscriptionLedgerService");
         StringAssert.Contains(program, "var requirement = StoryAccessPolicy.ResolveRequirement(\"luister\", story);");
-        StringAssert.Contains(program, "var hasStoryAccess = await HasRequiredStoryAccessAsync(");
+        StringAssert.Contains(program, "var hasStoryAccess = (allowsGuestPlayback && requirement == StoryAccessRequirement.Free) || await HasRequiredStoryAccessAsync(");
         StringAssert.Contains(program, "if (requirement == StoryAccessRequirement.Free)");
         StringAssert.Contains(program, "return !string.IsNullOrWhiteSpace(email);");
         StringAssert.Contains(program, "return httpContext.User.Identity?.IsAuthenticated == true");
@@ -183,16 +183,18 @@ public class GratisToLuisterRoutingTests
     }
 
     [TestMethod]
-    public void MobileGratisStoriesUnlockForSignedInUsersWithoutGratisTierCheck()
+    [DataRow("free", false, null, true)]
+    [DataRow("free", true, null, true)]
+    [DataRow("subscriber", false, null, false)]
+    [DataRow("subscriber", true, null, false)]
+    [DataRow("subscriber", true, "all_stories_monthly", true)]
+    [DataRow("subscriber", true, "story_corner_monthly", false)]
+    public void MobilePlaybackChecksTheCatalogueAccessLevelAndAccountTier(
+        string level, bool signedIn, string? tier, bool expected)
     {
-        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
-
-        StringAssert.Contains(program, "return new MobileStoryAccess(false, false);");
-        StringAssert.Contains(program, "IsAuthenticated: true,");
-        StringAssert.Contains(program, "? access.IsAuthenticated");
-        Assert.IsFalse(
-            program.Contains("HasGratisOrPaidSubscription", StringComparison.Ordinal),
-            "Mobile free-story access should track signed-in state directly instead of requiring a separate gratis tier row.");
+        var story = new StoryItem("storie", "Storie", "", "", "audio.mp3", AccessLevel: level);
+        var access = new MobileStoryAccess(signedIn, tier is not null, tier is null ? [] : [tier]);
+        Assert.AreEqual(expected, access.CanPlay(story));
     }
 
     [TestMethod]

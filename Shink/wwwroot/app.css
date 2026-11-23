@@ -1005,12 +1005,12 @@ body.schink-night-mode .luister-page-shell::before {
 }
 
 body.schink-night-mode .luister-page-shell .stories-carousel-section .section-intro {
-    color: #dbe8e6;
+    color: var(--luister-panel-ink, #dbe8e6);
 }
 
 body.schink-night-mode .luister-page-shell .story-carousel-link h3,
 body.schink-night-mode .luister-page-shell .luister-playlist-link {
-    color: #f3f0e8;
+    color: var(--luister-panel-ink, #f3f0e8);
 }
 
 .mud-overlay.mud-overlay-dialog {

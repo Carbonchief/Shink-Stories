@@ -76,12 +76,12 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private ScrollView? _activeScrollView;
     private readonly CollectionView? _feedView;
     private readonly Entry _searchEntry;
-    private readonly Entry _loginEmailEntry;
-    private readonly Entry _loginPasswordEntry;
-    private readonly Label _loginStatusLabel;
     private IReadOnlyList<MobileLuisterSection> _sections = Array.Empty<MobileLuisterSection>();
     private MobileNotificationPage? _notificationPage;
     private MobileSession? _lastRenderedSession;
+    private Guid _luisterVisitId;
+    private MobileLuisterResponse? _firstVisitCatalogue;
+    private Microsoft.Maui.Controls.Window? _visitWindow;
     private readonly MobileStoryAccessRefresh _accessRefresh = new();
     private bool _isLoadingFeed;
     private string? _loadErrorMessage;
@@ -154,22 +154,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             PlaceholderColor = Color.FromArgb("#7C817C")
         };
         _searchEntry.TextChanged += (_, _) => QueueSearchRender();
-
-        _loginEmailEntry = new Entry
-        {
-            Placeholder = "E-pos",
-            Keyboard = Keyboard.Email
-        };
-        _loginPasswordEntry = new Entry
-        {
-            Placeholder = "Wagwoord",
-            IsPassword = true
-        };
-        _loginStatusLabel = new Label
-        {
-            TextColor = Color.FromArgb("#5F5F5F"),
-            FontSize = 13
-        };
 
         if (UsesCollectionViewFeed)
         {
@@ -483,6 +467,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
 
         _isPageActive = true;
+        BeginLuisterVisit();
         _isPageActivityReady = false;
         _pageActivityCancellation?.Cancel();
         _pageActivityCancellation?.Dispose();
@@ -526,6 +511,18 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         base.OnDisappearing();
     }
 
+    private void BeginLuisterVisit()
+    {
+        _luisterVisitId = Guid.NewGuid();
+        if (_firstVisitCatalogue is { } catalogue)
+        {
+            ApplyLuisterResponse(catalogue);
+            RenderContent();
+        }
+    }
+
+    private void OnLuisterWindowResumed(object? sender, EventArgs args) => BeginLuisterVisit();
+
     private void SubscribePageEvents()
     {
         if (_isPageEventsSubscribed)
@@ -533,6 +530,8 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             return;
         }
 
+        _visitWindow = Window;
+        if (_visitWindow is not null) _visitWindow.Resumed += OnLuisterWindowResumed;
         _apiClient.NewNotificationsAvailable += OnNewNotificationsAvailable;
         _continueListeningState.Changed += OnContinueListeningChanged;
         _offlineDownloadService.DownloadsChanged += OnDownloadsChanged;
@@ -548,6 +547,8 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             return;
         }
 
+        if (_visitWindow is not null) _visitWindow.Resumed -= OnLuisterWindowResumed;
+        _visitWindow = null;
         _apiClient.NewNotificationsAvailable -= OnNewNotificationsAvailable;
         _continueListeningState.Changed -= OnContinueListeningChanged;
         _offlineDownloadService.DownloadsChanged -= OnDownloadsChanged;
@@ -668,7 +669,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             }
             await _apiClient.GetSessionAsync(cancellationToken);
             var requestedSession = _sessionState.Current;
-            var response = await _apiClient.GetLuisterAsync(cancellationToken);
+            var response = await _apiClient.GetLuisterAsync(cancellationToken, _luisterVisitId);
             if (cancellationToken.IsCancellationRequested || !_isPageActive)
             {
                 return;
@@ -754,7 +755,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         {
             await _accessRefresh.RefreshAsync(
                 () => _sessionState.Current,
-                token => _apiClient.GetLuisterAsync(token),
+                token => _apiClient.GetLuisterAsync(token, _luisterVisitId),
                 response =>
                 {
                     ApplyLuisterResponse(response);
@@ -804,9 +805,8 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private void ApplyLuisterResponse(MobileLuisterResponse response)
     {
-        var sections = response.Sections is { Count: > 0 }
-            ? response.Sections
-            : BuildLegacySections(response.Playlists);
+        _firstVisitCatalogue = response.FirstGratisVisitId == _luisterVisitId ? response : null;
+        var sections = response.GetSectionsForVisit(_luisterVisitId);
         _sections = ApplyCurrentFavoriteState(sections);
         _loadErrorMessage = null;
         _hasLoaded = true;
@@ -1169,11 +1169,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             nextItems.Add(LuisterFeedItem.Search());
         }
 
-        if (!_sessionState.Current.IsSignedIn)
-        {
-            nextItems.Add(LuisterFeedItem.Account());
-        }
-
         if (_continueListeningState.Current is not null)
         {
             nextItems.Add(LuisterFeedItem.ContinueListening());
@@ -1201,6 +1196,9 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 nextItems.Add(LuisterFeedItem.PlaylistSection(section.Playlist));
             }
         }
+
+        if (!_sessionState.Current.IsSignedIn)
+            nextItems.Add(LuisterFeedItem.Account());
 
         return nextItems;
     }
@@ -2155,83 +2153,16 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private View BuildAccountPanel()
     {
-        var loginButton = new Button
+        var accountButton = new Button
         {
-            Text = "Teken in",
-            BackgroundColor = Color.FromArgb("#0F766E"),
-            TextColor = Colors.White,
-            CornerRadius = 16
-        };
-        loginButton.Clicked += async (_, _) => await SignInAsync();
-
-        var plansButton = new Button
-        {
-            Text = "Sien opsies",
-            BackgroundColor = Color.FromArgb("#F3F4F6"),
-            TextColor = Color.FromArgb("#222222"),
-            CornerRadius = 16
-        };
-        plansButton.Clicked += async (_, _) =>
-        {
-            await _navigationGate.RunAsync(() => OpenPlansAsync());
-        };
-
-        var panel = new Border
-        {
+            Text = "Teken in of skep ’n rekening",
+            TextColor = Color.FromArgb("#146D69"),
             BackgroundColor = Colors.White,
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 22 },
-            Padding = 16,
-            Content = new VerticalStackLayout
-            {
-                Spacing = 12,
-                Children =
-                {
-                    new Label
-                    {
-                        Text = "Teken in vir jou volle luistertoegang",
-                        FontAttributes = FontAttributes.Bold,
-                        FontSize = 18,
-                        TextColor = Color.FromArgb("#222222")
-                    },
-                    new Label
-                    {
-                        Text = "Jy kan steeds rondkyk, maar geslote stories maak oop wanneer jou rekening aktief is.",
-                        TextColor = Color.FromArgb("#5F5F5F"),
-                        FontSize = 13
-                    },
-                    _loginEmailEntry,
-                    _loginPasswordEntry,
-                    new HorizontalStackLayout
-                    {
-                        Spacing = 10,
-                        Children = { loginButton, plansButton }
-                    },
-                    _loginStatusLabel
-                }
-            }
+            CornerRadius = 16,
+            HorizontalOptions = LayoutOptions.Center
         };
-        MobileResponsiveLayout.ApplyCenteredContent(panel, Width, 720);
-        return panel;
-    }
-
-    private async Task SignInAsync()
-    {
-        try
-        {
-            _loginStatusLabel.Text = "Teken in...";
-            _loginStatusLabel.TextColor = Color.FromArgb("#5F5F5F");
-            var result = await _apiClient.SignInAsync(_loginEmailEntry.Text ?? string.Empty, _loginPasswordEntry.Text ?? string.Empty);
-            _loginPasswordEntry.Text = string.Empty;
-            _loginStatusLabel.Text = result.Message;
-            _loginStatusLabel.TextColor = Color.FromArgb("#0F766E");
-            await LoadAsync(forceRefresh: true);
-        }
-        catch (Exception ex)
-        {
-            _loginStatusLabel.Text = ex.Message;
-            _loginStatusLabel.TextColor = Color.FromArgb("#B42318");
-        }
+        accountButton.Clicked += async (_, _) => await OpenAccountAsync();
+        return accountButton;
     }
 
     private View BuildPlaylistShowcase(string title, IReadOnlyList<MobilePlaylist> playlists)
@@ -2285,7 +2216,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                                     HorizontalOptions = LayoutOptions.Fill,
                                     VerticalOptions = LayoutOptions.Fill
                                 },
-                                BuildCoverPlayBadge("▦", 38, 19, 0)
+                                BuildPlaylistBadge()
                             }
                         },
                     },
@@ -2398,8 +2329,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 Children =
                 {
                     image,
-                    BuildFavoriteOverlay(story),
-                    BuildCoverPlayBadge("▶", 52, 22, 3)
+                    BuildFavoriteOverlay(story)
                 }
             }
         };
@@ -2587,8 +2517,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                     Children =
                     {
                         _image,
-                        _favoriteButton,
-                        BuildCoverPlayBadge("▶", 52, 22, 3)
+                        _favoriteButton
                     }
                 }
             };
@@ -2749,8 +2678,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                     {
                         _artwork,
                         _favoriteButton,
-                        _downloadButton,
-                        BuildCoverPlayBadge("▶", 38, 17, 2)
+                        _downloadButton
                     }
                 }
             };
@@ -2929,8 +2857,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             {
                 artwork,
                 BuildFavoriteOverlay(story),
-                BuildDownloadOverlay(story),
-                BuildCoverPlayBadge("▶", 38, 17, 2)
+                BuildDownloadOverlay(story)
             }
         };
 
@@ -3114,7 +3041,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             });
     }
 
-    private static View BuildCoverPlayBadge(string icon, double size, double fontSize, double leftOffset) =>
+    private static View BuildPlaylistBadge() =>
         new Grid
         {
             InputTransparent = true,
@@ -3122,8 +3049,8 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             {
                 new Border
                 {
-                    WidthRequest = size,
-                    HeightRequest = size,
+                    WidthRequest = 38,
+                    HeightRequest = 38,
                     BackgroundColor = Color.FromArgb("#8AF3B23F"),
                     StrokeThickness = 0,
                     StrokeShape = new RoundRectangle { CornerRadius = 999 },
@@ -3131,14 +3058,13 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                     VerticalOptions = LayoutOptions.Center,
                     Content = new Label
                     {
-                        Text = icon,
+                        Text = "▦",
                         Opacity = 0.78,
                         TextColor = Color.FromArgb("#2A1C05"),
-                        FontSize = fontSize,
+                        FontSize = 19,
                         FontAttributes = FontAttributes.Bold,
                         HorizontalTextAlignment = TextAlignment.Center,
-                        VerticalTextAlignment = TextAlignment.Center,
-                        Margin = new Thickness(leftOffset, 0, 0, 0)
+                        VerticalTextAlignment = TextAlignment.Center
                     }
                 }
             }
@@ -3452,16 +3378,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 TextColor = Color.FromArgb("#5F5F5F")
             }
         };
-
-    private static IReadOnlyList<MobileLuisterSection> BuildLegacySections(IReadOnlyList<MobilePlaylist> playlists) =>
-        playlists
-            .Select((playlist, index) => new MobileLuisterSection(
-                Kind: "playlist",
-                Title: playlist.Title,
-                SortOrder: index,
-                Playlist: playlist,
-                Playlists: Array.Empty<MobilePlaylist>()))
-            .ToArray();
 
     private static IEnumerable<MobileLuisterSection> FilterSections(IReadOnlyList<MobileLuisterSection> sections, string? query)
     {

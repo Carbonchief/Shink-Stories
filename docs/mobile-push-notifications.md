@@ -51,11 +51,11 @@ Register Android package `com.schink.stories.mobile` in the intended Firebase pr
 
 Set `SchinkPushEnabled=true` for the existing Android build scripts. `SchinkFirebaseConfig` optionally selects a different local configuration path. Push-enabled Android builds fail clearly if the configuration file is missing. Firebase client configuration is bundled; server service account credentials must never be bundled. The package is pinned to `Xamarin.Firebase.Messaging` 124.1.2 because the Firebase 25 series raises Android's minimum API to 23, while demo APKs must retain API 21. Launcher icons and package identity are unchanged.
 
-Android 13+ requests notification permission. Android 8+ uses the **Schink-kennisgewings** channel. FCM requires working Google Play services; devices without those services retain the in-app inbox but do not receive this FCM delivery. Huawei-specific HMS delivery is not implemented.
+Android 13+ requests notification permission. On Android 8+, new installs create the **Schink-kennisgewings** channel at high importance for heads-up banners. Android keeps the channel settings on upgrade. To enable banners for an existing install, open **Instellings → Kennisgewings → Selfoonkennisgewings → Selfoon se instellings** and enable the channel’s pop-up option. The Android setting name varies by phone. FCM requires working Google Play services; devices without those services retain the in-app inbox but do not receive this FCM delivery. Huawei-specific HMS delivery is not implemented.
 
 ## Story and character artwork
 
-New-story and character-unlock alerts use the artwork saved with the inbox item. The iOS notification service extension prepares a thumbnail attachment. Android displays the image as the notification’s large icon. If the artwork is missing or unavailable, the alert displays its usual text.
+New-story and character-unlock alerts use the artwork saved with the inbox item. The iOS notification service extension prepares a thumbnail attachment. Android banners and tray notifications use the system’s Schink mouse badge as their single app icon. Story covers and character portraits appear on the right when available.
 
 The scheduled website deployment applies the artwork migration before activating the updated worker. The original claim function remains available to older workers. Push-enabled iOS builds embed `com.schink.stories.mobile.notificationservice`, which needs a matching Schink provisioning profile for each distribution method. The extension inherits the host’s version and build number. Supply `SchinkNotificationServiceProvision` to select a specific installed extension profile. Build 42 displays text alerts.
 

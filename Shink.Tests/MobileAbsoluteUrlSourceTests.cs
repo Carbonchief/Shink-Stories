@@ -184,7 +184,7 @@ public class MobileAbsoluteUrlSourceTests
 
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(AccountPage), typeof(AccountPage));");
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(ProfilePage), typeof(ProfilePage));");
-        StringAssert.Contains(appShell, "ContentTemplate = new DataTemplate(() => _services.GetRequiredService<LuisterPage>())");
+        StringAssert.Contains(appShell, "var page = _services.GetRequiredService<LuisterPage>();");
         StringAssert.Contains(luisterPage, "Shell.Current.GoToAsync(nameof(AccountPage), animate: true)");
         StringAssert.Contains(luisterPage, "Shell.Current.GoToAsync(nameof(ProfilePage), animate: true)");
         StringAssert.Contains(mobileTopBar, "Shell.Current.GoToAsync(nameof(ProfilePage), animate: true)");
@@ -567,13 +567,13 @@ public class MobileAbsoluteUrlSourceTests
 
         StringAssert.Contains(client, "private static readonly TimeSpan DefaultLuisterCacheMaxAge = TimeSpan.FromHours(12);");
         StringAssert.Contains(client, "public Task<MobileLuisterResponse?> GetCachedLuisterAsync(CancellationToken cancellationToken = default)");
-        StringAssert.Contains(client, "private async Task<MobileLuisterResponse?> GetAndCacheLuisterAsync(CancellationToken cancellationToken)");
-        StringAssert.Contains(client, "await SaveLuisterCacheAsync(response, cancellationToken);");
-        StringAssert.Contains(client, "private async Task SaveLuisterCacheAsync(MobileLuisterResponse response, CancellationToken cancellationToken)");
-        StringAssert.Contains(client, "new MobileLuisterCacheEntry(DateTimeOffset.UtcNow, response)");
+        StringAssert.Contains(client, "GetLuisterAsync(CancellationToken cancellationToken = default, Guid? visitId = null)");
+        StringAssert.Contains(client, "await SaveLuisterCacheAsync(cacheKey, response, cancellationToken);");
+        StringAssert.Contains(client, "private async Task SaveLuisterCacheAsync(string cacheKey, MobileLuisterResponse response, CancellationToken cancellationToken)");
+        StringAssert.Contains(client, "new MobileLuisterCacheEntry(cacheKey, DateTimeOffset.UtcNow, response)");
         StringAssert.Contains(client, "var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, \"story-data\");");
         StringAssert.Contains(client, "return System.IO.Path.Combine(cacheDirectory, $\"luister-{cacheKey}.json\");");
-        StringAssert.Contains(client, "private sealed record MobileLuisterCacheEntry(DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);");
+        StringAssert.Contains(client, "private sealed record MobileLuisterCacheEntry(string CacheKey, DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);");
 
         StringAssert.Contains(luisterPage, "await LoadAsync();");
         StringAssert.Contains(luisterPage, "var renderedCachedData = false;");
@@ -598,10 +598,10 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(client, "private static readonly TimeSpan DefaultStoryDetailCacheMaxAge = TimeSpan.FromHours(12);");
         StringAssert.Contains(client, "public Task<MobileStoryDetailResponse?> GetCachedStoryAsync(");
         StringAssert.Contains(client, "private async Task<MobileStoryDetailResponse?> GetAndCacheStoryAsync(");
-        StringAssert.Contains(client, "await SaveStoryDetailCacheAsync(slug, source, response, cancellationToken);");
+        StringAssert.Contains(client, "await SaveStoryDetailCacheAsync(cacheKey, response, cancellationToken);");
         StringAssert.Contains(client, "private async Task SaveStoryDetailCacheAsync(");
         StringAssert.Contains(client, "new MobileStoryDetailCacheEntry(DateTimeOffset.UtcNow, response)");
-        StringAssert.Contains(client, "return System.IO.Path.Combine(cacheDirectory, $\"story-{BuildStoryDetailCacheKey(slug, source)}.json\");");
+        StringAssert.Contains(client, "return System.IO.Path.Combine(cacheDirectory, $\"story-{cacheKey}.json\");");
         StringAssert.Contains(client, "private sealed record MobileStoryDetailCacheEntry(DateTimeOffset CachedAtUtc, MobileStoryDetailResponse Response);");
 
         StringAssert.Contains(storyDetail, "var renderedCachedDetail = false;");
@@ -1122,7 +1122,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(program, "storyMediaStorageService.CreateAudioReadUrlAsync(");
         StringAssert.Contains(program, "TimeSpan.FromHours(4)");
         StringAssert.Contains(program, "return readUri?.ToString();");
-        StringAssert.Contains(program, "return ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug));");
+        StringAssert.Contains(program, "return ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug, allowsGuestPlayback: allowsGuestPlayback));");
     }
 
     [TestMethod]

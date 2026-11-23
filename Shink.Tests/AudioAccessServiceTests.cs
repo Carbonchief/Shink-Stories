@@ -30,6 +30,23 @@ public class AudioAccessServiceTests
             "Default signed audio URLs should remain valid for long stories and delayed browser range requests.");
     }
 
+    [TestMethod]
+    public void GuestPermissionRequiresAValidGuestTokenForTheRequestedStory()
+    {
+        var service = new AudioAccessService(new EphemeralDataProtectionProvider());
+        var guestToken = ExtractToken(service.CreateSignedAudioUrl("gratis", allowsGuestPlayback: true));
+        Assert.IsTrue(service.IsTokenValid("gratis", guestToken, out var guest));
+        Assert.IsTrue(guest);
+        Assert.IsFalse(service.IsTokenValid("ander", guestToken, out guest));
+        Assert.IsFalse(guest);
+        var expired = ExtractToken(service.CreateSignedAudioUrl("gratis", TimeSpan.FromMinutes(-1), true));
+        Assert.IsFalse(service.IsTokenValid("gratis", expired, out guest));
+        Assert.IsFalse(guest);
+        var ordinary = ExtractToken(service.CreateSignedAudioUrl("gratis"));
+        Assert.IsTrue(service.IsTokenValid("gratis", ordinary, out guest));
+        Assert.IsFalse(guest);
+    }
+
     private static string ExtractToken(string signedUrl)
     {
         var tokenPrefix = "?token=";

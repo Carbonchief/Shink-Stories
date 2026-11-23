@@ -1,6 +1,8 @@
 using Android.App;
 using Android.Content;
 using Android.Graphics;
+using Android.Views;
+using Android.Widget;
 using AndroidX.Core.App;
 using Firebase.Messaging;
 using Shink.Mobile.Services;
@@ -34,10 +36,17 @@ public sealed class MobilePushMessagingService : FirebaseMessagingService
         var pending = PendingIntent.GetActivity(this, 0, intent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
         using var builder = new NotificationCompat.Builder(this, MobilePushPlatform.ChannelId);
         builder.SetSmallIcon(Resource.Drawable.schink_notification);
-        builder.SetContentTitle(Value(data, "title") ?? "Schink Stories");
-        builder.SetContentText(Value(data, "body") ?? string.Empty);
-        using var style = new NotificationCompat.BigTextStyle();
-        style.BigText(Value(data, "body") ?? string.Empty);
+        builder.SetColor(global::Android.Graphics.Color.Rgb(55, 183, 194));
+        if (global::Android.OS.Build.VERSION.SdkInt < global::Android.OS.BuildVersionCodes.O)
+        {
+            builder.SetPriority(NotificationCompat.PriorityHigh);
+            builder.SetDefaults((int)NotificationDefaults.Sound);
+        }
+        var title = Value(data, "title") ?? "Schink Stories";
+        var body = Value(data, "body");
+        builder.SetContentTitle(title);
+        builder.SetContentText(body);
+        using var style = new NotificationCompat.DecoratedCustomViewStyle();
         builder.SetStyle(style);
         builder.SetContentIntent(pending);
         builder.SetAutoCancel(true);
@@ -48,7 +57,11 @@ public sealed class MobilePushMessagingService : FirebaseMessagingService
         var bytes = MobilePushArtworkDownload.TryDownloadAsync(push.Type, Value(data, "image_url"), CancellationToken.None)
             .GetAwaiter().GetResult();
         using var artwork = DecodeLargeIcon(bytes);
-        if (artwork is not null) builder.SetLargeIcon(artwork);
+        using var compact = CreateContentView(title, body, artwork, expanded: false);
+        using var expanded = CreateContentView(title, body, artwork, expanded: true);
+        builder.SetCustomContentView(compact);
+        builder.SetCustomHeadsUpContentView(compact);
+        builder.SetCustomBigContentView(expanded);
         if (!MobilePushInstallation.CanDisplay(push.RegistrationId.ToString("D"))) return;
         var notification = builder.Build();
         // A stable tag prevents a retry from creating a second tray entry.
@@ -57,6 +70,20 @@ public sealed class MobilePushMessagingService : FirebaseMessagingService
             try { NotificationManagerCompat.From(this)?.Notify(push.NotificationId.ToString("D"), 0, notification); }
             catch (Java.Lang.SecurityException) { /* Permission can be revoked between receipt and display. */ }
         }
+    }
+
+    private RemoteViews CreateContentView(string title, string? body, Bitmap? artwork, bool expanded)
+    {
+        var view = new RemoteViews(PackageName, Resource.Layout.schink_push_notification);
+        bool hasBody = !string.IsNullOrWhiteSpace(body);
+        view.SetTextViewText(Resource.Id.push_title, title);
+        view.SetInt(Resource.Id.push_title, "setMaxLines", expanded ? 5 : hasBody ? 1 : 2);
+        view.SetTextViewText(Resource.Id.push_body, body ?? string.Empty);
+        view.SetInt(Resource.Id.push_body, "setMaxLines", expanded ? 12 : 1);
+        view.SetViewVisibility(Resource.Id.push_body, hasBody ? ViewStates.Visible : ViewStates.Gone);
+        view.SetImageViewBitmap(Resource.Id.push_artwork, artwork);
+        view.SetViewVisibility(Resource.Id.push_artwork, artwork is null ? ViewStates.Gone : ViewStates.Visible);
+        return view;
     }
 
     private static Bitmap? DecodeLargeIcon(byte[]? bytes)

@@ -10,7 +10,7 @@ using MauiScrollView = Microsoft.Maui.Controls.ScrollView;
 namespace Shink.Mobile.Pages;
 
 [QueryProperty(nameof(ReturnUrl), "returnUrl")]
-public sealed class AccountPage : ContentPage
+public sealed class AccountPage : ContentPage, IQueryAttributable
 {
     private static readonly Thickness SignedInTopBarMargin = new(18, 18, 18, 0);
 
@@ -46,7 +46,7 @@ public sealed class AccountPage : ContentPage
     private Button? _signupSubmitButton;
     private readonly BoxView _signupBackground;
     private bool _isSignupEmailSelected;
-    private bool _continueWithFreeStories;
+    internal bool IsFullAccessSignup { get; private set; }
     private AuthPanelMode _authPanelMode = AuthPanelMode.Landing;
     private double _lastLandingLayoutHeight = -1;
     private double _lastAuthLayoutWidth = -1;
@@ -206,6 +206,11 @@ public sealed class AccountPage : ContentPage
             if (_authPanelMode == AuthPanelMode.SignUp && _isSignupEmailSelected)
             {
                 ShowSignupEmailForm(false);
+                return true;
+            }
+            if (IsFullAccessSignup && _authPanelMode == AuthPanelMode.SignUp)
+            {
+                _ = Shell.Current.GoToAsync("..", animate: true);
                 return true;
             }
             SetAuthPanelMode(AuthPanelMode.Landing);
@@ -880,7 +885,7 @@ public sealed class AccountPage : ContentPage
                         signupPasswordEntry.Text ?? string.Empty,
                         marketingConsent: emailConsent.IsChecked);
                     await RefreshSessionAsync(result.Message);
-                    await OpenPostAuthenticationDestinationAsync(isNewAccount: true);
+                    await OpenPostAuthenticationDestinationAsync();
                 }
                 catch (Exception ex)
                 {
@@ -927,10 +932,13 @@ public sealed class AccountPage : ContentPage
 
     public void ShowSignIn() => SetAuthPanelMode(AuthPanelMode.SignIn);
 
-    internal void ShowFreeSignup()
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
-        _continueWithFreeStories = true;
-        SetAuthPanelMode(AuthPanelMode.SignUp);
+        if (query.TryGetValue("signup", out var signup) && signup is true)
+        {
+            IsFullAccessSignup = true;
+            SetAuthPanelMode(AuthPanelMode.SignUp);
+        }
     }
 
     private void SetAuthPanelMode(AuthPanelMode mode)
@@ -1587,15 +1595,16 @@ public sealed class AccountPage : ContentPage
         }
     }
 
-    private async Task OpenPostAuthenticationDestinationAsync(bool isNewAccount = false)
+    private async Task OpenPostAuthenticationDestinationAsync()
     {
-        if (!_sessionState.Current.IsSignedIn || _sessionState.Current.RequiresAvatarSelection)
+        if (!_sessionState.Current.IsSignedIn || _sessionState.Current.RequiresAvatarSelection ||
+            (IsFullAccessSignup && !_sessionState.Current.HasPaidSubscription))
         {
             return;
         }
 
         var hasStoryReturnPath = PageHelpers.TryParseStoryReturnPath(ReturnUrl, out var source, out var slug);
-        if (!_sessionState.Current.HasPaidSubscription && !_continueWithFreeStories)
+        if (!_sessionState.Current.HasPaidSubscription)
         {
             var plansRoute = hasStoryReturnPath
                 ? $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(ReturnUrl!)}"

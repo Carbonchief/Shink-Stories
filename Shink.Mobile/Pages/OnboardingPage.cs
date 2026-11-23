@@ -2,7 +2,7 @@ namespace Shink.Mobile.Pages;
 
 public sealed class OnboardingPage : ContentPage
 {
-    internal enum Destination { Account, FreeSignup, Plans, SignIn }
+    internal enum Destination { Account, Listen, Signup, SignIn }
 
     private static readonly Color ArtworkTeal = Color.FromArgb("#36B7C1");
     private static readonly Color ArtworkCream = Color.FromArgb("#FBF6F0");
@@ -38,6 +38,9 @@ public sealed class OnboardingPage : ContentPage
     private readonly BoxView _topSpacer;
     private readonly ScrollView _artworkViewport;
     private readonly Grid _stage;
+#if ANDROID
+    private readonly Grid? _phoneFooter;
+#endif
     private TabletOnboardingView? _tabletComposition;
     private readonly Button[] _progressButtons = new Button[Slides.Length];
     private readonly Border _progressMarker = new()
@@ -170,9 +173,9 @@ public sealed class OnboardingPage : ContentPage
         _nextButton.Clicked += (_, _) => ShowSlide(_slideIndex + 1);
 
         var freeButton = CreateFinalButton("Begin gratis luister", "onboarding-start-free", "#FAC652", "#304158");
-        freeButton.Clicked += (_, _) => Complete(Destination.FreeSignup);
+        freeButton.Clicked += (_, _) => Complete(Destination.Listen);
         var plansButton = CreateFinalButton("Kry volle toegang", "onboarding-view-plans", "#609E10", "#FFFFFF");
-        plansButton.Clicked += (_, _) => Complete(Destination.Plans);
+        plansButton.Clicked += (_, _) => Complete(Destination.Signup);
         _finalActions = new VerticalStackLayout
         {
             IsVisible = false,
@@ -245,7 +248,17 @@ public sealed class OnboardingPage : ContentPage
         };
         root.Add(_stage, 0, 0);
         root.Add(topControlsOverlay, 0, 0);
+#if ANDROID
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
+        {
+            footer.Padding = new Thickness(0, 0, 0, 24);
+            _phoneFooter = new Grid { SafeAreaEdges = SafeAreaEdges.None, Children = { footer } };
+            root.SizeChanged += (_, _) => ResizeArtwork();
+        }
+        root.Add(_phoneFooter ?? footer, 0, 1);
+#else
         root.Add(footer, 0, 1);
+#endif
         Content = root;
         ShowSlide(0);
     }
@@ -430,6 +443,13 @@ public sealed class OnboardingPage : ContentPage
 
     private void ResizeArtwork()
     {
+        var contentBottom = Slides[_slideIndex].ContentBottom;
+#if ANDROID
+        // Keep the controls just below width-limited art on tall phones.
+        // The footer's auto rows leave any surplus below the last control.
+        if (_phoneFooter is not null && Content is Grid root && root.Width > 0 && root.Height > 0)
+            _phoneFooter.MinimumHeightRequest = Math.Max(0, root.Height - contentBottom * root.Width / PhoneArtworkWidth);
+#endif
         if (_stage.Width <= 0)
             return;
 
@@ -467,7 +487,6 @@ public sealed class OnboardingPage : ContentPage
 
         // Art and copy end at a different height on each slide. Fit that content
         // above the native footer, including any extra clearance above the logo.
-        var contentBottom = Slides[_slideIndex].ContentBottom;
         var logoClearance = safeTop + 6;
         var widthScale = width / PhoneArtworkWidth;
         var fitScale = Math.Min(widthScale, height / contentBottom);
