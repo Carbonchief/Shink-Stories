@@ -95,6 +95,7 @@ create table public.auth_sessions (
 create index on public.story_listen_events (story_slug, occurred_at desc);
 create index on public.story_views (story_slug, viewed_at desc);
 \ir ../migrations/20261124070312_optimize_admin_usage_report.sql
+\ir ../migrations/20261124073600_roll_up_admin_usage_by_day.sql
 
 insert into public.store_orders(payment_status,total_price_zar) values ('paid',149), ('pending',149);
 insert into public.auth_sessions select now() - n * interval '1 minute' from generate_series(1,1501) n;
@@ -163,6 +164,20 @@ $$;
 reset role;
 set local statement_timeout = '45s';
 
+-- A warm local database can still finish a history scan inside eight seconds.
+-- In UTC, raw listens should only be visited to look up latest timestamps.
+do $$
+declare query_text text; plan jsonb;
+begin
+    select prosrc into query_text from pg_proc where oid = 'public.get_admin_usage_analytics()'::regprocedure;
+    query_text := regexp_replace(query_text, '^\s*begin\s*return\s*\((.*)\);\s*end;\s*$', '\1', 's');
+    execute 'explain (analyze, timing off, format json) ' || query_text into plan;
+    if jsonb_path_exists(plan, 'strict $.** ? (@."Relation Name" == "story_listen_events" && @."Actual Loops" > 0 && @."Actual Rows" > 1)') then
+        raise exception 'UTC Usage report read raw listening history for its daily chart';
+    end if;
+end;
+$$;
+
 -- Compare every field after bulk writes, a key change and removal of the last
 -- completed event in a session. This also exercises nullable legacy identities.
 create function pg_temp.assert_usage_parity() returns void language plpgsql as $$
@@ -195,6 +210,8 @@ $$;
 select pg_temp.assert_usage_parity();
 update public.story_listen_events set story_slug = 'beta', metadata = '{"is_completed":true}', listened_seconds = 4.56
 where event_type = 'progress';
+select pg_temp.assert_usage_parity();
+update public.story_listen_events set occurred_at = occurred_at - interval '3 days' where metadata -> 'is_completed' = 'true'::jsonb;
 select pg_temp.assert_usage_parity();
 delete from public.story_listen_events where event_type = 'ended';
 select pg_temp.assert_usage_parity();
