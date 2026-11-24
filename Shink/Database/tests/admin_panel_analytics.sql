@@ -91,6 +91,10 @@ create table public.auth_sessions (
 );
 
 \ir ../migrations/20261121130000_admin_panel_analytics.sql
+-- The production schema already indexes these latest-activity lookups.
+create index on public.story_listen_events (story_slug, occurred_at desc);
+create index on public.story_views (story_slug, viewed_at desc);
+\ir ../migrations/20261124070312_optimize_admin_usage_report.sql
 
 insert into public.store_orders(payment_status,total_price_zar) values ('paid',149), ('pending',149);
 insert into public.auth_sessions select now() - n * interval '1 minute' from generate_series(1,1501) n;
@@ -101,7 +105,7 @@ from generate_series(1,1501) n;
 do $$
 declare
     baseline jsonb := public.get_admin_analytics_snapshot();
-    usage jsonb := public.get_admin_listening_analytics(false);
+    usage jsonb := public.get_admin_usage_analytics();
     stories jsonb := public.get_admin_listening_analytics(true);
     engagement jsonb := public.get_admin_engagement_periods(current_date, date_trunc('week',now()),
         date_trunc('month',now()), date_trunc('year',now()), now());
@@ -134,10 +138,74 @@ begin
     end if;
     if exists (
         select 1 from pg_proc where pronamespace='public'::regnamespace
-        and proname in ('get_admin_listening_analytics','get_admin_award_analytics','get_admin_resource_analytics',
+        and proname in ('get_admin_usage_analytics','get_admin_listening_analytics','get_admin_award_analytics','get_admin_resource_analytics',
             'get_admin_blog_analytics','get_admin_engagement_periods','get_admin_report_inputs')
         and (prosecdef or has_function_privilege('anon', oid, 'execute') or has_function_privilege('authenticated', oid, 'execute')
             or not has_function_privilege('service_role', oid, 'execute'))
     ) then raise exception 'Unexpected admin report privileges'; end if;
 end;
 $$;
+
+-- Time the old and new Usage reads on identical data. Compare the complete
+-- response as the application role, including its view of the private totals.
+set local role service_role;
+\timing on
+create temporary table usage_reference as select public.get_admin_listening_analytics(false) as report;
+set local statement_timeout = '8s';
+do $$
+begin
+    if public.get_admin_usage_analytics() is distinct from (select report from usage_reference) then
+        raise exception 'Service role Usage report differs from event history';
+    end if;
+end;
+$$;
+\timing off
+reset role;
+set local statement_timeout = '45s';
+
+-- Compare every field after bulk writes, a key change and removal of the last
+-- completed event in a session. This also exercises nullable legacy identities.
+create function pg_temp.assert_usage_parity() returns void language plpgsql as $$
+declare expected jsonb := public.get_admin_listening_analytics(false);
+begin
+    if public.get_admin_usage_analytics() is distinct from expected then
+        raise exception 'Usage report differs from event history';
+    end if;
+end;
+$$;
+
+truncate public.story_listen_events;
+select pg_temp.assert_usage_parity();
+grant insert on public.story_listen_events to authenticated;
+set local role authenticated;
+insert into public.story_listen_events(story_slug, session_id, subscriber_id, occurred_at, event_type, listened_seconds, metadata)
+select 'alpha', case when n < 3 then '10000000-0000-0000-0000-000000000001'::uuid end,
+    null, current_date - interval '3 days' + n * interval '12 hours' - interval '30 minutes',
+    case when n = 1 then 'ended' else 'progress' end, 3.12, '{}'::jsonb from generate_series(1,4) n;
+reset role;
+do $$
+begin
+    if has_table_privilege('authenticated', 'private.admin_listen_totals', 'select')
+       or has_table_privilege('anon', 'private.admin_listen_totals', 'select')
+       or has_table_privilege('service_role', 'private.admin_listen_totals', 'update') then
+        raise exception 'Unexpected private listening summary privileges';
+    end if;
+end;
+$$;
+select pg_temp.assert_usage_parity();
+update public.story_listen_events set story_slug = 'beta', metadata = '{"is_completed":true}', listened_seconds = 4.56
+where event_type = 'progress';
+select pg_temp.assert_usage_parity();
+delete from public.story_listen_events where event_type = 'ended';
+select pg_temp.assert_usage_parity();
+do $$
+declare tz text;
+begin
+    foreach tz in array array['UTC', 'Africa/Johannesburg', 'America/New_York'] loop
+        perform set_config('TimeZone', tz, true);
+        perform pg_temp.assert_usage_parity();
+    end loop;
+end;
+$$;
+delete from public.story_listen_events;
+select pg_temp.assert_usage_parity();

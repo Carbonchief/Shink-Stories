@@ -11,6 +11,31 @@ namespace Shink.Tests;
 public partial class SupabaseAdminManagementSelfServiceTests
 {
     [TestMethod]
+    public async Task UsagePanelReadsAndCachesItsDedicatedReport()
+    {
+        var reads = 0;
+        var service = CreateService(new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/admin_users"))
+                return JsonResponse("""[{"email":"admin@example.com"}]""");
+
+            Assert.AreEqual(HttpMethod.Post, request.Method);
+            Assert.AreEqual("/rest/v1/rpc/get_admin_usage_analytics", request.RequestUri?.AbsolutePath);
+            reads++;
+            return JsonResponse("""
+                {"generated_at":"2026-11-24T00:00:00Z","story_summary":{"total_listen_sessions":42},
+                 "character_summary":{},"daily_activity":[],"top_characters":[],"top_completion_stories":[]}
+                """);
+        }));
+
+        var usage = await service.GetAnalyticsAsync("admin@example.com", panel: AdminActivityPanel.Usage);
+        Assert.AreEqual(42, usage.StorySummary.TotalListenSessions);
+        Assert.IsEmpty(usage.StoryAnalytics);
+        Assert.AreSame(usage, await service.GetAnalyticsAsync("admin@example.com", panel: AdminActivityPanel.Usage));
+        Assert.AreEqual(1, reads);
+    }
+
+    [TestMethod]
     public async Task UsageCacheExpiresAndManualRefreshAlwaysRequestsFreshData()
     {
         var clock = new AnalyticsTestClock();

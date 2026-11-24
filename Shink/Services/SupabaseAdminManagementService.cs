@@ -2664,7 +2664,9 @@ public sealed partial class SupabaseAdminManagementService(
                 return result with { BlogVisitSummary = await Read<AdminAnalyticsBlogVisitSummary>("get_admin_blog_analytics", new { }) };
             case AdminActivityPanel.Stories:
             case AdminActivityPanel.Usage:
-                var listening = await Read<AdminAnalyticsSnapshot>("get_admin_listening_analytics", new { p_stories = panel == AdminActivityPanel.Stories });
+                var listening = panel == AdminActivityPanel.Stories
+                    ? await Read<AdminAnalyticsSnapshot>("get_admin_listening_analytics", new { p_stories = true })
+                    : await Read<AdminAnalyticsSnapshot>("get_admin_usage_analytics", new { });
                 if (listening.GeneratedAt is null) throw new JsonException("Missing listening report timestamp.");
                 if (panel == AdminActivityPanel.Stories)
                     return result with { GeneratedAt = listening.GeneratedAt, StoryAnalytics = listening.StoryAnalytics ?? throw new JsonException("Missing story analytics.") };
