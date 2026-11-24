@@ -103,12 +103,13 @@
     else
     {
         <div class="admin-tabs-shell">
-        <MudTabs Class="admin-tabs"
+        @* Keep the Blog draft mounted after its first visit. Other sections load only while selected. *@
+        <MudTabs Class="admin-tabs" KeepPanelsAlive="true"
                  Rounded="true"
                  OnPreviewInteraction="HandleAdminTabPreviewInteraction"
                  @bind-ActivePanelIndex="_activeAdminTabIndex"
                  @bind-ActivePanelIndex:after="EnsureActiveAdminTabDataAsync">
-            <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
+            <AdminTabPanel Text='@T("Intekenaars", "Subscribers")'>
                 <section class="admin-section">
                     <div class="admin-section-head admin-subscriber-section-head">
                         @if (IsShowingSubscriberGrid)
@@ -944,9 +945,9 @@
                         }
                     }
                 </section>
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Stories", "Stories")'>
+            <AdminTabPanel Text='@T("Stories", "Stories")'>
                 @if (IsLoadingStoryCatalog)
                 {
                     <section class="admin-state" role="status" aria-live="polite">
@@ -1145,9 +1146,9 @@
             </MudTable>
                 </section>
                 }
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Playlists", "Playlists")'>
+            <AdminTabPanel Text='@T("Playlists", "Playlists")'>
                 @if (IsLoadingStoryCatalog)
                 {
                     <section class="admin-state" role="status" aria-live="polite">
@@ -1486,38 +1487,38 @@
 
                 </section>
                 }
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Karakters", "Characters")'>
+            <AdminTabPanel Text='@T("Karakters", "Characters")'>
                 <AdminCharactersPanel CurrentLanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Hulpbronne", "Resources")'>
+            <AdminTabPanel Text='@T("Hulpbronne", "Resources")'>
                 <AdminResourceTypesPanel CurrentLanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Skole", "Schools")'>
+            <AdminTabPanel Text='@T("Skole", "Schools")'>
                 <AdminSchoolsPanel AdminEmail="@CurrentAdminEmail" LanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Verwysings", "Referrals")'>
+            <AdminTabPanel Text='@T("Verwysings", "Referrals")'>
                 <AdminReferralsPanel AdminEmail="@CurrentAdminEmail" LanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Winkel", "Shop")'>
+            <AdminTabPanel Text='@T("Winkel", "Shop")'>
                 <AdminStorePanel CurrentLanguageCode="@CurrentLanguageCode" />
                 <AdminStoreOrdersPanel AdminEmail="@CurrentAdminEmail" LanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Blog", "Blog")'>
+            <AdminTabPanel Text='@T("Blog", "Blog")' RetainAfterVisit="true">
                 <AdminBlogPanel CurrentLanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Landingsbladsye", "Landing pages")'>
+            <AdminTabPanel Text='@T("Landingsbladsye", "Landing pages")'>
                 <AdminLandingPagesPanel CurrentLanguageCode="@CurrentLanguageCode" @ref="_landingPagesPanel" />
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Analitika", "Analytics")'>
+            <AdminTabPanel Text='@T("Analitika", "Analytics")'>
                 <section class="admin-section admin-analytics-section">
                     <div class="admin-section-head">
                         <div class="admin-analytics-copy">
@@ -1548,6 +1549,13 @@
                         <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
                             @if (!HasLoadedSubscriberReports)
                             {
+                                @if (FinancialOverviews.TryGetValue(AdminReportPanel.Membership, out var overview))
+                                {
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Live aktiewe intekenaars", "Live active subscribers")</p>
+                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(SelectedSubscriberAccessFilter switch { SubscriberAccessFilterFree => overview.FreeMembers, SubscriberAccessFilterPaid => overview.PaidMembers, _ => overview.FreeMembers + overview.PaidMembers })</p>
+                                    </article>
+                                }
                                 @AnalyticsLoadState(SubscriberReportsLoadFailed, true)
                             }
                             else
@@ -2141,6 +2149,10 @@
                                             <NoRecordsContent>
                                                 <MudText Typo="Typo.body2">@T("Geen kansellasie-opnames is nog beskikbaar nie.", "No cancellation survey responses are available yet.")</MudText>
                                             </NoRecordsContent>
+                                            <PagerContent>
+                                                <MudTablePager RowsPerPageString='@T("Rye per bladsy", "Rows per page")'
+                                                               InfoFormat='@T("{first_item}–{last_item} van {all_items}", "{first_item}–{last_item} of {all_items}")' />
+                                            </PagerContent>
                                         </MudTable>
                                     </div>
                                 </details>
@@ -2151,6 +2163,13 @@
                         <MudTabPanel Text='@T("Inkomste", "Revenue")'>
                             @if (!HasLoadedSubscriberReports)
                             {
+                                @if (FinancialOverviews.TryGetValue(AdminReportPanel.Revenue, out var overview))
+                                {
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Totale MRR", "Total MRR")</p>
+                                        <p class="admin-analytics-value">@FormatCurrency(overview.MonthlyRecurringRevenueZar)</p>
+                                    </article>
+                                }
                                 @AnalyticsLoadState(SubscriberReportsLoadFailed, true)
                             }
                             else
@@ -2159,8 +2178,12 @@
                                 var currentWeekSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentWeek);
                                 var currentMonthSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentMonth);
                                 var currentYearSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentYear);
-                                var customSubscriberSales = GetCustomRevenueSalesMetric();
-                                var selectedRevenueSales = GetSelectedRevenueSalesMetric();
+                                var revenueDetails = GetRevenueDetails();
+                                var customSubscriberSales = revenueDetails.CustomTotal;
+                                var selectedRevenueSales = IsSelectedRevenueDrilldownPeriod(RevenuePeriodCustom)
+                                    ? customSubscriberSales : GetSubscriberSalesMetric(SelectedRevenueDrilldownPeriod);
+                                var appleSales = revenueDetails.ForProvider("apple");
+                                var googlePlaySales = revenueDetails.ForProvider("google_play");
                                 var totalRecurringRevenue = GetRecurringRevenueMetric("total");
                                 var monthlyRecurringRevenue = GetRecurringRevenueMetric("monthly");
                                 var yearlyRecurringRevenue = GetRecurringRevenueMetric("yearly");
@@ -2277,29 +2300,29 @@
                                     </div>
                                     <div class="admin-analytics-meta">
                                         <span>PayFast</span>
-                                        <strong>@FormatAnalyticsNumber(SelectedRevenuePayFastSalesCount) @T("verkope", "sales")</strong>
+                                        <strong>@FormatAnalyticsNumber(revenueDetails.ForProvider("payfast").SalesCount) @T("verkope", "sales")</strong>
                                     </div>
                                     <div class="admin-analytics-meta">
                                         <span>Paystack</span>
-                                        <strong>@FormatAnalyticsNumber(SelectedRevenuePaystackSalesCount) @T("verkope", "sales")</strong>
+                                        <strong>@FormatAnalyticsNumber(revenueDetails.ForProvider("paystack").SalesCount) @T("verkope", "sales")</strong>
                                     </div>
                                     <div class="admin-analytics-meta">
                                         <span>iOS · App Store</span>
                                         <div class="admin-analytics-story-cell">
-                                            <strong>@FormatCurrency(SelectedRevenueAppleSales.RevenueZar)</strong>
-                                            <span>@FormatAnalyticsNumber(SelectedRevenueAppleSales.SalesCount) @T("intekeninge", "subscriptions")</span>
+                                            <strong>@FormatCurrency(appleSales.RevenueZar)</strong>
+                                            <span>@FormatAnalyticsNumber(appleSales.SalesCount) @T("intekeninge", "subscriptions")</span>
                                         </div>
                                     </div>
                                     <div class="admin-analytics-meta">
                                         <span>Android · Google Play</span>
                                         <div class="admin-analytics-story-cell">
-                                            <strong>@FormatCurrency(SelectedRevenueGooglePlaySales.RevenueZar)</strong>
-                                            <span>@FormatAnalyticsNumber(SelectedRevenueGooglePlaySales.SalesCount) @T("intekeninge", "subscriptions")</span>
+                                            <strong>@FormatCurrency(googlePlaySales.RevenueZar)</strong>
+                                            <span>@FormatAnalyticsNumber(googlePlaySales.SalesCount) @T("intekeninge", "subscriptions")</span>
                                         </div>
                                     </div>
                                     <div class="admin-analytics-meta">
                                         <span>@T("Herwinde inkomste", "Recovered revenue")</span>
-                                        <strong>@FormatCurrency(FilteredRecoveredRevenueDetails.Sum(detail => detail.RevenueZar))</strong>
+                                        <strong>@FormatCurrency(revenueDetails.RecoveredAmount)</strong>
                                     </div>
                                 </article>
 
@@ -2445,7 +2468,7 @@
                                         </div>
                                         <div class="admin-collapsible-summary-meta">
                                             <span class="admin-story-stats-filter-summary">
-                                                @FormatAnalyticsNumber(FilteredRevenueSalesDetails.Count) @T("verkope", "sales")
+                                                @FormatAnalyticsNumber(revenueDetails.Sales.Count) @T("verkope", "sales")
                                             </span>
                                             <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
                                         </div>
@@ -2454,7 +2477,7 @@
                                     <div class="admin-collapsible-content">
                                     <MudTable T="AdminSalesRevenueDetailRecord"
                                               Class="admin-grid"
-                                              Items="FilteredRevenueSalesDetails"
+                                              Items="revenueDetails.Sales"
                                               RowsPerPage="25"
                                               Dense="true"
                                               Hover="true"
@@ -2523,6 +2546,10 @@
                                         <NoRecordsContent>
                                             <MudText Typo="Typo.body2">@T("Geen verkope vir hierdie periode nie.", "No sales for this period.")</MudText>
                                         </NoRecordsContent>
+	                                        <PagerContent>
+	                                            <MudTablePager RowsPerPageString='@T("Rye per bladsy", "Rows per page")'
+	                                                           InfoFormat='@T("{first_item}–{last_item} van {all_items}", "{first_item}–{last_item} of {all_items}")' />
+	                                        </PagerContent>
 	                                    </MudTable>
                                     </div>
 	                                </details>
@@ -2535,7 +2562,7 @@
 	                                        </div>
 	                                        <div class="admin-collapsible-summary-meta">
 	                                            <span class="admin-story-stats-filter-summary">
-	                                                @FormatAnalyticsNumber(FilteredRecoveredRevenueDetails.Count) @T("herwinnings", "recoveries")
+	                                                @FormatAnalyticsNumber(revenueDetails.Recoveries.Count) @T("herwinnings", "recoveries")
 	                                            </span>
 	                                            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
 	                                        </div>
@@ -2544,7 +2571,7 @@
 	                                    <div class="admin-collapsible-content">
 	                                    <MudTable T="AdminRecoveredRevenueDetailRecord"
 	                                              Class="admin-grid"
-	                                              Items="FilteredRecoveredRevenueDetails"
+	                                              Items="revenueDetails.Recoveries"
 	                                              RowsPerPage="25"
 	                                              Dense="true"
 	                                              Hover="true"
@@ -2609,6 +2636,10 @@
 	                                        <NoRecordsContent>
 	                                            <MudText Typo="Typo.body2">@T("Geen herwinde inkomste vir hierdie periode nie.", "No recovered revenue for this period.")</MudText>
 	                                        </NoRecordsContent>
+	                                        <PagerContent>
+	                                            <MudTablePager RowsPerPageString='@T("Rye per bladsy", "Rows per page")'
+	                                                           InfoFormat='@T("{first_item}–{last_item} van {all_items}", "{first_item}–{last_item} of {all_items}")' />
+	                                        </PagerContent>
 	                                    </MudTable>
 	                                    </div>
 	                                </details>
@@ -2899,6 +2930,7 @@
                                                 <MudTable T="AdminAnalyticsTopCharacterRecord"
                                                       Class="admin-grid admin-character-stats-table"
                                                       Items="FilteredAnalyticsCharacters"
+                                                      RowsPerPage="25"
                                                       Dense="true"
                                                       Hover="true"
                                                       Bordered="true"
@@ -2940,6 +2972,10 @@
                                                 <NoRecordsContent>
                                                     <MudText Typo="Typo.body2">@T("Geen karakter-statistieke pas by jou soektog nie.", "No character stats match your search.")</MudText>
                                                 </NoRecordsContent>
+                                                <PagerContent>
+                                                    <MudTablePager RowsPerPageString='@T("Rye per bladsy", "Rows per page")'
+                                                                   InfoFormat='@T("{first_item}–{last_item} van {all_items}", "{first_item}–{last_item} of {all_items}")' />
+                                                </PagerContent>
                                             </MudTable>
                                             </div>
                                         </div>
@@ -3241,6 +3277,10 @@
                                         <NoRecordsContent>
                                             <MudText Typo="Typo.body2">@T("Nog geen storie-analitika nie.", "No story analytics yet.")</MudText>
                                         </NoRecordsContent>
+                                        <PagerContent>
+                                            <MudTablePager RowsPerPageString='@T("Rye per bladsy", "Rows per page")'
+                                                           InfoFormat='@T("{first_item}–{last_item} van {all_items}", "{first_item}–{last_item} of {all_items}")' />
+                                        </PagerContent>
                                     </MudTable>
                                 </section>
                             }
@@ -3289,7 +3329,7 @@
                                                       Items="Analytics.ResourceDownloadSummary.Items"
                                                       Class="admin-report-table admin-resource-download-table"
                                                       SortLabel='@T("Sorteer volgens", "Sort by")'
-                                                      RowsPerPage="100"
+                                                      RowsPerPage="25"
                                                       Dense="true"
                                                       Hover="true"
                                                       Bordered="true"
@@ -3332,6 +3372,10 @@
                                                     <MudTd DataLabel='@T("Laaste 30 dae", "Last 30 days")'>@FormatAnalyticsNumber(context.DownloadsLast30Days)</MudTd>
                                                     <MudTd DataLabel='@T("Laaste aflaai", "Last download")'>@FormatAdminDateTime(context.LastDownloadAt)</MudTd>
                                                 </RowTemplate>
+                                                <PagerContent>
+                                                    <MudTablePager RowsPerPageString='@T("Rye per bladsy", "Rows per page")'
+                                                                   InfoFormat='@T("{first_item}–{last_item} van {all_items}", "{first_item}–{last_item} of {all_items}")' />
+                                                </PagerContent>
                                             </MudTable>
                                         </div>
                                     }
@@ -3387,7 +3431,7 @@
                                                       Items="Analytics.BlogVisitSummary.Pages"
                                                       Class="admin-report-table admin-blog-visit-table"
                                                       SortLabel='@T("Sorteer volgens", "Sort by")'
-                                                      RowsPerPage="100"
+                                                      RowsPerPage="25"
                                                       Dense="true"
                                                       Hover="true"
                                                       Bordered="true"
@@ -3430,6 +3474,10 @@
                                                     <MudTd DataLabel='@T("Laaste 30 dae", "Last 30 days")'>@FormatAnalyticsNumber(context.VisitsLast30Days)</MudTd>
                                                     <MudTd DataLabel='@T("Laaste besoek", "Last visit")'>@FormatAdminDateTime(context.LastVisitAt)</MudTd>
                                                 </RowTemplate>
+                                                <PagerContent>
+                                                    <MudTablePager RowsPerPageString='@T("Rye per bladsy", "Rows per page")'
+                                                                   InfoFormat='@T("{first_item}–{last_item} van {all_items}", "{first_item}–{last_item} of {all_items}")' />
+                                                </PagerContent>
                                             </MudTable>
                                         </div>
                                     }
@@ -3450,8 +3498,7 @@
                                     <div class="admin-shop-analytics-period">
                                         <label class="admin-header-filter-label" for="shop-analytics-period">@T("Tydperk", "Period")</label>
                                         <select id="shop-analytics-period" class="admin-header-filter-select"
-                                                @bind="_shopAnalyticsDays" @bind:after="ChangeShopAnalyticsPeriodAsync"
-                                                disabled="@IsLoadingShopAnalytics">
+                                                @bind="_shopAnalyticsDays" @bind:after="ChangeShopAnalyticsPeriodAsync">
                                             <option value="7">@T("Laaste 7 dae", "Last 7 days")</option>
                                             <option value="30">@T("Laaste 30 dae", "Last 30 days")</option>
                                             <option value="90">@T("Laaste 90 dae", "Last 90 days")</option>
@@ -3459,7 +3506,7 @@
                                     </div>
                                 </div>
 
-                                @if (IsLoadingShopAnalytics || _shopAnalytics is null)
+                                @if (_shopAnalyticsLoadFailed || _shopAnalytics is null)
                                 {
                                     <p role="@(_shopAnalyticsLoadFailed ? "alert" : "status")" class="admin-analytics-footnote">
                                         @(_shopAnalyticsLoadFailed
@@ -3467,7 +3514,7 @@
                                             : T("Laai winkelanalitika...", "Loading shop analytics..."))
                                     </p>
                                 }
-                                else
+                                @if (_shopAnalytics is not null)
                                 {
                                     var engagement = _shopAnalytics.Engagement;
                                     var sales = _shopAnalytics.Sales;
@@ -3505,7 +3552,9 @@
 
                                     @if (engagement is null)
                                     {
-                                        <p class="admin-analytics-footnote" role="status">@(_shopAnalytics.EngagementConfigured
+                                        <p class="admin-analytics-footnote" role="status">@(IsLoadingShopAnalytics && _shopAnalytics.EngagementConfigured
+                                            ? T("Laai winkelaktiwiteit...", "Loading shop activity...")
+                                            : _shopAnalytics.EngagementConfigured
                                             ? T("PostHog se winkelaktiwiteit kon nie laai nie. Kies Verfris om weer te probeer.", "PostHog shop activity could not load. Select Refresh to try again.")
                                             : T("PostHog se verslaggewingsleutel is nodig om winkelaktiwiteit te wys.", "A PostHog reporting key is required to show shop activity."))</p>
                                     }
@@ -3653,11 +3702,11 @@
                         </MudTabPanel>
                     </MudTabs>
                 </section>
-            </MudTabPanel>
+            </AdminTabPanel>
 
-            <MudTabPanel Text='@T("Instellings", "Settings")'>
+            <AdminTabPanel Text='@T("Instellings", "Settings")'>
                 <AdminSettingsPanel AdminEmail="@CurrentAdminEmail" LanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
+            </AdminTabPanel>
 
         </MudTabs>
         </div>
@@ -5421,10 +5470,22 @@
         CurrentTierDistributionMetrics
             .Select(metric => metric.TierName)
             .ToArray();
-    private IReadOnlyList<AdminSubscriberTrendMetric> CurrentSubscriberTrendMetrics =>
-        BuildAccessFilteredSubscriberTrendMetrics(
-            AccessFilteredSubscriberMembershipDetails,
-            SelectedSubscriberTrendPeriod);
+    private (IReadOnlyList<AdminSubscriberMembershipDetailRecord> Rows, string Period, DateTime Day) _trendKey;
+    private IReadOnlyList<AdminSubscriberTrendMetric> _trendMetrics = [];
+    private IReadOnlyList<AdminSubscriberTrendMetric> CurrentSubscriberTrendMetrics
+    {
+        get
+        {
+            var rows = AccessFilteredSubscriberMembershipDetails;
+            var key = (Rows: rows, Period: SelectedSubscriberTrendPeriod, Day: DateTime.Today);
+            if (key != _trendKey)
+            {
+                _trendMetrics = BuildAccessFilteredSubscriberTrendMetrics(rows, key.Period, key.Day);
+                _trendKey = key;
+            }
+            return _trendMetrics;
+        }
+    }
     private ChartType SubscriberTrendChartType =>
         string.Equals(SelectedSubscriberChartType, SubscriberChartTypeBar, StringComparison.OrdinalIgnoreCase)
             ? ChartType.Bar
@@ -5572,19 +5633,52 @@
     private AdminAwardAnalyticsSummary AwardSummary =>
         Analytics.AwardSummary ?? AdminAnalyticsSnapshot.Empty.AwardSummary!;
 
-    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> AnalyticsStoryDetails =>
-        BuildAnalyticsStoryDetails();
+    private AdminAnalyticsSnapshot? cachedStorySnapshot;
+    private IReadOnlyList<AdminStoryRecord>? cachedStoryCatalog;
+    private string? cachedStoryCulture;
+    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> cachedStoryDetails = [];
+    private IReadOnlyList<AdminAnalyticsStoryDetailRecord>? filteredStorySource;
+    private (string Search, DateTime? From, DateTime? To) cachedStoryFilters;
+    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> cachedFilteredStories = [];
+
+    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> AnalyticsStoryDetails
+    {
+        get
+        {
+            var culture = CultureInfo.CurrentCulture.Name;
+            if (!ReferenceEquals(Analytics, cachedStorySnapshot) || !ReferenceEquals(Stories, cachedStoryCatalog) || culture != cachedStoryCulture)
+            {
+                cachedStoryDetails = BuildAnalyticsStoryDetails();
+                cachedStorySnapshot = Analytics;
+                cachedStoryCatalog = Stories;
+                cachedStoryCulture = culture;
+            }
+            return cachedStoryDetails;
+        }
+    }
 
     private AdminAnalyticsStoryDetailRecord? SelectedAnalyticsStory =>
         FilteredAnalyticsStoryDetails.FirstOrDefault(story =>
             string.Equals(story.StorySlug, SelectedAnalyticsStorySlug, StringComparison.OrdinalIgnoreCase)) ??
         FilteredAnalyticsStoryDetails.FirstOrDefault();
 
-    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> FilteredAnalyticsStoryDetails =>
-        AnalyticsStoryDetails
-            .Where(DoesAnalyticsStoryMatchSearch)
-            .Where(DoesAnalyticsStoryMatchDateFilters)
-            .ToArray();
+    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> FilteredAnalyticsStoryDetails
+    {
+        get
+        {
+            var source = AnalyticsStoryDetails;
+            var filters = (StoryStatsSearch, StoryStatsFromDate, StoryStatsToDate);
+            if (!ReferenceEquals(source, filteredStorySource) || filters != cachedStoryFilters)
+            {
+                cachedFilteredStories = HasStoryStatsFilters
+                    ? source.Where(DoesAnalyticsStoryMatchSearch).Where(DoesAnalyticsStoryMatchDateFilters).ToArray()
+                    : source;
+                filteredStorySource = source;
+                cachedStoryFilters = filters;
+            }
+            return cachedFilteredStories;
+        }
+    }
 
     private bool HasStoryStatsFilters =>
         !string.IsNullOrWhiteSpace(StoryStatsSearch) ||
@@ -5778,10 +5872,23 @@
             GetAccessFilteredSubscriberMetric("all_time")
         ];
 
-    private IReadOnlyList<AdminSubscriberMembershipDetailRecord> AccessFilteredSubscriberMembershipDetails =>
-        SubscriberReports.SignupDetails
-            .Where(DoesSubscriberMembershipDetailMatchAccessFilter)
-            .ToArray();
+    private (IReadOnlyList<AdminSubscriberMembershipDetailRecord> Rows, string Filter) _signupFilterKey;
+    private IReadOnlyList<AdminSubscriberMembershipDetailRecord> _filteredSignups = [];
+    private IReadOnlyList<AdminSubscriberMembershipDetailRecord> AccessFilteredSubscriberMembershipDetails
+    {
+        get
+        {
+            var rows = SubscriberReports.SignupDetails;
+            if (SelectedSubscriberAccessFilter == SubscriberAccessFilterAll) return rows;
+            var key = (rows, SelectedSubscriberAccessFilter);
+            if (key != _signupFilterKey)
+            {
+                _filteredSignups = rows.Where(DoesSubscriberMembershipDetailMatchAccessFilter).ToArray();
+                _signupFilterKey = key;
+            }
+            return _filteredSignups;
+        }
+    }
 
     private IReadOnlyList<AdminRecoveredSubscriberDetailRecord> AccessFilteredRecoveredSubscriberDetails =>
         IsSelectedSubscriberAccessFilter(SubscriberAccessFilterFree) ? [] : SubscriberReports.RecoveredSubscriberDetails;
@@ -5822,12 +5929,6 @@
             GetSubscriberSalesMetric("all_time")
         ];
 
-    private IReadOnlyList<AdminSalesRevenueDetailRecord> FilteredRevenueSalesDetails =>
-        SubscriberReports.SalesDetails
-            .Where(IsRevenueDetailInSelectedPeriod)
-            .OrderByDescending(detail => detail.SoldAt)
-            .ToArray();
-
     private AdminCancellationSurveyOverview CancellationSurveyOverview =>
         SubscriberReports.CancellationSurveyOverview;
 
@@ -5852,33 +5953,6 @@
                     .ToArray()
             }
         ];
-
-    private int SelectedRevenuePayFastSalesCount =>
-        FilteredRevenueSalesDetails.Count(detail => IsRevenueDetailProvider(detail, "payfast"));
-
-    private int SelectedRevenuePaystackSalesCount =>
-        FilteredRevenueSalesDetails.Count(detail => IsRevenueDetailProvider(detail, "paystack"));
-
-    private AdminSalesRevenueMetric SelectedRevenueAppleSales => GetSelectedRevenueProviderSalesMetric("apple");
-
-    private AdminSalesRevenueMetric SelectedRevenueGooglePlaySales => GetSelectedRevenueProviderSalesMetric("google_play");
-
-    private AdminSalesRevenueMetric GetSelectedRevenueProviderSalesMetric(string provider)
-    {
-        var details = FilteredRevenueSalesDetails
-            .Where(detail => IsRevenueDetailProvider(detail, provider))
-            .ToArray();
-        return new AdminSalesRevenueMetric(
-            provider,
-            details.Length,
-            decimal.Round(details.Sum(detail => detail.RevenueZar), 2, MidpointRounding.AwayFromZero));
-    }
-
-    private IReadOnlyList<AdminRecoveredRevenueDetailRecord> FilteredRecoveredRevenueDetails =>
-        SubscriberReports.RecoveredRevenueDetails
-            .Where(IsRecoveredRevenueDetailInSelectedPeriod)
-            .OrderByDescending(detail => detail.RecoveredAt)
-            .ToArray();
 
     private bool HasActiveSubscriberColumnFilters => SubscriberColumnFilters.HasActiveFilters;
     private bool HasClearableSubscriberFilters =>
@@ -6111,6 +6185,7 @@
         public bool Failed { get; set; }
     }
 
+    private readonly Dictionary<AdminReportPanel, AdminFinancialOverview> FinancialOverviews = [];
     private readonly Dictionary<AdminReportPanel, PanelState<AdminSubscriberReportsSnapshot>> ReportStates =
         Enum.GetValues<AdminReportPanel>().ToDictionary(panel => panel, _ => new PanelState<AdminSubscriberReportsSnapshot>());
     private readonly Dictionary<AdminActivityPanel, PanelState<AdminAnalyticsSnapshot>> ActivityStates =
@@ -6270,9 +6345,10 @@
             return;
         }
 
-        if (resetToFirstPage)
+        if (resetToFirstPage && SubscribersTable.CurrentPage != 0)
         {
             SubscribersTable.NavigateTo(0);
+            return;
         }
 
         await SubscribersTable.ReloadServerData();
@@ -7882,12 +7958,18 @@
         }
 
         var file = args.File;
-        StoryEditor.CoverFile = file;
-        StoryEditor.CoverFileName = file?.Name;
-        StoryEditor.CoverPreviewDataUrl = file is null
-            ? null
-            : await ReadImageFileAsDataUrlAsync(file);
-        return;
+        var editor = StoryEditor;
+        editor.CoverFile = file;
+        editor.CoverFileName = file?.Name;
+        editor.CoverPreviewDataUrl = null;
+        if (file is not null && file.Size is > 0 and <= MaxImageUploadBytes && IsSupportedImageFile(file))
+        {
+            var preview = await AdminImagePreview.CreateAsync(JSRuntime, EditStoryCoverInputId, Logger);
+            if (ReferenceEquals(editor.CoverFile, file))
+            {
+                editor.CoverPreviewDataUrl = preview;
+            }
+        }
     }
 
     private async Task OnStoryThumbnailSelected(InputFileChangeEventArgs args)
@@ -7898,12 +7980,18 @@
         }
 
         var file = args.File;
-        StoryEditor.ThumbnailFile = file;
-        StoryEditor.ThumbnailFileName = file?.Name;
-        StoryEditor.ThumbnailPreviewDataUrl = file is null
-            ? null
-            : await ReadImageFileAsDataUrlAsync(file);
-        return;
+        var editor = StoryEditor;
+        editor.ThumbnailFile = file;
+        editor.ThumbnailFileName = file?.Name;
+        editor.ThumbnailPreviewDataUrl = null;
+        if (file is not null && file.Size is > 0 and <= MaxImageUploadBytes && IsSupportedImageFile(file))
+        {
+            var preview = await AdminImagePreview.CreateAsync(JSRuntime, EditStoryThumbnailInputId, Logger);
+            if (ReferenceEquals(editor.ThumbnailFile, file))
+            {
+                editor.ThumbnailPreviewDataUrl = preview;
+            }
+        }
     }
 
     private Task OnStoryAudioSelected(InputFileChangeEventArgs args)
@@ -7940,12 +8028,18 @@
         }
 
         var file = args.File;
-        PlaylistEditor.LogoFile = file;
-        PlaylistEditor.LogoFileName = file?.Name;
-        PlaylistEditor.LogoPreviewDataUrl = file is null
-            ? null
-            : await ReadImageFileAsDataUrlAsync(file);
-        return;
+        var editor = PlaylistEditor;
+        editor.LogoFile = file;
+        editor.LogoFileName = file?.Name;
+        editor.LogoPreviewDataUrl = null;
+        if (file is not null && file.Size is > 0 and <= MaxImageUploadBytes && IsSupportedImageFile(file))
+        {
+            var preview = await AdminImagePreview.CreateAsync(JSRuntime, EditPlaylistLogoInputId, Logger);
+            if (ReferenceEquals(editor.LogoFile, file))
+            {
+                editor.LogoPreviewDataUrl = preview;
+            }
+        }
     }
 
     private async Task OnPlaylistBackdropSelected(InputFileChangeEventArgs args)
@@ -7956,12 +8050,18 @@
         }
 
         var file = args.File;
-        PlaylistEditor.BackdropFile = file;
-        PlaylistEditor.BackdropFileName = file?.Name;
-        PlaylistEditor.BackdropPreviewDataUrl = file is null
-            ? null
-            : await ReadImageFileAsDataUrlAsync(file);
-        return;
+        var editor = PlaylistEditor;
+        editor.BackdropFile = file;
+        editor.BackdropFileName = file?.Name;
+        editor.BackdropPreviewDataUrl = null;
+        if (file is not null && file.Size is > 0 and <= MaxImageUploadBytes && IsSupportedImageFile(file))
+        {
+            var preview = await AdminImagePreview.CreateAsync(JSRuntime, EditPlaylistBackdropInputId, Logger);
+            if (ReferenceEquals(editor.BackdropFile, file))
+            {
+                editor.BackdropPreviewDataUrl = preview;
+            }
+        }
     }
 
     private async Task OnPlaylistShowcaseSelected(InputFileChangeEventArgs args)
@@ -7972,12 +8072,18 @@
         }
 
         var file = args.File;
-        PlaylistEditor.ShowcaseFile = file;
-        PlaylistEditor.ShowcaseFileName = file?.Name;
-        PlaylistEditor.ShowcasePreviewDataUrl = file is null
-            ? null
-            : await ReadImageFileAsDataUrlAsync(file);
-        return;
+        var editor = PlaylistEditor;
+        editor.ShowcaseFile = file;
+        editor.ShowcaseFileName = file?.Name;
+        editor.ShowcasePreviewDataUrl = null;
+        if (file is not null && file.Size is > 0 and <= MaxImageUploadBytes && IsSupportedImageFile(file))
+        {
+            var preview = await AdminImagePreview.CreateAsync(JSRuntime, EditPlaylistShowcaseInputId, Logger);
+            if (ReferenceEquals(editor.ShowcaseFile, file))
+            {
+                editor.ShowcasePreviewDataUrl = preview;
+            }
+        }
     }
 
     private void OnPlaylistAccentColorPickerChanged(ChangeEventArgs args)
@@ -10043,7 +10149,7 @@
             return;
         }
 
-        if (_landingPagesPanel?.HasUnsavedChanges == true &&
+        if (_activeAdminTabIndex == 9 && _landingPagesPanel is not null &&
             !await _landingPagesPanel.ConfirmDiscardAsync())
         {
             context.PreventNavigation();
@@ -10053,7 +10159,7 @@
     private async Task HandleAdminTabPreviewInteraction(TabInteractionEventArgs args)
     {
         if (args.PanelIndex == _activeAdminTabIndex ||
-            _landingPagesPanel?.HasUnsavedChanges != true)
+            _activeAdminTabIndex != 9 || _landingPagesPanel is null)
         {
             return;
         }
@@ -10204,7 +10310,12 @@
         try
         {
             state.Value = await AdminManagementService.GetSubscriberReportsAsync(CurrentAdminEmail,
-                includeEngagement: panel == AdminReportPanel.Engagement, forceRefresh: forceRefresh, panel: panel);
+                includeEngagement: panel == AdminReportPanel.Engagement, forceRefresh: forceRefresh, panel: panel,
+                onOverviewLoaded: state.Value is null ? overview => InvokeAsync(() =>
+                {
+                    FinancialOverviews[panel] = overview;
+                    StateHasChanged();
+                }) : null);
         }
         catch (Exception exception)
         {
@@ -10212,6 +10323,10 @@
             state.Failed = true;
             if (CurrentReportPanel == panel)
                 SetError(T("Kon nie intekenaar verslae nou laai nie.", "Could not load subscriber reports right now."));
+        }
+        finally
+        {
+            FinancialOverviews.Remove(panel);
         }
     }
 
@@ -10239,120 +10354,48 @@
 
     private static IReadOnlyList<AdminSubscriberTrendMetric> BuildAccessFilteredSubscriberTrendMetrics(
         IReadOnlyList<AdminSubscriberMembershipDetailRecord> details,
-        string periodType)
+        string periodType, DateTime today)
     {
-        var normalizedPeriodType = NormalizeSubscriberTrendPeriod(periodType);
-        var signupDates = details
-            .Select(detail => detail.SubscribedAt.ToLocalTime().Date)
-            .ToArray();
-        var cancellationDates = details
-            .Where(detail => detail.CancelledAt is not null)
-            .Select(detail => detail.CancelledAt!.Value.ToLocalTime().Date)
-            .ToArray();
-
-        var signupCountByDate = signupDates
-            .GroupBy(value => value)
-            .ToDictionary(group => group.Key, group => group.Count());
-        var cancellationCountByDate = cancellationDates
-            .GroupBy(value => value)
-            .ToDictionary(group => group.Key, group => group.Count());
-
-        var signupCountByMonth = signupDates
-            .GroupBy(value => value.ToString("yyyy-MM", CultureInfo.InvariantCulture))
-            .ToDictionary(group => group.Key, group => group.Count());
-        var cancellationCountByMonth = cancellationDates
-            .GroupBy(value => value.ToString("yyyy-MM", CultureInfo.InvariantCulture))
-            .ToDictionary(group => group.Key, group => group.Count());
-
-        var signupCountByYear = signupDates
-            .GroupBy(value => value.Year)
-            .ToDictionary(group => group.Key, group => group.Count());
-        var cancellationCountByYear = cancellationDates
-            .GroupBy(value => value.Year)
-            .ToDictionary(group => group.Key, group => group.Count());
-
-        var nowLocal = DateTime.Now;
-        return normalizedPeriodType switch
+        var period = NormalizeSubscriberTrendPeriod(periodType);
+        var (length, keyFormat, labelFormat) = period switch
         {
-            SubscriberTrendPeriodMonth => GetMonthTrendSeries(
-                new DateTime(nowLocal.Year, nowLocal.Month, 1).AddMonths(-11),
-                new DateTime(nowLocal.Year, nowLocal.Month, 1),
-                signupCountByMonth,
-                cancellationCountByMonth),
-            SubscriberTrendPeriodYear => GetYearTrendSeries(
-                nowLocal.Year - 5,
-                nowLocal.Year,
-                signupCountByYear,
-                cancellationCountByYear),
-            _ => GetDayTrendSeries(
-                nowLocal.Date.AddDays(-6),
-                nowLocal.Date,
-                signupCountByDate,
-                cancellationCountByDate)
+            SubscriberTrendPeriodMonth => (12, "yyyy-MM", "MM/yy"),
+            SubscriberTrendPeriodYear => (6, "yyyy", "yyyy"),
+            _ => (7, "yyyy-MM-dd", "dd/MM")
         };
-    }
-
-    private static IReadOnlyList<AdminSubscriberTrendMetric> GetDayTrendSeries(
-        DateTime dayStart,
-        DateTime dayEnd,
-        IReadOnlyDictionary<DateTime, int> signupsByDate,
-        IReadOnlyDictionary<DateTime, int> cancellationsByDate)
-    {
-        var metrics = new List<AdminSubscriberTrendMetric>(7);
-
-        for (var date = dayStart; date <= dayEnd; date = date.AddDays(1))
+        var signups = new int[length];
+        var cancellations = new int[length];
+        void Count(DateTimeOffset timestamp, int[] counts)
         {
-            var periodKey = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            metrics.Add(new AdminSubscriberTrendMetric(
-                "day",
-                periodKey,
-                date.ToString("dd/MM", CultureInfo.InvariantCulture),
-                signupsByDate.GetValueOrDefault(date),
-                cancellationsByDate.GetValueOrDefault(date)));
+            var day = timestamp.ToLocalTime().Date;
+            var age = period switch
+            {
+                SubscriberTrendPeriodMonth => (today.Year - day.Year) * 12 + today.Month - day.Month,
+                SubscriberTrendPeriodYear => today.Year - day.Year,
+                _ => (today - day).Days
+            };
+            if (age >= 0 && age < length) counts[length - 1 - age]++;
         }
 
-        return metrics;
-    }
-
-    private static IReadOnlyList<AdminSubscriberTrendMetric> GetMonthTrendSeries(
-        DateTime monthStart,
-        DateTime monthEnd,
-        IReadOnlyDictionary<string, int> signupsByMonth,
-        IReadOnlyDictionary<string, int> cancellationsByMonth)
-    {
-        var metrics = new List<AdminSubscriberTrendMetric>(12);
-        for (var month = monthStart; month <= monthEnd; month = month.AddMonths(1))
+        foreach (var detail in details)
         {
-            var periodKey = month.ToString("yyyy-MM", CultureInfo.InvariantCulture);
-            metrics.Add(new AdminSubscriberTrendMetric(
-                "month",
-                periodKey,
-                month.ToString("MM/yy", CultureInfo.InvariantCulture),
-                signupsByMonth.GetValueOrDefault(periodKey),
-                cancellationsByMonth.GetValueOrDefault(periodKey)));
+            Count(detail.SubscribedAt, signups);
+            if (detail.CancelledAt is { } cancelled) Count(cancelled, cancellations);
         }
 
-        return metrics;
-    }
-
-    private static IReadOnlyList<AdminSubscriberTrendMetric> GetYearTrendSeries(
-        int yearStart,
-        int endYear,
-        IReadOnlyDictionary<int, int> signupsByYear,
-        IReadOnlyDictionary<int, int> cancellationsByYear)
-    {
-        var metrics = new List<AdminSubscriberTrendMetric>(Math.Max(0, endYear - yearStart + 1));
-        for (var year = yearStart; year <= endYear; year++)
+        var metrics = new AdminSubscriberTrendMetric[length];
+        for (var index = 0; index < length; index++)
         {
-            var periodKey = year.ToString(CultureInfo.InvariantCulture);
-            metrics.Add(new AdminSubscriberTrendMetric(
-                "year",
-                periodKey,
-                periodKey,
-                signupsByYear.GetValueOrDefault(year),
-                cancellationsByYear.GetValueOrDefault(year)));
+            var offset = index + 1 - length;
+            var day = period switch
+            {
+                SubscriberTrendPeriodMonth => today.AddMonths(offset),
+                SubscriberTrendPeriodYear => today.AddYears(offset),
+                _ => today.AddDays(offset)
+            };
+            metrics[index] = new(period, day.ToString(keyFormat, CultureInfo.InvariantCulture),
+                day.ToString(labelFormat, CultureInfo.InvariantCulture), signups[index], cancellations[index]);
         }
-
         return metrics;
     }
 
@@ -10556,45 +10599,6 @@
     private string GetRevenueDrilldownPeriodRowClass(AdminSalesRevenueMetric metric, int _)
         => IsSelectedRevenueDrilldownPeriod(metric.PeriodKey) ? "is-selected" : string.Empty;
 
-    private AdminSalesRevenueMetric GetSelectedRevenueSalesMetric() =>
-        IsSelectedRevenueDrilldownPeriod(RevenuePeriodCustom)
-            ? GetCustomRevenueSalesMetric()
-            : GetSubscriberSalesMetric(SelectedRevenueDrilldownPeriod);
-
-    private AdminSalesRevenueMetric GetCustomRevenueSalesMetric()
-    {
-        var matchingDetails = SubscriberReports.SalesDetails
-            .Where(detail => IsAdminDateInRevenuePeriod(detail.SoldAt, RevenuePeriodCustom))
-            .ToArray();
-
-        return new AdminSalesRevenueMetric(
-            RevenuePeriodCustom,
-            matchingDetails.Length,
-            decimal.Round(matchingDetails.Sum(detail => detail.RevenueZar), 2, MidpointRounding.AwayFromZero));
-    }
-
-    private bool IsAdminDateInRevenuePeriod(DateTimeOffset value) =>
-        IsAdminDateInRevenuePeriod(value, SelectedRevenueDrilldownPeriod);
-
-    private bool IsAdminDateInRevenuePeriod(DateTimeOffset value, string periodKey)
-    {
-        if (string.Equals(periodKey, "all_time", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        var localValue = value.ToLocalTime().DateTime;
-        var nowLocal = DateTime.Now;
-        var (startInclusive, endExclusive) = GetRevenuePeriodBounds(periodKey, nowLocal);
-
-        if (startInclusive is not null && localValue < startInclusive.Value)
-        {
-            return false;
-        }
-
-        return endExclusive is null || localValue < endExclusive.Value;
-    }
-
     private (DateTime? StartInclusive, DateTime? EndExclusive) GetRevenuePeriodBounds(string periodKey, DateTime nowLocal)
     {
         if (string.Equals(periodKey, RevenuePeriodCustom, StringComparison.OrdinalIgnoreCase))
@@ -10641,17 +10645,11 @@
         return $"{from} - {to}";
     }
 
-    private bool IsRevenueDetailInSelectedPeriod(AdminSalesRevenueDetailRecord detail) =>
-        IsAdminDateInRevenuePeriod(detail.SoldAt);
-
     private static bool IsRevenueDetailProvider(AdminSalesRevenueDetailRecord detail, string provider) =>
         string.Equals(detail.Provider, provider, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsMobileStoreRevenueDetail(AdminSalesRevenueDetailRecord detail) =>
         IsRevenueDetailProvider(detail, "apple") || IsRevenueDetailProvider(detail, "google_play");
-
-    private bool IsRecoveredRevenueDetailInSelectedPeriod(AdminRecoveredRevenueDetailRecord detail) =>
-        IsAdminDateInRevenuePeriod(detail.RecoveredAt);
 
     private static bool IsAdminDateInCurrentPeriod(DateTimeOffset value, string periodKey)
     {
@@ -11388,29 +11386,6 @@
                 _ => file.ContentType ?? string.Empty
             }
         };
-
-    private async Task<string?> ReadImageFileAsDataUrlAsync(IBrowserFile file)
-    {
-        try
-        {
-            var normalizedContentType = NormalizeImageContentType(file);
-            if (!IsSupportedImageContentType(normalizedContentType))
-            {
-                return null;
-            }
-
-            await using var stream = file.OpenReadStream(MaxImageUploadBytes);
-            using var buffer = new MemoryStream();
-            await stream.CopyToAsync(buffer);
-            var base64 = Convert.ToBase64String(buffer.ToArray());
-            return $"data:{normalizedContentType};base64,{base64}";
-        }
-        catch (Exception exception) when (exception is IOException or InvalidOperationException)
-        {
-            Logger.LogDebug(exception, "Inline image preview generation skipped.");
-            return null;
-        }
-    }
 
     private static bool IsSupportedImageFile(IBrowserFile file)
     {

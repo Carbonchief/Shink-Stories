@@ -518,7 +518,7 @@
                                     </div>
                                     <label class="characters-admin-file-picker">
                                         <span>@T("Laai nuwe hoofprent op", "Upload new main image")</span>
-                                        <InputFile OnChange="OnMainImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
+                                        <InputFile id="@MainImageInputId" OnChange="OnMainImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
                                     </label>
                                 </div>
 
@@ -540,7 +540,7 @@
                                     </div>
                                     <label class="characters-admin-file-picker">
                                         <span>@T("Laai nuwe mysterieprent op", "Upload new mystery image")</span>
-                                        <InputFile OnChange="OnMysteryImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
+                                        <InputFile id="@MysteryImageInputId" OnChange="OnMysteryImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
                                     </label>
                                 </div>
                             </div>
@@ -575,6 +575,8 @@
 </section>
 
 @code {
+    private const string MysteryImageInputId = "admincharacterspanel-mysteryimage";
+    private const string MainImageInputId = "admincharacterspanel-mainimage";
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
     private const long MaxAudioUploadBytes = 256 * 1024 * 1024;
     private const string ViewModeStorageKey = "shink.admin.characters.view-mode";
@@ -805,8 +807,13 @@
             return;
         }
 
-        Editor.MainImageFile = file;
-        Editor.MainImagePreviewPath = await BuildPreviewDataUrlAsync(file);
+        var editor = Editor;
+        editor.MainImageFile = file;
+        var preview = await AdminImagePreview.CreateAsync(JSRuntime, MainImageInputId, Logger);
+        if (ReferenceEquals(editor.MainImageFile, file))
+        {
+            editor.MainImagePreviewPath = preview ?? StoryItem.PlaceholderImagePath;
+        }
     }
 
     private async Task OnMysteryImageSelectedAsync(InputFileChangeEventArgs args)
@@ -823,8 +830,13 @@
             return;
         }
 
-        Editor.MysteryImageFile = file;
-        Editor.MysteryImagePreviewPath = await BuildPreviewDataUrlAsync(file);
+        var editor = Editor;
+        editor.MysteryImageFile = file;
+        var preview = await AdminImagePreview.CreateAsync(JSRuntime, MysteryImageInputId, Logger);
+        if (ReferenceEquals(editor.MysteryImageFile, file))
+        {
+            editor.MysteryImagePreviewPath = preview ?? StoryItem.PlaceholderImagePath;
+        }
     }
 
     private bool CanRemoveMainImage() =>
@@ -1306,16 +1318,6 @@
         }
 
         return uniqueSlug;
-    }
-
-    private static async Task<string> BuildPreviewDataUrlAsync(IBrowserFile file)
-    {
-        await using var stream = file.OpenReadStream(MaxImageUploadBytes);
-        await using var memoryStream = new MemoryStream();
-        await stream.CopyToAsync(memoryStream);
-        var base64 = Convert.ToBase64String(memoryStream.ToArray());
-        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/png" : file.ContentType;
-        return $"data:{contentType};base64,{base64}";
     }
 
     private string T(string afrikaans, string english) =>

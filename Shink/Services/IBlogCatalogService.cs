@@ -11,9 +11,9 @@ public interface IBlogCatalogService
 
 public interface IBlogAdminService
 {
-    Task<AdminBlogDashboardData> GetDashboardAsync(
-        string? adminEmail,
-        CancellationToken cancellationToken = default);
+    Task<AdminBlogPostPage> GetPostPageAsync(string? adminEmail, string? search, string status, int page, CancellationToken cancellationToken = default);
+    Task<AdminBlogPostRecord?> GetPostAsync(string? adminEmail, Guid postId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<BlogCategoryItem>> GetAdminCategoriesAsync(string? adminEmail, CancellationToken cancellationToken = default);
 
     Task<AdminOperationResult> SavePostAsync(
         string? adminEmail,
@@ -70,10 +70,12 @@ public sealed record BlogPostDetail(
     string? SeoTitle,
     string? SeoDescription);
 
-public sealed record AdminBlogDashboardData(
-    IReadOnlyList<AdminBlogPostRecord> Posts,
-    IReadOnlyList<BlogCategoryItem> Categories,
-    IReadOnlyList<BlogTagItem> Tags);
+public sealed record AdminBlogPostListItem(Guid PostId, string Title, bool IsPublished, DateTimeOffset? PublishedAt, DateTimeOffset UpdatedAt);
+
+public sealed record AdminBlogPostPage(IReadOnlyList<AdminBlogPostListItem> Items, int Total, int Page)
+{
+    public const int PageSize = 25;
+}
 
 public sealed record AdminBlogPostRecord(
     Guid PostId,

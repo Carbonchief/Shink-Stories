@@ -2563,7 +2563,8 @@ public sealed partial class SupabaseAdminManagementService(
         CancellationToken cancellationToken = default,
         bool includeEngagement = true,
         bool forceRefresh = false,
-        AdminReportPanel panel = AdminReportPanel.All)
+        AdminReportPanel panel = AdminReportPanel.All,
+        Func<AdminFinancialOverview, Task>? onOverviewLoaded = null)
     {
         if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
         {
@@ -2586,11 +2587,11 @@ public sealed partial class SupabaseAdminManagementService(
 
         return await GetAdminSnapshotAsync(
             $"admin:subscriber-reports:{baseUri.AbsoluteUri}:{includeEngagement}:{panel}", ReportLoadGates[panel], forceRefresh,
-            () => LoadSubscriberReportsSnapshotAsync(baseUri, apiKey, panel, includeEngagement, cancellationToken), cancellationToken);
+            () => LoadSubscriberReportsSnapshotAsync(baseUri, apiKey, panel, includeEngagement, onOverviewLoaded, cancellationToken), cancellationToken);
     }
 
     private async Task<AdminSubscriberReportsSnapshot> LoadSubscriberReportsSnapshotAsync(
-        Uri baseUri, string apiKey, AdminReportPanel panel, bool includeEngagement, CancellationToken cancellationToken)
+        Uri baseUri, string apiKey, AdminReportPanel panel, bool includeEngagement, Func<AdminFinancialOverview, Task>? onOverviewLoaded, CancellationToken cancellationToken)
     {
         if (panel == AdminReportPanel.Engagement)
         {
@@ -2600,9 +2601,11 @@ public sealed partial class SupabaseAdminManagementService(
             };
         }
 
-        var inputs = await InvokeRpcAsync<ReportInputs>(baseUri, apiKey, "get_admin_report_inputs",
-            new { p_panel = panel.ToString().ToLowerInvariant() }, cancellationToken, throwOnFailure: true)
-            ?? throw new JsonException("Missing subscriber report inputs.");
+        var inputs = panel is AdminReportPanel.Membership or AdminReportPanel.Revenue
+            ? await ReadFinancialReportInputsAsync(baseUri, apiKey, onOverviewLoaded, cancellationToken)
+            : await InvokeRpcAsync<ReportInputs>(baseUri, apiKey, "get_admin_report_inputs",
+                new { p_panel = panel.ToString().ToLowerInvariant() }, cancellationToken, throwOnFailure: true)
+                ?? throw new JsonException("Missing subscriber report inputs.");
 
         WordPressSubscriberReportsRpcSnapshot? historical = null;
         if (panel == AdminReportPanel.All)
@@ -2665,7 +2668,7 @@ public sealed partial class SupabaseAdminManagementService(
             case AdminActivityPanel.Stories:
             case AdminActivityPanel.Usage:
                 var listening = panel == AdminActivityPanel.Stories
-                    ? await Read<AdminAnalyticsSnapshot>("get_admin_listening_analytics", new { p_stories = true })
+                    ? await Read<AdminAnalyticsSnapshot>("get_admin_story_analytics", new { })
                     : await Read<AdminAnalyticsSnapshot>("get_admin_usage_analytics", new { });
                 if (listening.GeneratedAt is null) throw new JsonException("Missing listening report timestamp.");
                 if (panel == AdminActivityPanel.Stories)
@@ -5260,12 +5263,12 @@ public sealed partial class SupabaseAdminManagementService(
     {
         var matchingCandidates = candidates.ToArray();
         var monthlyRecurringRevenue = matchingCandidates.Sum(candidate =>
-            candidate.BillingAmountZar / Math.Max(1, candidate.BillingPeriodMonths));
+            MonthlyBillingAmount(candidate.BillingAmountZar, candidate.BillingPeriodMonths));
         var actualCandidates = matchingCandidates
             .Where(candidate => !candidate.HasActivePaymentRecovery)
             .ToArray();
         var actualMonthlyRecurringRevenue = actualCandidates.Sum(candidate =>
-            candidate.BillingAmountZar / Math.Max(1, candidate.BillingPeriodMonths));
+            MonthlyBillingAmount(candidate.BillingAmountZar, candidate.BillingPeriodMonths));
 
         return new AdminRecurringRevenueMetric(
             segmentKey,
@@ -5279,6 +5282,8 @@ public sealed partial class SupabaseAdminManagementService(
             decimal.Round(actualMonthlyRecurringRevenue * 12m, 2, MidpointRounding.AwayFromZero),
             matchingCandidates.Length - actualCandidates.Length);
     }
+
+    private static decimal MonthlyBillingAmount(decimal amount, int months) => amount / Math.Max(1, months);
 
     private static RecurringRevenueCandidate BuildRecurringRevenueCandidate(
         SubscriptionRow subscription,

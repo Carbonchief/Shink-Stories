@@ -6,6 +6,8 @@ namespace Shink.Services;
 public enum AdminActivityPanel { All, Awards, Usage, Stories, Resources, Blog }
 public enum AdminReportPanel { All, Membership, Cancellations, Revenue, Recoveries, Engagement }
 
+public sealed record AdminFinancialOverview(int FreeMembers, int PaidMembers, decimal MonthlyRecurringRevenueZar);
+
 public interface IAdminManagementService
 {
     Task<bool> IsAdminAsync(string? email, CancellationToken cancellationToken = default);
@@ -162,7 +164,8 @@ public interface IAdminManagementService
         string? adminEmail, int pageIndex, int pageSize, CancellationToken cancellationToken = default);
 
     Task<AdminStoreAnalyticsSnapshot> GetStoreAnalyticsAsync(
-        string? adminEmail, int days, bool forceRefresh = false, CancellationToken cancellationToken = default);
+        string? adminEmail, int days, bool forceRefresh = false, CancellationToken cancellationToken = default,
+        Func<AdminStoreAnalyticsSnapshot, Task>? onSalesLoaded = null);
 
     Task<StoreOrderRecord?> GetStoreOrderAsync(
         string? adminEmail, Guid orderId, CancellationToken cancellationToken = default);
@@ -212,12 +215,16 @@ public interface IAdminManagementService
         string? adminEmail,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlySet<Guid>> FindDiscountCodesByEmailAsync(string? adminEmail, string search, CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<Guid, string>> GetSubcodeUsersAsync(string? adminEmail, Guid parentId, CancellationToken cancellationToken = default);
+    Task<AdminDiscountUsePage> GetDiscountUsePageAsync(string? adminEmail, Guid codeId, int page, int size, string? sort, bool descending, CancellationToken cancellationToken = default);
+
     Task<AdminOperationResult> SaveSubscriptionSettingsAsync(
         string? adminEmail,
         AdminSubscriptionSettingsUpdateRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<AdminOperationResult> SaveSubscriptionTypeAsync(
+    Task<AdminSubscriptionTypeSaveResult> SaveSubscriptionTypeAsync(
         string? adminEmail,
         AdminSubscriptionTypeSaveRequest request,
         CancellationToken cancellationToken = default);
@@ -236,7 +243,8 @@ public interface IAdminManagementService
         CancellationToken cancellationToken = default,
         bool includeEngagement = true,
         bool forceRefresh = false,
-        AdminReportPanel panel = AdminReportPanel.All);
+        AdminReportPanel panel = AdminReportPanel.All,
+        Func<AdminFinancialOverview, Task>? onOverviewLoaded = null);
 
     Task<IReadOnlyList<AdminResourceTypeRecord>> GetResourceTypesAsync(
         string? adminEmail,
@@ -728,6 +736,8 @@ public sealed record AdminSubscriptionTypeRecord(
     string? PaystackPlanCode,
     bool IsActive);
 
+public sealed record AdminSubscriptionTypeSaveResult(bool IsSuccess, string? ErrorMessage = null, AdminSubscriptionTypeRecord? SavedTier = null);
+
 public sealed record AdminSubscriptionTypeSaveRequest(
     string TierCode,
     string DisplayName,
@@ -759,8 +769,9 @@ public sealed record AdminSubscriptionDiscountCodeRecord(
     string SourceSystem,
     int UsedCount,
     int GroupCodeCount,
-    IReadOnlyList<AdminSubscriptionDiscountCodeTierRecord> TierMappings,
-    IReadOnlyList<AdminSubscriptionDiscountCodeUseRecord> Uses);
+    IReadOnlyList<AdminSubscriptionDiscountCodeTierRecord> TierMappings);
+
+public sealed record AdminDiscountUsePage(IReadOnlyList<AdminSubscriptionDiscountCodeUseRecord> Items, int Total);
 
 public sealed record AdminSubscriptionDiscountCodeTierRecord(
     string TierCode,

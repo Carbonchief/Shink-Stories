@@ -30,21 +30,13 @@ public sealed partial class SupabaseAdminManagementService
         var subscriptionTypesTask = FetchSubscriptionTypeSettingsAsync(baseUri, apiKey, cancellationToken);
         var codeRowsTask = FetchSubscriptionDiscountCodesAsync(baseUri, apiKey, cancellationToken);
         var codeTierRowsTask = FetchSubscriptionDiscountCodeTierRowsAsync(baseUri, apiKey, cancellationToken);
-        var codeUseRowsTask = FetchSubscriptionDiscountCodeUseRowsAsync(baseUri, apiKey, cancellationToken);
+        var countsTask = FetchUseCountsAsync(baseUri, apiKey, string.Empty, cancellationToken);
 
-        await Task.WhenAll(siteSettingsTask, subscriptionTypesTask, codeRowsTask, codeTierRowsTask, codeUseRowsTask);
+        await Task.WhenAll(siteSettingsTask, subscriptionTypesTask, codeRowsTask, codeTierRowsTask, countsTask);
 
         var subscriptionTypes = subscriptionTypesTask.Result
             .Where(row => !string.IsNullOrWhiteSpace(row.TierCode))
-            .Select(row => new AdminSubscriptionTypeRecord(
-                row.TierCode!.Trim(),
-                NormalizeOptionalText(row.DisplayName, 120) ?? row.TierCode!.Trim(),
-                NormalizeOptionalText(row.Description, 500),
-                Math.Max(1, row.BillingPeriodMonths),
-                row.PriceZar,
-                NormalizeOptionalText(row.PayFastPlanSlug, 120) ?? string.Empty,
-                NormalizeOptionalText(row.PaystackPlanCode, 120),
-                row.IsActive))
+            .Select(ToSubscriptionType)
             .OrderBy(row => row.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -78,23 +70,6 @@ public sealed partial class SupabaseAdminManagementService
                     .OrderBy(row => row.TierName, StringComparer.OrdinalIgnoreCase)
                     .ToArray());
 
-        var usesByCode = codeUseRowsTask.Result
-            .Where(row => row.DiscountCodeId != Guid.Empty)
-            .GroupBy(row => row.DiscountCodeId)
-            .ToDictionary(
-                group => group.Key,
-                group => (IReadOnlyList<AdminSubscriptionDiscountCodeUseRecord>)group
-                    .Where(row => !string.IsNullOrWhiteSpace(row.Email))
-                    .Select(row => new AdminSubscriptionDiscountCodeUseRecord(
-                        row.RedemptionId == Guid.Empty ? null : row.RedemptionId,
-                        row.Email!.Trim().ToLowerInvariant(),
-                        NormalizeOptionalText(row.TierCode, 80),
-                        row.RedeemedAt,
-                        row.AccessExpiresAt,
-                        NormalizeOptionalText(row.SourceSystem, 40) ?? "shink_app"))
-                    .OrderByDescending(row => row.RedeemedAt)
-                    .ToArray());
-
         var groupCodeCounts = codeRows
             .Where(row => row.ParentDiscountCodeId.HasValue && row.ParentDiscountCodeId.Value != Guid.Empty)
             .GroupBy(row => row.ParentDiscountCodeId!.Value)
@@ -124,10 +99,9 @@ public sealed partial class SupabaseAdminManagementService
                     row.BypassPayment,
                     row.IsActive,
                     NormalizeOptionalText(row.SourceSystem, 40) ?? "shink_app",
-                    usesByCode.GetValueOrDefault(row.DiscountCodeId)?.Count ?? 0,
+                    countsTask.Result.GetValueOrDefault(row.DiscountCodeId),
                     groupCodeCounts.GetValueOrDefault(row.DiscountCodeId),
-                    tierRowsByCode.GetValueOrDefault(row.DiscountCodeId) ?? [],
-                    usesByCode.GetValueOrDefault(row.DiscountCodeId) ?? []);
+                    tierRowsByCode.GetValueOrDefault(row.DiscountCodeId) ?? []);
             })
             .OrderBy(row => row.IsGroupCode)
             .ThenBy(row => row.ParentCode, StringComparer.OrdinalIgnoreCase)
@@ -196,53 +170,64 @@ public sealed partial class SupabaseAdminManagementService
         return new AdminOperationResult(false, "Kon nie intekening-instellings nou stoor nie.");
     }
 
-    public async Task<AdminOperationResult> SaveSubscriptionTypeAsync(
+    private static AdminSubscriptionTypeRecord ToSubscriptionType(SubscriptionTypeSettingsRow row) =>
+        new AdminSubscriptionTypeRecord(
+            row.TierCode!.Trim(),
+            NormalizeOptionalText(row.DisplayName, 120) ?? row.TierCode!.Trim(),
+            NormalizeOptionalText(row.Description, 500),
+            Math.Max(1, row.BillingPeriodMonths),
+            row.PriceZar,
+            NormalizeOptionalText(row.PayFastPlanSlug, 120) ?? string.Empty,
+            NormalizeOptionalText(row.PaystackPlanCode, 120),
+            row.IsActive);
+
+    public async Task<AdminSubscriptionTypeSaveResult> SaveSubscriptionTypeAsync(
         string? adminEmail,
         AdminSubscriptionTypeSaveRequest request,
         CancellationToken cancellationToken = default)
     {
         if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
         {
-            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+            return new AdminSubscriptionTypeSaveResult(false, "Jy het nie admin toegang nie.");
         }
 
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
-            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+            return new AdminSubscriptionTypeSaveResult(false, "Supabase URL is nog nie opgestel nie.");
         }
 
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
+            return new AdminSubscriptionTypeSaveResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var normalizedTierCode = NormalizeSubscriptionTierCode(request.TierCode);
         if (normalizedTierCode is null)
         {
-            return new AdminOperationResult(false, "Gebruik asseblief 'n geldige tier kode.");
+            return new AdminSubscriptionTypeSaveResult(false, "Gebruik asseblief 'n geldige tier kode.");
         }
 
         var normalizedDisplayName = NormalizeOptionalText(request.DisplayName, 120);
         if (string.IsNullOrWhiteSpace(normalizedDisplayName))
         {
-            return new AdminOperationResult(false, "Intekening naam is verpligtend.");
+            return new AdminSubscriptionTypeSaveResult(false, "Intekening naam is verpligtend.");
         }
 
         var normalizedPayFastPlanSlug = NormalizeRequiredSlugValue(request.PayFastPlanSlug);
         if (normalizedPayFastPlanSlug is null)
         {
-            return new AdminOperationResult(false, "Gebruik asseblief 'n geldige PayFast plan-sleutel.");
+            return new AdminSubscriptionTypeSaveResult(false, "Gebruik asseblief 'n geldige PayFast plan-sleutel.");
         }
 
         if (request.BillingPeriodMonths <= 0)
         {
-            return new AdminOperationResult(false, "Betaalperiode moet groter as nul wees.");
+            return new AdminSubscriptionTypeSaveResult(false, "Betaalperiode moet groter as nul wees.");
         }
 
         if (request.PriceZar < 0)
         {
-            return new AdminOperationResult(false, "Prys kan nie negatief wees nie.");
+            return new AdminSubscriptionTypeSaveResult(false, "Prys kan nie negatief wees nie.");
         }
 
         var payload = new[]
@@ -266,11 +251,12 @@ public sealed partial class SupabaseAdminManagementService
             uri,
             apiKey,
             payload,
-            "resolution=merge-duplicates,return=minimal");
+            "resolution=merge-duplicates,return=representation");
         using var saveResponse = await _httpClient.SendAsync(saveRequest, cancellationToken);
         if (saveResponse.IsSuccessStatusCode)
         {
-            return new AdminOperationResult(true);
+            var rows = await saveResponse.Content.ReadFromJsonAsync<SubscriptionTypeSettingsRow[]>(JsonOptions, cancellationToken);
+            return new(true, SavedTier: rows?.FirstOrDefault() is { TierCode: not null } row ? ToSubscriptionType(row) : null);
         }
 
         var responseBody = await saveResponse.Content.ReadAsStringAsync(cancellationToken);
@@ -279,7 +265,7 @@ public sealed partial class SupabaseAdminManagementService
             normalizedTierCode,
             (int)saveResponse.StatusCode,
             responseBody);
-        return new AdminOperationResult(false, "Kon nie intekeningsoort nou stoor nie.");
+        return new AdminSubscriptionTypeSaveResult(false, "Kon nie intekeningsoort nou stoor nie.");
     }
 
     public async Task<AdminOperationResult> SaveSubscriptionDiscountCodeAsync(
@@ -553,10 +539,8 @@ public sealed partial class SupabaseAdminManagementService
             baseUri,
             "rest/v1/subscription_discount_codes" +
             "?select=discount_code_id,code,display_name,description,is_group_code,parent_discount_code_id,starts_at,expires_at,max_uses,one_use_per_user,bypass_payment,discount_kind,discount_percent,discount_duration,discount_payment_count,is_active,source_system" +
-            "&order=is_group_code.asc" +
-            "&order=code.asc" +
-            "&limit=5000");
-        return await FetchRowsAsync<SubscriptionDiscountCodeRow>(uri, apiKey, cancellationToken);
+            "&order=is_group_code.asc,code.asc,discount_code_id.asc");
+        return await FetchRowsPagedAsync<SubscriptionDiscountCodeRow>(uri, apiKey, int.MaxValue, cancellationToken, throwOnFailure: true);
     }
 
     private async Task<IReadOnlyList<SubscriptionDiscountCodeTierRow>> FetchSubscriptionDiscountCodeTierRowsAsync(
@@ -568,22 +552,55 @@ public sealed partial class SupabaseAdminManagementService
             baseUri,
             "rest/v1/subscription_discount_code_tiers" +
             "?select=discount_code_id,tier_code,initial_payment_zar,billing_amount_zar,cycle_number,cycle_period,billing_limit,trial_amount_zar,trial_limit,expiration_number,expiration_period" +
-            "&limit=10000");
-        return await FetchRowsAsync<SubscriptionDiscountCodeTierRow>(uri, apiKey, cancellationToken);
+            "&order=discount_code_id.asc,tier_code.asc");
+        return await FetchRowsPagedAsync<SubscriptionDiscountCodeTierRow>(uri, apiKey, int.MaxValue, cancellationToken, throwOnFailure: true);
     }
 
-    private async Task<IReadOnlyList<SubscriptionDiscountCodeUseRow>> FetchSubscriptionDiscountCodeUseRowsAsync(
-        Uri baseUri,
-        string apiKey,
-        CancellationToken cancellationToken)
+    private async Task<Dictionary<Guid, int>> FetchUseCountsAsync(Uri baseUri, string key, string term, CancellationToken token) =>
+        await InvokeRpcAsync<Dictionary<Guid, int>>(baseUri, key, "admin_discount_use_counts",
+            new { p_email_search = term }, token, throwOnFailure: true) ?? throw new JsonException("Missing discount usage counts.");
+
+    public async Task<IReadOnlySet<Guid>> FindDiscountCodesByEmailAsync(string? adminEmail, string search, CancellationToken cancellationToken = default)
     {
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/subscription_discount_code_redemptions" +
-            "?select=redemption_id,discount_code_id,email,tier_code,redeemed_at,access_expires_at,source_system" +
-            "&order=redeemed_at.desc" +
-            "&limit=20000");
-        return await FetchRowsAsync<SubscriptionDiscountCodeUseRow>(uri, apiKey, cancellationToken);
+        if (string.IsNullOrWhiteSpace(search) || !await TryResolveAdminContextAsync(adminEmail, cancellationToken) || !TryBuildSupabaseBaseUri(out var baseUri))
+            return new HashSet<Guid>();
+
+        var counts = await FetchUseCountsAsync(baseUri, ResolveApiKey(), search, cancellationToken);
+        return counts.Keys.ToHashSet();
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, string>> GetSubcodeUsersAsync(string? adminEmail, Guid parentId, CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken) || !TryBuildSupabaseBaseUri(out var baseUri))
+            return new Dictionary<Guid, string>();
+
+        return await InvokeRpcAsync<Dictionary<Guid, string>>(baseUri, ResolveApiKey(), "admin_discount_subcode_users",
+            new { p_parent_id = parentId }, cancellationToken, throwOnFailure: true) ?? throw new JsonException("Missing subcode users.");
+    }
+
+    public async Task<AdminDiscountUsePage> GetDiscountUsePageAsync(
+        string? adminEmail, Guid codeId, int page, int size, string? sort, bool descending, CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken) || !TryBuildSupabaseBaseUri(out var baseUri))
+            return new([], 0);
+
+        var column = sort switch { "email" or "tier_code" or "access_expires_at" => sort, _ => "redeemed_at" };
+        var order = descending ? "desc.nullslast" : "asc.nullsfirst";
+        size = Math.Clamp(size, 1, 100);
+        var uri = new Uri(baseUri, "rest/v1/subscription_discount_code_redemptions" +
+            "?select=redemption_id,email,tier_code,redeemed_at,access_expires_at,source_system" +
+            $"&discount_code_id=eq.{codeId}&order={column}.{order},redemption_id.asc&limit={size}&offset={(long)Math.Max(page, 0) * size}");
+        using var request = CreateRequest(HttpMethod.Get, uri, ResolveApiKey());
+        request.Headers.TryAddWithoutValidation("Prefer", "count=exact");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.RequestedRangeNotSatisfiable && response.TryParseContentRangeCount(out var remaining))
+            return new([], remaining);
+        response.EnsureSuccessStatusCode();
+        if (!response.TryParseContentRangeCount(out var total)) throw new JsonException("Missing discount history count.");
+        var rows = await response.Content.ReadFromJsonAsync<List<SubscriptionDiscountCodeUseRow>>(JsonOptions, cancellationToken)
+            ?? throw new JsonException("Missing discount history.");
+        return new(rows.Select(row => new AdminSubscriptionDiscountCodeUseRecord(row.RedemptionId,
+            row.Email!.Trim().ToLowerInvariant(), row.TierCode, row.RedeemedAt, row.AccessExpiresAt, row.SourceSystem ?? "shink_app")).ToArray(), total);
     }
 
     private static bool ReadBooleanSiteSetting(

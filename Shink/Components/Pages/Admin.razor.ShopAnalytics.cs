@@ -45,12 +45,20 @@ public partial class Admin
         using var load = new CancellationTokenSource();
         _shopAnalyticsLoadCancellation = load;
         _loadingShopAnalyticsDays = days;
-        _shopAnalytics = null;
+        var period = StoreAnalyticsPeriod.EndingToday(days);
+        if (_shopAnalytics?.From != period.From || _shopAnalytics.Through != period.Through)
+            _shopAnalytics = null;
         _shopAnalyticsLoadFailed = false;
 
         try
         {
-            var report = await AdminManagementService.GetStoreAnalyticsAsync(CurrentAdminEmail, days, forceRefresh, load.Token);
+            var report = await AdminManagementService.GetStoreAnalyticsAsync(CurrentAdminEmail, days, forceRefresh, load.Token,
+                partial => InvokeAsync(() =>
+                {
+                    if (load.IsCancellationRequested || _shopAnalytics?.Engagement is not null) return;
+                    _shopAnalytics = partial;
+                    StateHasChanged();
+                }));
             if (!load.IsCancellationRequested) _shopAnalytics = report;
         }
         catch (OperationCanceledException) when (load.IsCancellationRequested)

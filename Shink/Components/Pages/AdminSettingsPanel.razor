@@ -208,6 +208,7 @@ else
         <div class="admin-settings-card">
             <MudTextField T="string"
                           @bind-Value="DiscountCodeSearch"
+                          @bind-Value:after="SearchDiscountEmailsAsync" DebounceInterval="250"
                           Placeholder='@T("Soek hoofkode, subkode of e-pos", "Search parent code, subcode, or email")'
                           Variant="Variant.Outlined"
                           Margin="Margin.Dense"
@@ -260,7 +261,7 @@ else
                         </button>
                     </MudTd>
                     <MudTd DataLabel="@T("Intekeningsoorte", "Subscription types")">
-                        @string.Join(", ", context.TierMappings.Select(mapping => mapping.TierName))
+                        @string.Join(", ", context.TierMappings.Select(mapping => tierNames.GetValueOrDefault(mapping.TierCode, mapping.TierName)))
                     </MudTd>
                     <MudTd DataLabel="@T("Gebruik", "Use")">
                         @($"{context.UsedCount}{(context.MaxUses > 0 ? $" / {context.MaxUses}" : string.Empty)}")
@@ -278,8 +279,6 @@ else
             </MudTable>
         </div>
 
-        @if (DiscountCodeEditor is not null && IsCodeDialogOpen)
-        {
             <MudDialog Visible="IsCodeDialogOpen"
                        VisibleChanged="OnCodeDialogVisibleChanged"
                        Class="admin-settings-dialog"
@@ -287,6 +286,8 @@ else
                        Gutters="false"
                        Options="CodeDialogOptions">
                 <DialogContent>
+                    @if (DiscountCodeEditor is not null)
+                    {
                     <div class="admin-settings-card admin-code-editor-card admin-settings-dialog-surface">
                         <div class="admin-code-editor-head">
                             <div>
@@ -535,7 +536,7 @@ else
                                         <RowTemplate>
                                             <MudTd DataLabel="@T("Kode", "Code")">@context.Code</MudTd>
                                             <MudTd DataLabel="@T("Intekeningsoorte", "Subscription types")">
-                                                @string.Join(", ", context.TierMappings.Select(mapping => mapping.TierName))
+                                                @string.Join(", ", context.TierMappings.Select(mapping => tierNames.GetValueOrDefault(mapping.TierCode, mapping.TierName)))
                                             </MudTd>
                                             <MudTd DataLabel="@T("Gebruikers", "Users")" Class="admin-subcode-users">
                                                 @FormatSubcodeUsers(context)
@@ -566,61 +567,69 @@ else
                             </details>
                         }
 
-                        @if (DiscountCodeEditor.Uses.Count > 0)
+                        @if (DiscountCodeEditor.UsedCount > 0 && DiscountCodeEditor.DiscountCodeId is Guid codeId)
                         {
-                            <details class="admin-code-section-disclosure">
-                                <summary class="admin-code-section-summary">
+                            <details @key="codeId" class="admin-code-section-disclosure">
+                                <summary @onclick="() => HistoryCodeId = codeId" class="admin-code-section-summary">
                                     <span class="admin-code-section-title">
                                         <i class="fa-solid fa-chevron-right admin-code-section-caret" aria-hidden="true"></i>
                                         <span>@T("Vorige gebruike", "Previous uses")</span>
                                     </span>
-                                    <span class="admin-code-section-meta">@DiscountCodeEditor.Uses.Count</span>
+                                    <span class="admin-code-section-meta">@DiscountCodeEditor.UsedCount</span>
                                 </summary>
                                 <div class="admin-code-section-body admin-code-uses-section">
-                                    <MudTable T="AdminSubscriptionDiscountCodeUseRecord"
-                                              Items="DiscountCodeEditor.Uses"
-                                              Class="admin-settings-table">
-                                        <HeaderContent>
-                                            <MudTh>
-                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortBy="new Func<AdminSubscriptionDiscountCodeUseRecord, object?>(use => use.Email)">
-                                                    @T("E-pos", "Email")
-                                                </MudTableSortLabel>
-                                            </MudTh>
-                                            <MudTh>
-                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortBy="new Func<AdminSubscriptionDiscountCodeUseRecord, object?>(GetDiscountCodeUseTierCodeSortBy)">
-                                                    @T("Plan", "Plan")
-                                                </MudTableSortLabel>
-                                            </MudTh>
-                                            <MudTh>
-                        <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortBy="new Func<AdminSubscriptionDiscountCodeUseRecord, object?>(use => use.RedeemedAt)">
-                                                    @T("Gebruik op", "Used on")
-                                                </MudTableSortLabel>
-                                            </MudTh>
-                                            <MudTh>
-                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortBy="new Func<AdminSubscriptionDiscountCodeUseRecord, object?>(use => use.AccessEndsAt)">
-                                                    @T("Toegang eindig", "Access ends")
-                                                </MudTableSortLabel>
-                                            </MudTh>
-                                        </HeaderContent>
-                                        <RowTemplate>
-                                            <MudTd DataLabel="@T("E-pos", "Email")">
-                                                @context.Email
-                                            </MudTd>
-                                            <MudTd DataLabel="@T("Plan", "Plan")">
-                                                @(string.IsNullOrWhiteSpace(context.TierCode) ? "-" : context.TierCode)
-                                            </MudTd>
-                                            <MudTd DataLabel="@T("Gebruik op", "Used on")">
-                                                @FormatDate(context.RedeemedAt)
-                                            </MudTd>
-                                            <MudTd DataLabel="@T("Toegang eindig", "Access ends")">
-                                                @FormatDate(context.AccessEndsAt)
-                                            </MudTd>
-                                        </RowTemplate>
-                                    </MudTable>
+                                    @if (HistoryCodeId == codeId)
+                                    {
+                                        <MudTable T="AdminSubscriptionDiscountCodeUseRecord"
+                                                  ServerData="LoadCodeHistoryAsync"
+                                                  Class="admin-settings-table">
+                                            <HeaderContent>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortLabel="email">
+                                                        @T("E-pos", "Email")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortLabel="tier_code">
+                                                        @T("Plan", "Plan")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortLabel="redeemed_at" InitialDirection="SortDirection.Descending">
+                                                        @T("Gebruik op", "Used on")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortLabel="access_expires_at">
+                                                        @T("Toegang eindig", "Access ends")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                            </HeaderContent>
+                                            <RowTemplate>
+                                                <MudTd DataLabel="@T("E-pos", "Email")">
+                                                    @context.Email
+                                                </MudTd>
+                                                <MudTd DataLabel="@T("Plan", "Plan")">
+                                                    @(string.IsNullOrWhiteSpace(context.TierCode) ? "-" : context.TierCode)
+                                                </MudTd>
+                                                <MudTd DataLabel="@T("Gebruik op", "Used on")">
+                                                    @FormatDate(context.RedeemedAt)
+                                                </MudTd>
+                                                <MudTd DataLabel="@T("Toegang eindig", "Access ends")">
+                                                    @FormatDate(context.AccessEndsAt)
+                                                </MudTd>
+                                            </RowTemplate>
+                                            <PagerContent>
+                                                <MudTablePager RowsPerPageString='@T("Rye per bladsy", "Rows per page")'
+                                                    InfoFormat='@T("{first_item}–{last_item} van {all_items}", "{first_item}–{last_item} of {all_items}")' />
+                                            </PagerContent>
+                                        </MudTable>
+                                    }
                                 </div>
                             </details>
                         }
                     </div>
+                    }
                 </DialogContent>
                 <DialogActions>
                     <div class="admin-settings-dialog-actions-row">
@@ -647,7 +656,6 @@ else
                     </div>
                 </DialogActions>
             </MudDialog>
-        }
     </section>
 }
 
@@ -662,6 +670,7 @@ else
     private bool IsImportingWordPressCodes { get; set; }
     private string? ErrorMessage { get; set; }
     private string? StatusMessage { get; set; }
+    private Dictionary<string, string> tierNames = new(StringComparer.OrdinalIgnoreCase);
     private bool SignupCodeBypassEnabled { get; set; }
     private List<EditableSubscriptionType> SubscriptionTypeEditors { get; set; } = [];
     private List<AdminSubscriptionDiscountCodeRecord> DiscountCodes { get; set; } = [];
@@ -669,6 +678,7 @@ else
     private Guid? SelectedParentCodeId { get; set; }
     private EditableDiscountCode? DiscountCodeEditor { get; set; }
     private string DiscountCodeSearch { get; set; } = string.Empty;
+    private string? loadingAdminEmail;
     private string? LoadedAdminEmail { get; set; }
     private static readonly DialogOptions CodeDialogOptions = new()
     {
@@ -685,12 +695,62 @@ else
             .OrderBy(code => code.Code, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> FilteredParentDiscountCodes =>
-        string.IsNullOrWhiteSpace(DiscountCodeSearch)
-            ? ParentDiscountCodes
-            : ParentDiscountCodes
-                .Where(MatchesParentCodeSearch)
-                .ToArray();
+    private IReadOnlySet<Guid> emailMatches = new HashSet<Guid>();
+    private IReadOnlyDictionary<Guid, string>? subcodeUsers;
+    private Guid? HistoryCodeId;
+    private int emailSearchVersion;
+    private int subcodeUsersVersion;
+
+    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> FilteredParentDiscountCodes
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(DiscountCodeSearch)) return ParentDiscountCodes;
+            var matchingParents = DiscountCodes
+                .Where(code => ContainsIgnoreCase(code.Code, DiscountCodeSearch) || ContainsIgnoreCase(code.DisplayName, DiscountCodeSearch)
+                    || emailMatches.Contains(code.DiscountCodeId))
+                .Select(code => code.ParentDiscountCodeId ?? code.DiscountCodeId)
+                .ToHashSet();
+            return ParentDiscountCodes.Where(code => matchingParents.Contains(code.DiscountCodeId)).ToArray();
+        }
+    }
+
+    private async Task SearchDiscountEmailsAsync()
+    {
+        var version = ++emailSearchVersion;
+        emailMatches = new HashSet<Guid>();
+        if (string.IsNullOrWhiteSpace(DiscountCodeSearch)) return;
+        try
+        {
+            var matches = await AdminManagementService.FindDiscountCodesByEmailAsync(LoadedAdminEmail, DiscountCodeSearch);
+            if (version == emailSearchVersion) emailMatches = matches;
+        }
+        catch (Exception ex)
+        {
+            if (version != emailSearchVersion) return;
+            Logger.LogWarning(ex, "Discount code email search failed.");
+            SetError(T("Kon nie gebruike volgens e-pos deursoek nie.", "Could not search redemptions by email."));
+        }
+    }
+
+    private async Task<TableData<AdminSubscriptionDiscountCodeUseRecord>> LoadCodeHistoryAsync(TableState state, CancellationToken token)
+    {
+        if (HistoryCodeId is not Guid id) return new() { Items = [] };
+        try
+        {
+            var page = await AdminManagementService.GetDiscountUsePageAsync(LoadedAdminEmail, id, state.Page, state.PageSize,
+                state.SortDirection == SortDirection.None ? null : state.SortLabel, state.SortDirection != SortDirection.Ascending, token);
+            return new() { Items = page.Items, TotalItems = page.Total };
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Discount code history failed for {CodeId}.", id);
+            if (!token.IsCancellationRequested && HistoryCodeId == id)
+                Snackbar.Add(T("Kon nie kodegeskiedenis laai nie. Maak die kode weer oop om weer te probeer.", "Could not load code history. Reopen the code to retry."), Severity.Error);
+            return new() { Items = [] };
+        }
+    }
 
     private AdminSubscriptionDiscountCodeRecord? SelectedParentCode =>
         SelectedParentCodeId is Guid selectedId
@@ -708,27 +768,6 @@ else
     private string GetParentDiscountCodeRowClass(AdminSubscriptionDiscountCodeRecord code, int _)
         => code.DiscountCodeId == SelectedParentCodeId ? "is-selected" : string.Empty;
 
-    private bool MatchesParentCodeSearch(AdminSubscriptionDiscountCodeRecord code)
-    {
-        if (ContainsIgnoreCase(code.Code, DiscountCodeSearch) ||
-            ContainsIgnoreCase(code.DisplayName, DiscountCodeSearch) ||
-            code.Uses.Any(use => ContainsIgnoreCase(use.Email, DiscountCodeSearch)))
-        {
-            return true;
-        }
-
-        return GetSubcodesForParent(code.DiscountCodeId).Any(subcode =>
-            ContainsIgnoreCase(subcode.Code, DiscountCodeSearch) ||
-            ContainsIgnoreCase(subcode.DisplayName, DiscountCodeSearch) ||
-            subcode.Uses.Any(use => ContainsIgnoreCase(use.Email, DiscountCodeSearch)));
-    }
-
-    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> GetSubcodesForParent(Guid parentCodeId) =>
-        DiscountCodes
-            .Where(code => code.IsGroupCode && code.ParentDiscountCodeId == parentCodeId)
-            .OrderBy(code => code.Code, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
     private string GetSubcodeRowClass(AdminSubscriptionDiscountCodeRecord subcode, int _)
         => subcode.DiscountCodeId == DiscountCodeEditor?.DiscountCodeId ? "is-selected" : string.Empty;
 
@@ -737,21 +776,9 @@ else
             ? count == 1 ? "1 subcode" : $"{count} subcodes"
             : count == 1 ? "1 subkode" : $"{count} subkodes";
 
-        private string FormatSubcodeUsers(AdminSubscriptionDiscountCodeRecord subcode)
-        {
-            var emails = subcode.Uses
-                .Select(use => use.Email?.Trim().ToLowerInvariant())
-                .Where(email => !string.IsNullOrWhiteSpace(email))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        if (emails.Length == 0)
-        {
-            return T("Nog geen gebruikers nie", "No users yet");
-        }
-
-        return string.Join(", ", emails);
-    }
+    private string FormatSubcodeUsers(AdminSubscriptionDiscountCodeRecord subcode) =>
+        subcode.UsedCount == 0 ? T("Nog geen gebruikers nie", "No users yet")
+            : subcodeUsers?.GetValueOrDefault(subcode.DiscountCodeId) ?? "…";
 
         private string BuildSignupCodeBypassStateLabel() =>
             SignupCodeBypassEnabled
@@ -773,8 +800,6 @@ else
                 ? T("Aan - klik om af te skakel", "On - click to turn off")
                 : T("Af - klik om aan te skakel", "Off - click to turn on");
 
-        private static string GetDiscountCodeUseTierCodeSortBy(AdminSubscriptionDiscountCodeUseRecord use) =>
-            string.IsNullOrWhiteSpace(use.TierCode) ? "-" : use.TierCode;
 
     private string BuildTierActiveStateLabel(bool isActive) =>
         isActive
@@ -836,7 +861,8 @@ else
             return;
         }
 
-        if (string.Equals(LoadedAdminEmail, effectiveAdminEmail, StringComparison.OrdinalIgnoreCase) && !IsLoading)
+        if (string.Equals(LoadedAdminEmail, effectiveAdminEmail, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(loadingAdminEmail, effectiveAdminEmail, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -856,16 +882,21 @@ else
         return AdminEmail;
     }
 
-    private async Task LoadAsync(string effectiveAdminEmail)
+    private async Task LoadAsync(string effectiveAdminEmail, bool preserveTierDrafts = false)
     {
-        IsLoading = true;
+        loadingAdminEmail = effectiveAdminEmail;
+        IsLoading = !IsCodeDialogOpen;
         ClearMessages();
 
         try
         {
             var snapshot = await AdminManagementService.GetSubscriptionSettingsAsync(effectiveAdminEmail);
-            SignupCodeBypassEnabled = snapshot.SignupCodeBypassEnabled;
-            SubscriptionTypeEditors = snapshot.SubscriptionTypes.Select(EditableSubscriptionType.From).ToList();
+            if (!preserveTierDrafts)
+            {
+                SignupCodeBypassEnabled = snapshot.SignupCodeBypassEnabled;
+                SubscriptionTypeEditors = snapshot.SubscriptionTypes.Select(EditableSubscriptionType.From).ToList();
+            }
+            tierNames = snapshot.SubscriptionTypes.ToDictionary(tier => tier.TierCode, tier => tier.DisplayName, StringComparer.OrdinalIgnoreCase);
             DiscountCodes = snapshot.DiscountCodes.ToList();
             if (DiscountCodeEditor?.DiscountCodeId is Guid selectedId)
             {
@@ -877,6 +908,8 @@ else
             }
 
             LoadedAdminEmail = effectiveAdminEmail;
+            await SearchDiscountEmailsAsync();
+            if (IsCodeDialogOpen && SelectedParentCodeId is Guid parentId) await LoadSubcodeUsersAsync(parentId);
         }
         catch (Exception exception)
         {
@@ -885,6 +918,7 @@ else
         }
         finally
         {
+            loadingAdminEmail = null;
             IsLoading = false;
         }
     }
@@ -952,6 +986,7 @@ else
         ClearMessages();
         try
         {
+            var submitted = tier with { };
             var result = await AdminManagementService.SaveSubscriptionTypeAsync(
                 effectiveAdminEmail,
                 new AdminSubscriptionTypeSaveRequest(
@@ -965,9 +1000,15 @@ else
                     tier.IsActive));
             if (result.IsSuccess)
             {
+                if (result.SavedTier is { } saved)
+                {
+                    tierNames[saved.TierCode] = saved.DisplayName;
+                    if (tier == submitted)
+                        SubscriptionTypeEditors = SubscriptionTypeEditors.Select(row =>
+                            ReferenceEquals(row, tier) ? EditableSubscriptionType.From(saved) : row).ToList();
+                }
                 SetStatus(T("Intekeningsoort is gestoor.", "Subscription type was saved."));
                 Snackbar.Add(StatusMessage!, Severity.Success);
-                await LoadAsync(effectiveAdminEmail);
             }
             else
             {
@@ -988,12 +1029,32 @@ else
         IsCodeDialogOpen = true;
     }
 
-    private void OpenCodeDialog(AdminSubscriptionDiscountCodeRecord code)
+    private async Task OpenCodeDialog(AdminSubscriptionDiscountCodeRecord code)
     {
         ClearMessages();
         SelectedParentCodeId = code.DiscountCodeId;
         DiscountCodeEditor = EditableDiscountCode.From(code);
         IsCodeDialogOpen = true;
+        HistoryCodeId = null;
+        await LoadSubcodeUsersAsync(code.DiscountCodeId);
+    }
+
+    private async Task LoadSubcodeUsersAsync(Guid parentId)
+    {
+        var version = ++subcodeUsersVersion;
+        subcodeUsers = null;
+        if (!SelectedParentCodeSubcodes.Any(subcode => subcode.UsedCount > 0)) return;
+        try
+        {
+            var users = await AdminManagementService.GetSubcodeUsersAsync(LoadedAdminEmail, parentId);
+            if (version == subcodeUsersVersion && SelectedParentCodeId == parentId) subcodeUsers = users;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not load subcode users.");
+            if (version == subcodeUsersVersion && SelectedParentCodeId == parentId)
+                Snackbar.Add(T("Kon nie subkodegebruikers laai nie.", "Could not load subcode users."), Severity.Error);
+        }
     }
 
     private Task OnCodeDialogVisibleChanged(bool visible)
@@ -1010,6 +1071,7 @@ else
 
     private void CloseCodeDialog()
     {
+        HistoryCodeId = null;
         IsCodeDialogOpen = false;
         SelectedParentCodeId = null;
         DiscountCodeEditor = null;
@@ -1030,6 +1092,7 @@ else
     {
         ClearMessages();
         SelectedParentCodeId = subcode.ParentDiscountCodeId;
+        HistoryCodeId = null;
         DiscountCodeEditor = EditableDiscountCode.From(subcode);
     }
 
@@ -1158,7 +1221,7 @@ else
             {
                 SetStatus(T("Kode is gestoor.", "Code was saved."));
                 Snackbar.Add(StatusMessage!, Severity.Success);
-                await LoadAsync(effectiveAdminEmail);
+                await LoadAsync(effectiveAdminEmail, preserveTierDrafts: true);
                 if (result.EntityId is Guid entityId && entityId != Guid.Empty)
                 {
                     var selected = DiscountCodes.FirstOrDefault(code => code.DiscountCodeId == entityId);
@@ -1206,7 +1269,7 @@ else
             {
                 SetStatus(T("WordPress kodes is ingevoer en verfris.", "WordPress codes were imported and refreshed."));
                 Snackbar.Add(StatusMessage!, Severity.Success);
-                await LoadAsync(effectiveAdminEmail);
+                await LoadAsync(effectiveAdminEmail, preserveTierDrafts: true);
             }
             else
             {
@@ -1255,7 +1318,7 @@ else
         !string.IsNullOrWhiteSpace(source) &&
         source.Contains(search, StringComparison.OrdinalIgnoreCase);
 
-    private sealed class EditableSubscriptionType
+    private sealed record EditableSubscriptionType
     {
         public string TierCode { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
@@ -1298,7 +1361,7 @@ else
         public bool BypassPayment { get; set; }
         public bool IsActive { get; set; } = true;
         public List<EditableDiscountCodeTier> TierMappings { get; set; } = [];
-        public IReadOnlyList<AdminSubscriptionDiscountCodeUseRecord> Uses { get; set; } = [];
+        public int UsedCount { get; set; }
         public bool IsPercentageCode => string.Equals(DiscountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal);
         public bool IsFreeAccessCode => !IsPercentageCode;
         public bool UsesFirstPaymentWindow => string.Equals(DiscountDuration, SubscriptionDiscountDurations.FirstPayments, StringComparison.Ordinal);
@@ -1339,7 +1402,7 @@ else
             BypassPayment = row.BypassPayment,
             IsActive = row.IsActive,
             TierMappings = row.TierMappings.Select(mapping => EditableDiscountCodeTier.From(mapping)).ToList(),
-            Uses = row.Uses
+            UsedCount = row.UsedCount
         };
     }
 

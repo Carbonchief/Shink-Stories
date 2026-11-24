@@ -123,11 +123,15 @@ public partial class AdminResourceTypesPanel : ComponentBase
         }
     }
 
+    private int documentLoadVersion;
+
     private async Task ReloadDocumentsAsync(Guid resourceTypeId)
     {
+        var version = ++documentLoadVersion;
+        ResourceDocuments = [];
         if (resourceTypeId == Guid.Empty)
         {
-            ResourceDocuments = Array.Empty<AdminResourceDocumentRecord>();
+            IsLoadingDocuments = false;
             return;
         }
 
@@ -135,26 +139,30 @@ public partial class AdminResourceTypesPanel : ComponentBase
 
         try
         {
-            ResourceDocuments = await AdminManagementService.GetResourceDocumentsAsync(SignedInEmail, resourceTypeId);
-            if (Editor?.ResourceTypeId == resourceTypeId)
+            var documents = await AdminManagementService.GetResourceDocumentsAsync(SignedInEmail, resourceTypeId);
+            if (version == documentLoadVersion && Editor?.ResourceTypeId == resourceTypeId)
             {
-                Editor.DocumentCount = ResourceDocuments.Count;
+                ResourceDocuments = documents;
+                Editor.DocumentCount = documents.Count;
             }
         }
         catch (Exception exception)
         {
+            if (version != documentLoadVersion || Editor?.ResourceTypeId != resourceTypeId) return;
             Logger.LogError(exception, "Failed to load resource documents for {ResourceTypeId}.", resourceTypeId);
             ResourceDocuments = Array.Empty<AdminResourceDocumentRecord>();
             ErrorMessage = T("Kon nie hulpbron dokumente nou laai nie.", "Could not load resource documents right now.");
         }
         finally
         {
-            IsLoadingDocuments = false;
+            if (version == documentLoadVersion) IsLoadingDocuments = false;
         }
     }
 
     private void BeginCreateResourceType()
     {
+        documentLoadVersion++;
+        IsLoadingDocuments = false;
         ErrorMessage = null;
         StatusMessage = null;
         SelectedFiles = Array.Empty<IBrowserFile>();

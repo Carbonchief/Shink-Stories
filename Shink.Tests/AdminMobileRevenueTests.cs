@@ -42,22 +42,33 @@ public sealed class AdminMobileRevenueTests
         Set(admin, "RevenueCustomFromDate", start);
         Set(admin, "RevenueCustomToDate", start.AddDays(2));
 
-        var apple = (AdminSalesRevenueMetric)Invoke(admin, "GetSelectedRevenueProviderSalesMetric", "apple")!;
+        var view = Invoke(admin, "GetRevenueDetails")!;
+        Assert.AreSame(view, Invoke(admin, "GetRevenueDetails"));
+        var apple = Provider(view, "apple");
         Assert.AreEqual(2, apple.SalesCount);
         Assert.AreEqual(198m, apple.RevenueZar);
-        var android = (AdminSalesRevenueMetric)Invoke(admin, "GetSelectedRevenueProviderSalesMetric", "google_play")!;
+        var android = Provider(view, "google_play");
         Assert.AreEqual(1, android.SalesCount);
         Assert.AreEqual(87.50m, android.RevenueZar);
 
-        var total = (AdminSalesRevenueMetric)Invoke(admin, "GetCustomRevenueSalesMetric")!;
+        var total = (AdminSalesRevenueMetric)view.GetType().GetProperty("CustomTotal")!.GetValue(view)!;
         Assert.AreEqual(5, total.SalesCount);
         Assert.AreEqual(1224.50m, total.RevenueZar);
 
         Set(admin, "RevenueCustomFromDate", start.AddDays(10));
         Set(admin, "RevenueCustomToDate", start.AddDays(11));
-        var empty = (AdminSalesRevenueMetric)Invoke(admin, "GetSelectedRevenueProviderSalesMetric", "apple")!;
+        var changedRange = Invoke(admin, "GetRevenueDetails")!;
+        Assert.AreNotSame(view, changedRange);
+        var empty = Provider(changedRange, "apple");
         Assert.AreEqual(0, empty.SalesCount);
         Assert.AreEqual(0m, empty.RevenueZar);
+
+        state.GetType().GetProperty("Value")!.SetValue(state, AdminSubscriberReportsSnapshot.Empty with
+        {
+            SalesDetails = [Sale("apple", start.AddDays(11), 42m)]
+        });
+        var refreshed = Invoke(admin, "GetRevenueDetails")!;
+        Assert.AreEqual(42m, Provider(refreshed, "apple").RevenueZar);
     }
 
     [TestMethod]
@@ -74,6 +85,9 @@ public sealed class AdminMobileRevenueTests
     private static AdminSalesRevenueDetailRecord Sale(string provider, DateTime soldAt, decimal amount) =>
         new(new DateTimeOffset(soldAt), amount, "parent@example.com", "all_stories_monthly", "Monthly", provider,
             "shink_app", "receipt", "active", "subscriptions.billing_amount_zar");
+
+    private static AdminSalesRevenueMetric Provider(object view, string provider) =>
+        (AdminSalesRevenueMetric)view.GetType().GetMethod("ForProvider")!.Invoke(view, [provider])!;
 
     private static object? Invoke(Admin admin, string method, params object[] arguments) =>
         typeof(Admin).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(admin, arguments);

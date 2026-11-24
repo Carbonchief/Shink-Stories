@@ -229,7 +229,7 @@
                         <div class="store-admin-upload-controls">
                             <label class="store-admin-upload-label">
                                 <span>@T("Laai nuwe image op", "Upload new image")</span>
-                                <InputFile OnChange="OnImageSelectedAsync"
+                                <InputFile id="@ImageInputId" OnChange="OnImageSelectedAsync"
                                            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
                             </label>
                             <p class="store-admin-upload-hint">
@@ -262,6 +262,7 @@
 </section>
 
 @code {
+    private const string ImageInputId = "adminstorepanel-image";
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
 
     [Parameter]
@@ -447,9 +448,14 @@
             return;
         }
 
-        Editor.ImageFile = file;
-        Editor.ImageFileName = file.Name;
-        Editor.ImagePreviewPath = await ReadImageFileAsDataUrlAsync(file);
+        var editor = Editor;
+        editor.ImageFile = file;
+        editor.ImageFileName = file.Name;
+        var preview = await AdminImagePreview.CreateAsync(JSRuntime, ImageInputId, Logger);
+        if (ReferenceEquals(editor.ImageFile, file))
+        {
+            editor.ImagePreviewPath = preview;
+        }
         ErrorMessage = null;
         StatusMessage = null;
     }
@@ -651,29 +657,6 @@
             editor.CollectionSlug,
             HasNewImage = editor.ImageFile is not null
         });
-
-    private async Task<string?> ReadImageFileAsDataUrlAsync(IBrowserFile file)
-    {
-        try
-        {
-            var normalizedContentType = NormalizeImageContentType(file);
-            if (!IsSupportedImageContentType(normalizedContentType))
-            {
-                return null;
-            }
-
-            await using var stream = file.OpenReadStream(MaxImageUploadBytes);
-            using var buffer = new MemoryStream();
-            await stream.CopyToAsync(buffer);
-            var base64 = Convert.ToBase64String(buffer.ToArray());
-            return $"data:{normalizedContentType};base64,{base64}";
-        }
-        catch (Exception exception) when (exception is IOException or InvalidOperationException)
-        {
-            Logger.LogDebug(exception, "Store product preview generation skipped.");
-            return null;
-        }
-    }
 
     private async Task<StoreProductImageUpload> SaveUploadedImageAsync(IBrowserFile file, string? productSlug)
     {

@@ -1,12 +1,14 @@
-const editorStates = new WeakMap();
-let quillLoaderPromise;
+import { bufferEditorChanges, ensureQuillLoaded } from "/js/admin-rich-text.js";
 
-export async function syncRichTextEditor(shellElement, dotNetReference, html) {
+const editorStates = new WeakMap();
+
+export async function syncRichTextEditor(shellElement, dotNetReference, html, session) {
     if (!shellElement) {
         return;
     }
 
     await ensureQuillLoaded();
+    if (!shellElement.isConnected) return;
     registerBlogMediaBlots();
 
     const editorElement = shellElement.querySelector(".blog-admin-markdown-editor");
@@ -50,7 +52,6 @@ export async function syncRichTextEditor(shellElement, dotNetReference, html) {
         }
 
         state = {
-            dotNetReference,
             isApplying: false,
             lastSelectionIndex: 0,
             onSelectionChange: null,
@@ -63,8 +64,7 @@ export async function syncRichTextEditor(shellElement, dotNetReference, html) {
                 return;
             }
 
-            const currentHtml = getEditorHtml(state.quill);
-            state.dotNetReference?.invokeMethodAsync("OnRichTextEditorInput", currentHtml);
+            state.changes.changed();
         };
 
         state.onSelectionChange = (range) => {
@@ -76,11 +76,22 @@ export async function syncRichTextEditor(shellElement, dotNetReference, html) {
         quill.on("text-change", state.onTextChange);
         quill.on("selection-change", state.onSelectionChange);
         editorStates.set(shellElement, state);
-    } else {
-        state.dotNetReference = dotNetReference;
     }
 
+    state.changes?.cancel();
+    state.changes = bufferEditorChanges(
+        () => getEditorHtml(state.quill),
+        (html, stream) => shellElement.isConnected && dotNetReference.invokeMethodAsync("OnRichTextEditorInput", session, html, stream));
     setEditorHtml(state, html ?? "");
+}
+
+export async function flushRichTextEditor(shellElement) {
+    const state = editorStates.get(shellElement);
+    if (state) {
+        // Include browser edits that Quill's mutation observer has not processed yet.
+        state.quill.update("user");
+        await state.changes.flush();
+    }
 }
 
 export function disposeRichTextEditor(shellElement) {
@@ -101,6 +112,7 @@ export function disposeRichTextEditor(shellElement) {
         state.quill.off("selection-change", state.onSelectionChange);
     }
 
+    state.changes?.cancel();
     editorStates.delete(shellElement);
 }
 
@@ -122,7 +134,7 @@ export async function insertBlogImage(shellElement, url, alt) {
     state.quill.insertText(insertionIndex + 1, "\n", "user");
     state.quill.setSelection(insertionIndex + 2, 0, "silent");
     state.lastSelectionIndex = insertionIndex + 2;
-    await notifyContentChanged(state);
+    await state.changes.flush();
 }
 
 export async function insertBlogVideo(shellElement, provider, url, title) {
@@ -152,7 +164,7 @@ export async function insertBlogVideo(shellElement, provider, url, title) {
     state.quill.insertText(insertionIndex + 1, "\n", "user");
     state.quill.setSelection(insertionIndex + 2, 0, "silent");
     state.lastSelectionIndex = insertionIndex + 2;
-    await notifyContentChanged(state);
+    await state.changes.flush();
 }
 
 export async function uploadSelectedFileToR2(inputId, uploadUrl, contentType) {
@@ -190,28 +202,6 @@ export function clearFileInput(inputId) {
     if (input instanceof HTMLInputElement) {
         input.value = "";
     }
-}
-
-async function ensureQuillLoaded() {
-    if (window.Quill) {
-        await ensureQuillStylesheet();
-        return window.Quill;
-    }
-
-    if (!quillLoaderPromise) {
-        quillLoaderPromise = Promise.all([
-            ensureQuillStylesheet(),
-            ensureQuillScript()
-        ]).then(() => {
-            if (!window.Quill) {
-                throw new Error("Quill did not load correctly.");
-            }
-
-            return window.Quill;
-        });
-    }
-
-    return quillLoaderPromise;
 }
 
 function registerBlogMediaBlots() {
@@ -311,55 +301,6 @@ function registerBlogMediaBlots() {
     window.__shinkBlogMediaBlotsRegistered = true;
 }
 
-function ensureQuillStylesheet() {
-    const existing = document.querySelector("link[data-blog-admin-quill-styles='true']");
-    if (existing) {
-        return Promise.resolve();
-    }
-
-    return new Promise((resolve, reject) => {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = "/lib/quill/quill.snow.css";
-        link.dataset.blogAdminQuillStyles = "true";
-        link.addEventListener("load", () => resolve(), { once: true });
-        link.addEventListener("error", () => reject(new Error("Failed to load Quill stylesheet.")), { once: true });
-        document.head.appendChild(link);
-    });
-}
-
-function ensureQuillScript() {
-    if (window.Quill) {
-        return Promise.resolve(window.Quill);
-    }
-
-    const existing = document.querySelector("script[data-blog-admin-quill-script='true']");
-    if (existing) {
-        return new Promise((resolve, reject) => {
-            if (existing.dataset.loaded === "true") {
-                resolve(window.Quill);
-                return;
-            }
-
-            existing.addEventListener("load", () => resolve(window.Quill), { once: true });
-            existing.addEventListener("error", () => reject(new Error("Failed to load Quill script.")), { once: true });
-        });
-    }
-
-    return new Promise((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = "/lib/quill/quill.js";
-        script.async = true;
-        script.dataset.blogAdminQuillScript = "true";
-        script.addEventListener("load", () => {
-            script.dataset.loaded = "true";
-            resolve(window.Quill);
-        }, { once: true });
-        script.addEventListener("error", () => reject(new Error("Failed to load Quill script.")), { once: true });
-        document.head.appendChild(script);
-    });
-}
-
 function setEditorHtml(state, html) {
     const normalizedHtml = normalizeHtml(html);
     if (getEditorHtml(state.quill) === normalizedHtml) {
@@ -394,11 +335,6 @@ function resolveInsertionIndex(state) {
     const currentRange = state.quill.getSelection();
     const requestedIndex = currentRange?.index ?? state.lastSelectionIndex ?? state.quill.getLength() - 1;
     return Math.max(0, Math.min(requestedIndex, state.quill.getLength() - 1));
-}
-
-async function notifyContentChanged(state) {
-    const currentHtml = getEditorHtml(state.quill);
-    await state.dotNetReference?.invokeMethodAsync("OnRichTextEditorInput", currentHtml);
 }
 
 function isSafeMediaUrl(value) {

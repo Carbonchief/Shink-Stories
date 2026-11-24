@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Shink.Components.Content;
 using StoreOrderRow = Shink.Services.SupabaseStoreOrderService.StoreOrderRow;
 
 namespace Shink.Services;
@@ -41,7 +42,8 @@ internal readonly record struct StoreAnalyticsPeriod(DateOnly From, DateOnly Thr
 public sealed partial class SupabaseAdminManagementService
 {
     public async Task<AdminStoreAnalyticsSnapshot> GetStoreAnalyticsAsync(
-        string? adminEmail, int days, bool forceRefresh = false, CancellationToken cancellationToken = default)
+        string? adminEmail, int days, bool forceRefresh = false, CancellationToken cancellationToken = default,
+        Func<AdminStoreAnalyticsSnapshot, Task>? onSalesLoaded = null)
     {
         if (days is not (7 or 30 or 90)) throw new ArgumentOutOfRangeException(nameof(days));
 
@@ -51,11 +53,23 @@ public sealed partial class SupabaseAdminManagementService
         var engagementTask = postHogStoreAnalytics.GetAsync(period, forceRefresh, cancellationToken);
         var salesTask = FetchStoreSalesAnalyticsAsync(context, period, cancellationToken);
         var catalogTask = storeProductCatalog.GetAllProductsAsync(cancellationToken);
-        await Task.WhenAll(engagementTask, salesTask, catalogTask);
+        async Task PublishSalesAsync()
+        {
+            await Task.WhenAll(salesTask, catalogTask);
+            if (onSalesLoaded is not null && !engagementTask.IsCompleted)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await onSalesLoaded(BuildStoreAnalytics(period, null, await salesTask, await catalogTask));
+            }
+        }
 
-        var engagement = await engagementTask;
-        var sales = await salesTask;
-        var catalog = await catalogTask;
+        await Task.WhenAll(engagementTask, PublishSalesAsync());
+        return BuildStoreAnalytics(period, await engagementTask, await salesTask, await catalogTask);
+    }
+
+    private AdminStoreAnalyticsSnapshot BuildStoreAnalytics(StoreAnalyticsPeriod period, StoreEngagementReport? engagement,
+        StoreSalesReport? sales, IReadOnlyList<StoreProduct> catalog)
+    {
         var catalogNames = catalog.ToDictionary(product => product.Slug, product => product.Name, StringComparer.Ordinal);
         var products = catalog.Where(product => product.IsEnabled).Select(product => product.Slug)
             .Union(engagement?.Products.Keys ?? [], StringComparer.Ordinal)

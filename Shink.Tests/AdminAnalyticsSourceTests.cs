@@ -11,6 +11,25 @@ namespace Shink.Tests;
 public class AdminAnalyticsSourceTests
 {
     [TestMethod]
+    [DataRow("AdminCancellationSurveyResponseRecord")]
+    [DataRow("AdminSalesRevenueDetailRecord")]
+    [DataRow("AdminRecoveredRevenueDetailRecord")]
+    [DataRow("AdminAnalyticsStoryDetailRecord")]
+    [DataRow("AdminAnalyticsTopCharacterRecord")]
+    [DataRow("AdminAnalyticsResourceDownloadItemRecord")]
+    [DataRow("AdminAnalyticsBlogVisitPageRecord")]
+    public void DetailTablesRenderOnePageAndExposeTheRest(string recordType)
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var start = markup.IndexOf($"<MudTable T=\"{recordType}\"", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, start);
+        var table = markup[start..markup.IndexOf("</MudTable>", start, StringComparison.Ordinal)];
+        StringAssert.Contains(table, "RowsPerPage=\"25\"");
+        StringAssert.Contains(table, "<PagerContent>");
+        StringAssert.Contains(table, "<MudTablePager");
+    }
+
+    [TestMethod]
     public void AnalyticsTabShowsSubscriberAnalyticsAndLoadsSubscriberReports()
     {
         var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
@@ -203,21 +222,20 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "RevenuePeriodCurrentWeek");
         StringAssert.Contains(admin, "RevenuePeriodCurrentMonth");
         StringAssert.Contains(admin, "RevenuePeriodCurrentYear");
-        StringAssert.Contains(admin, "FilteredRevenueSalesDetails");
-        StringAssert.Contains(admin, "FilteredRecoveredRevenueDetails");
-        StringAssert.Contains(admin, "IsRevenueDetailInSelectedPeriod");
-        StringAssert.Contains(admin, "IsRecoveredRevenueDetailInSelectedPeriod");
+        StringAssert.Contains(admin, "revenueDetails.Sales");
+        StringAssert.Contains(admin, "revenueDetails.Recoveries");
+        StringAssert.Contains(admin, "var revenueDetails = GetRevenueDetails();");
         StringAssert.Contains(admin, "SetRevenueDrilldownPeriod");
-        StringAssert.Contains(admin, "SelectedRevenuePayFastSalesCount");
-        StringAssert.Contains(admin, "SelectedRevenuePaystackSalesCount");
-        StringAssert.Contains(admin, "SelectedRevenueAppleSales.RevenueZar");
-        StringAssert.Contains(admin, "SelectedRevenueGooglePlaySales.RevenueZar");
+        StringAssert.Contains(admin, "revenueDetails.ForProvider(\"payfast\")");
+        StringAssert.Contains(admin, "revenueDetails.ForProvider(\"paystack\")");
+        StringAssert.Contains(admin, "appleSales.RevenueZar");
+        StringAssert.Contains(admin, "googlePlaySales.RevenueZar");
         StringAssert.Contains(admin, "iOS · App Store");
         StringAssert.Contains(admin, "Android · Google Play");
         StringAssert.Contains(admin, "@T(\"Planwaarde\", \"Plan value\")");
         StringAssert.Contains(admin, "IsRevenueDetailProvider");
-        StringAssert.Contains(admin, "Items=\"FilteredRevenueSalesDetails\"");
-        StringAssert.Contains(admin, "Items=\"FilteredRecoveredRevenueDetails\"");
+        StringAssert.Contains(admin, "Items=\"revenueDetails.Sales\"");
+        StringAssert.Contains(admin, "Items=\"revenueDetails.Recoveries\"");
         StringAssert.Contains(admin, "@T(\"Verkope detail\", \"Sales detail\")");
         StringAssert.Contains(admin, "@T(\"Herwinde inkomste detail\", \"Recovered revenue detail\")");
         StringAssert.Contains(admin, "@T(\"Volgende betaling\", \"Next payment\")");

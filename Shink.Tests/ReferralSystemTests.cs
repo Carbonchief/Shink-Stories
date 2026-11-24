@@ -68,7 +68,7 @@ public class ReferralSystemTests
         var panel = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminReferralsPanel.razor"));
         var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminReferralsPanel.razor.css"));
 
-        StringAssert.Contains(admin, "<MudTabPanel Text='@T(\"Verwysings\", \"Referrals\")'>");
+        StringAssert.Contains(admin, "<AdminTabPanel Text='@T(\"Verwysings\", \"Referrals\")'>");
         StringAssert.Contains(admin, "<AdminReferralsPanel AdminEmail=\"@CurrentAdminEmail\" LanguageCode=\"@CurrentLanguageCode\" />");
         StringAssert.Contains(panel, "@T(\"Nuwe verwysingskakel\", \"New referral link\")");
         StringAssert.Contains(panel, "@T(\"E-pos opsioneel\", \"Email optional\")");

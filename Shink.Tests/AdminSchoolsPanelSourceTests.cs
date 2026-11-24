@@ -11,7 +11,7 @@ public class AdminSchoolsPanelSourceTests
     {
         var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
 
-        StringAssert.Contains(markup, "<MudTabPanel Text='@T(\"Skole\", \"Schools\")'>");
+        StringAssert.Contains(markup, "<AdminTabPanel Text='@T(\"Skole\", \"Schools\")'>");
         StringAssert.Contains(markup, "<AdminSchoolsPanel AdminEmail=\"@CurrentAdminEmail\" LanguageCode=\"@CurrentLanguageCode\" />");
     }
 

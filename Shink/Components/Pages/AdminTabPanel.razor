@@ -1,0 +1,20 @@
+<MudTabPanel @ref="_panel" Text="@Text">
+    @{
+        var active = _panel is not null && Tabs.ActivePanel == _panel;
+        _visited |= active;
+    }
+    @if (active || (RetainAfterVisit && _visited))
+    {
+        @ChildContent
+    }
+</MudTabPanel>
+
+@code {
+    [CascadingParameter] private MudTabs Tabs { get; set; } = default!;
+    [Parameter, EditorRequired] public string Text { get; set; } = string.Empty;
+    [Parameter] public bool RetainAfterVisit { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private MudTabPanel? _panel;
+    private bool _visited;
+}

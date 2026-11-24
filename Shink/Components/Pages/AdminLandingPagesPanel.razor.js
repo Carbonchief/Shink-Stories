@@ -1,15 +1,17 @@
+import { bufferEditorChanges, ensureQuillLoaded } from "/js/admin-rich-text.js";
+
 const editorStates = new WeakMap();
-let quillLoaderPromise;
 
 const allowedTags = new Set(["P", "H2", "H3", "STRONG", "EM", "A", "OL", "UL", "LI", "BR"]);
 const allowedFormats = ["header", "bold", "italic", "link", "list"];
 
-export async function syncRichTextEditor(shellElement, dotNetReference, html, disabled = false) {
+export async function syncRichTextEditor(shellElement, dotNetReference, html, session, blockId, disabled = false) {
     if (!shellElement) {
         return;
     }
 
     await ensureQuillLoaded();
+    if (!shellElement.isConnected) return;
 
     const editorElement = shellElement.querySelector(".landing-rich-editor");
     const toolbarElement = shellElement.querySelector(".landing-rich-toolbar");
@@ -41,7 +43,6 @@ export async function syncRichTextEditor(shellElement, dotNetReference, html, di
         quill.root.setAttribute("aria-multiline", "true");
 
         state = {
-            dotNetReference,
             isApplying: false,
             onTextChange: null,
             quill
@@ -51,12 +52,10 @@ export async function syncRichTextEditor(shellElement, dotNetReference, html, di
                 return;
             }
 
-            state.dotNetReference?.invokeMethodAsync("OnLandingRichTextEditorInput", getEditorHtml(state.quill));
+            state.changes.changed();
         };
         quill.on("text-change", state.onTextChange);
         editorStates.set(shellElement, state);
-    } else {
-        state.dotNetReference = dotNetReference;
     }
 
     const editorLabel = toolbarElement.dataset.editorLabel ?? editorElement.dataset.placeholder ?? "";
@@ -67,6 +66,11 @@ export async function syncRichTextEditor(shellElement, dotNetReference, html, di
     }
 
     state.quill.enable(!disabled);
+    state.changes?.cancel();
+    state.changes = bufferEditorChanges(
+        () => getEditorHtml(state.quill),
+        (html, stream) => shellElement.isConnected && dotNetReference.invokeMethodAsync("OnLandingRichTextEditorInput", session, blockId, html, stream),
+        () => dotNetReference.invokeMethodAsync("OnLandingRichTextEditorDirty", session, blockId).catch(console.error));
     setEditorHtml(state, html ?? "");
 }
 
@@ -74,6 +78,15 @@ export function setRichTextEditorDisabled(shellElement, disabled) {
     const state = editorStates.get(shellElement);
     if (state) {
         state.quill.enable(!disabled);
+    }
+}
+
+export async function flushRichTextEditor(shellElement) {
+    const state = editorStates.get(shellElement);
+    if (state) {
+        // Include browser edits that Quill's mutation observer has not processed yet.
+        state.quill.update("user");
+        await state.changes.flush();
     }
 }
 
@@ -91,6 +104,7 @@ export function disposeRichTextEditor(shellElement) {
         state.quill.off("text-change", state.onTextChange);
     }
 
+    state.changes?.cancel();
     editorStates.delete(shellElement);
 }
 
@@ -211,74 +225,6 @@ function setEditorHtml(state, html) {
     } finally {
         state.isApplying = false;
     }
-}
-
-async function ensureQuillLoaded() {
-    if (window.Quill) {
-        await ensureQuillStylesheet();
-        return window.Quill;
-    }
-
-    if (!quillLoaderPromise) {
-        quillLoaderPromise = Promise.all([ensureQuillStylesheet(), ensureQuillScript()])
-            .then(() => {
-                if (!window.Quill) {
-                    throw new Error("Quill did not load correctly.");
-                }
-                return window.Quill;
-            })
-            .catch(error => {
-                quillLoaderPromise = null;
-                throw error;
-            });
-    }
-
-    return quillLoaderPromise;
-}
-
-function ensureQuillStylesheet() {
-    if (document.querySelector("link[data-landing-admin-quill-styles='true']")) {
-        return Promise.resolve();
-    }
-
-    return new Promise((resolve, reject) => {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = "/lib/quill/quill.snow.css";
-        link.dataset.landingAdminQuillStyles = "true";
-        link.onload = () => resolve();
-        link.onerror = () => {
-            link.remove();
-            reject(new Error("Quill styles could not be loaded."));
-        };
-        document.head.appendChild(link);
-    });
-}
-
-function ensureQuillScript() {
-    if (window.Quill) {
-        return Promise.resolve();
-    }
-
-    const existing = document.querySelector("script[data-landing-admin-quill-script='true']");
-    if (existing) {
-        return new Promise((resolve, reject) => {
-            existing.addEventListener("load", () => resolve(), { once: true });
-            existing.addEventListener("error", () => reject(new Error("Quill script could not be loaded.")), { once: true });
-        });
-    }
-
-    return new Promise((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = "/lib/quill/quill.js";
-        script.dataset.landingAdminQuillScript = "true";
-        script.onload = () => resolve();
-        script.onerror = () => {
-            script.remove();
-            reject(new Error("Quill script could not be loaded."));
-        };
-        document.head.appendChild(script);
-    });
 }
 
 export async function copyPageUrl(url) {

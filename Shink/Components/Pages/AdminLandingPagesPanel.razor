@@ -371,7 +371,7 @@
                                             <option value="right">@T("Regs", "Right")</option>
                                         </select>
                                     </label>
-                                    <div class="landing-rich-editor-shell" @ref="_richTextEditorShell">
+                                    <div class="landing-rich-editor-shell" @key="(_editorSession, _activeTextBlockId)" @ref="_richTextEditorShell">
                                         @if (_richTextEditorFailed)
                                         {
                                             <button type="button" class="landing-secondary-button landing-rich-editor-retry" @onclick="RetryRichTextEditorAsync">@T("Probeer teksredigeerder weer oopmaak", "Retry opening the text editor")</button>
@@ -448,6 +448,8 @@
     private bool _hasUnsavedChanges;
     private bool _slugWasManuallyEdited;
     private bool _richTextEditorSyncPending;
+    private long _editorSession;
+    private bool? _editorDisabled;
     private bool _richTextEditorFailed;
     private long? _workingRevision;
     private Guid _newDraftAssetScopeId = Guid.NewGuid();
@@ -498,30 +500,33 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_richTextEditorModule is not null)
-        {
-            try
-            {
-                await _richTextEditorModule.InvokeVoidAsync("setRichTextEditorDisabled", _richTextEditorShell, IsBusy);
-            }
-            catch (JSDisconnectedException)
-            {
-                return;
-            }
-        }
-
-        if (_workingContent is null || ActiveTextBlock is null || !_richTextEditorSyncPending)
-        {
-            return;
-        }
-
+        var block = ActiveTextBlock;
+        if (block is null) return;
+        var session = _editorSession;
+        var disabled = IsBusy;
         try
         {
-            _richTextEditorModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/AdminLandingPagesPanel.razor.js");
-            _dotNetReference ??= DotNetObjectReference.Create(this);
-            await _richTextEditorModule.InvokeVoidAsync("syncRichTextEditor", _richTextEditorShell, _dotNetReference, ActiveTextBlock.Html, IsBusy);
+            if (!_richTextEditorSyncPending)
+            {
+                if (_richTextEditorModule is not null && _editorDisabled != disabled)
+                {
+                    _editorDisabled = disabled;
+                    await _richTextEditorModule.InvokeVoidAsync("setRichTextEditorDisabled", _richTextEditorShell, disabled);
+                }
+                return;
+            }
+
             _richTextEditorSyncPending = false;
+            _richTextEditorModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/AdminLandingPagesPanel.razor.js");
+            if (session != _editorSession || block != ActiveTextBlock) return;
+            _dotNetReference ??= DotNetObjectReference.Create(this);
+            _editorDisabled = IsBusy;
+            await _richTextEditorModule.InvokeVoidAsync("syncRichTextEditor", _richTextEditorShell, _dotNetReference, block.Html, session, block.Id, IsBusy);
             _richTextEditorFailed = false;
+        }
+        catch (JSDisconnectedException)
+        {
+            return;
         }
         catch (Exception exception) when (exception is JSException or InvalidOperationException)
         {
@@ -535,13 +540,11 @@
 
     public async Task<bool> ConfirmDiscardAsync()
     {
-        if (!HasUnsavedChanges)
-        {
-            return true;
-        }
-
         try
         {
+            await FlushEditorAsync();
+            if (!HasUnsavedChanges) return true;
+
             var confirmed = await JSRuntime.InvokeAsync<bool>(
                 "confirm",
                 T("Jy het ongestoorde landingsbladveranderinge. Is jy seker jy wil dit weggooi?", "You have unsaved landing page changes. Are you sure you want to discard them?"));
@@ -560,15 +563,36 @@
     }
 
     [JSInvokable]
-    public Task OnLandingRichTextEditorInput(string html)
+    public Task OnLandingRichTextEditorDirty(long session, Guid blockId)
     {
-        if (ActiveTextBlock is { } block && !string.Equals(block.Html, html, StringComparison.Ordinal))
+        if (session != _editorSession || _hasUnsavedChanges || ActiveTextBlock?.Id != blockId)
         {
-            block.Html = html;
-            MarkChanged();
+            return Task.CompletedTask;
         }
 
+        MarkChanged();
         return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnLandingRichTextEditorInput(long session, Guid blockId, string? html, IJSStreamReference? stream)
+    {
+        var content = await AdminEditorContent.ReadAsync(html, stream);
+        var block = _workingContent?.Blocks.FirstOrDefault(item => item.Id == blockId);
+        if (session == _editorSession && block is not null && block.Html != content)
+        {
+            block.Html = content;
+            MarkChanged();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task FlushEditorAsync()
+    {
+        if (_richTextEditorModule is not null && ActiveTextBlock is not null)
+        {
+            await _richTextEditorModule.InvokeVoidAsync("flushRichTextEditor", _richTextEditorShell);
+        }
     }
 
     private async Task ReloadAsync()
@@ -650,6 +674,7 @@
         _workingSlug = string.Empty;
         _slugWasManuallyEdited = false;
         ResetButtonLinkChoices();
+        _editorSession++;
         _workingContent = CreateDefaultContent();
         _newDraftAssetScopeId = Guid.NewGuid();
         _activeTextBlockId = _workingContent.Blocks.FirstOrDefault(block => string.Equals(block.Type, "text", StringComparison.OrdinalIgnoreCase))?.Id;
@@ -687,6 +712,7 @@
         _workingRevision = page.Revision;
         _workingSlug = page.Slug;
         _slugWasManuallyEdited = false;
+        _editorSession++;
         _workingContent = CloneContent(page.Draft);
         _activeTextBlockId = TextBlocks.FirstOrDefault()?.Id;
         _richTextEditorSyncPending = _activeTextBlockId is not null;
@@ -736,8 +762,9 @@
 
     private void AddImageBlock() => AddBlock(new LandingPageBlock { Type = "image", ImageShape = "square" });
 
-    private void AddTextBlock()
+    private async Task AddTextBlock()
     {
+        await FlushEditorAsync();
         var block = new LandingPageBlock { Type = "text", Html = "<p></p>", Alignment = "left" };
         AddBlock(block);
         _activeTextBlockId = block.Id;
@@ -808,22 +835,22 @@
         MarkChanged();
     }
 
-    private void SelectTextBlock(Guid blockId)
+    private async Task SelectTextBlock(Guid blockId)
     {
         if (_activeTextBlockId == blockId)
         {
             return;
         }
 
+        await FlushEditorAsync();
         _activeTextBlockId = blockId;
         _richTextEditorSyncPending = true;
     }
 
-    private void OnActiveTextBlockChanged(ChangeEventArgs args)
+    private Task OnActiveTextBlockChanged(ChangeEventArgs args)
     {
         var value = args.Value?.ToString();
-        _activeTextBlockId = Guid.TryParseExact(value, "N", out var blockId) ? blockId : null;
-        _richTextEditorSyncPending = _activeTextBlockId is not null;
+        return Guid.TryParseExact(value, "N", out var blockId) ? SelectTextBlock(blockId) : Task.CompletedTask;
     }
 
     private void SetImageShape(LandingPageBlock block, string? shape)
@@ -989,6 +1016,7 @@
         _isSaving = true;
         try
         {
+            await FlushEditorAsync();
             var result = await LandingPageAdminService.SaveDraftAsync(
                 new LandingPageSaveRequest(_selectedPageId, _workingSlug.Trim(), CloneContent(_workingContent), _workingRevision));
             if (!result.Success || result.Page is null)
@@ -1023,6 +1051,8 @@
         _isPublishing = true;
         try
         {
+            await FlushEditorAsync();
+            if (HasUnsavedChanges) return;
             var result = await LandingPageAdminService.PublishAsync(_selectedPage.PageId, _selectedPage.Revision);
             if (!result.Success || result.Page is null)
             {
@@ -1343,7 +1373,6 @@
 
     public async ValueTask DisposeAsync()
     {
-        _dotNetReference?.Dispose();
         if (_richTextEditorModule is not null)
         {
             try
@@ -1356,6 +1385,8 @@
                 // The browser has already disconnected.
             }
         }
+
+        _dotNetReference?.Dispose();
     }
 
     private sealed record ValidatedLandingImage(MemoryStream Content, string ContentType, string Extension);

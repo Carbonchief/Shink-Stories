@@ -252,12 +252,70 @@ public partial class SupabaseAdminManagementSelfServiceTests
             {"subscribers":[],"subscriptions":[],"tiers":[],"events":[],"recoveries":[],"carts":[],"feedback":[],
              "orders":[{"order_id":"00000000-0000-0000-0000-000000000001","total_price_zar":149,"payment_status":"paid","paid_at":"{{DateTimeOffset.UtcNow:O}}"}]}
             """;
-        var service = CreatePerformanceReportsService(new(), _ => JsonResponse(inputs));
+        var sections = new[] { "subscribers", "subscriptions", "events", "tiers", "orders", "carts", "recoveries" };
+        var versions = sections.ToDictionary(key => key, _ => "original");
+        var calls = new Dictionary<string, int>();
+        var paid = true;
+        var service = CreatePerformanceReportsService(calls, request =>
+        {
+            using var args = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+            var known = args.RootElement.GetProperty("p_known_versions");
+            var unchanged = known.ValueKind == JsonValueKind.Object && known.GetProperty("orders").GetString() == versions["orders"];
+            using var data = JsonDocument.Parse(inputs);
+            var rows = data.RootElement.EnumerateObject().ToDictionary(x => x.Name, x => x.Value);
+            if (unchanged || !paid) rows["orders"] = JsonSerializer.SerializeToElement(Array.Empty<object>());
+            return JsonResponse(JsonSerializer.Serialize(new { versions, inputs = rows }));
+        });
         var membership = await service.GetSubscriberReportsAsync("admin@example.com", panel: AdminReportPanel.Membership);
         var revenue = await service.GetSubscriberReportsAsync("admin@example.com", panel: AdminReportPanel.Revenue);
         var month = membership.SalesAndRevenue.Single(row => row.PeriodKey == "this_month");
         Assert.AreEqual(149m, month.RevenueZar);
         Assert.AreEqual(month, revenue.SalesAndRevenue.Single(row => row.PeriodKey == "this_month"));
+
+        paid = false;
+        versions["orders"] = "deleted";
+        var refreshed = await service.GetSubscriberReportsAsync("admin@example.com", forceRefresh: true, panel: AdminReportPanel.Revenue);
+        Assert.AreEqual(0m, refreshed.SalesAndRevenue.Single(row => row.PeriodKey == "this_month").RevenueZar);
+        Assert.AreEqual(3, calls["/rest/v1/rpc/get_admin_financial_report_inputs"]);
+    }
+
+    [TestMethod]
+    public async Task ColdFinancialReportShowsActualOverviewWhileDetailsArePending()
+    {
+        var full = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var overview = new TaskCompletionSource<AdminFinancialOverview>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var now = DateTimeOffset.UtcNow;
+        var subscriber = Guid.NewGuid();
+        var monthly = new { subscriber_id = subscriber, tier_code = "monthly", provider = "paystack", status = "active",
+            next_renewal_at = now.AddDays(10), billing_amount_zar = 79, billing_period_months = 1 };
+        var free = new { subscriber_id = subscriber, tier_code = "gratis", provider = "free", status = "active" };
+        var excluded = new { subscriber_id = subscriber, tier_code = "monthly", provider = "paystack", status = "active",
+            source_system = "admin_override", billing_amount_zar = 300, next_renewal_at = now.AddDays(2) };
+        var service = CreateService(new AnalyticsAsyncHandler(async (request, token) =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/admin_users")) return JsonResponse("""[{"email":"admin@example.com"}]""");
+            if (request.RequestUri!.AbsolutePath.EndsWith("/get_admin_financial_overview", StringComparison.Ordinal))
+                return JsonResponse(JsonSerializer.Serialize(new { as_of = now, groups = new object[] {
+                    new { quantity = 2, sample = monthly }, new { quantity = 3, sample = free }, new { quantity = 1, sample = excluded } } }));
+            Assert.AreEqual("/rest/v1/rpc/get_admin_financial_report_inputs", request.RequestUri.AbsolutePath);
+            return await full.Task.WaitAsync(token);
+        }));
+        var report = service.GetSubscriberReportsAsync("admin@example.com", panel: AdminReportPanel.Revenue,
+            onOverviewLoaded: value => { overview.TrySetResult(value); return Task.CompletedTask; });
+        var keys = new[] { "subscribers", "subscriptions", "events", "tiers", "orders", "carts", "recoveries" };
+        var rows = keys.Append("feedback").ToDictionary(key => key, _ => Array.Empty<object>());
+        rows["subscriptions"] = [monthly, monthly, free, free, free, excluded];
+        try
+        {
+            var first = await overview.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(new AdminFinancialOverview(3, 2, 158m), first);
+            Assert.IsFalse(report.IsCompleted);
+        }
+        finally
+        {
+            full.TrySetResult(JsonResponse(JsonSerializer.Serialize(new { versions = keys.ToDictionary(key => key, _ => "v"), inputs = rows })));
+        }
+        Assert.AreEqual(158m, (await report).RecurringRevenue.Single(row => row.SegmentKey == "total").MonthlyRecurringRevenueZar);
     }
 
     private static SupabaseAdminManagementService CreatePerformanceReportsService(
@@ -281,6 +339,7 @@ public partial class SupabaseAdminManagementSelfServiceTests
             if (path == "/rest/v1/rpc/get_admin_engagement_periods")
                 return JsonResponse(JsonSerializer.Serialize(new { periods = new[] { "today", "this_week", "this_month", "year_to_date", "all_time" }
                     .Select(key => new AdminVisitsViewsLoginsMetric(key, 0, 0, 0)) }));
+            if (path == "/rest/v1/rpc/get_admin_financial_report_inputs") return responseOverride!(request)!;
             Assert.AreEqual("/rest/v1/rpc/get_admin_report_inputs", path);
             return responseOverride?.Invoke(request) ?? JsonResponse("""
                 {"subscribers":[],"subscriptions":[],"tiers":[],"events":[],"orders":[],"recoveries":[],"carts":[],"feedback":[]}

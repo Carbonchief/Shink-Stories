@@ -96,6 +96,7 @@ create index on public.story_listen_events (story_slug, occurred_at desc);
 create index on public.story_views (story_slug, viewed_at desc);
 \ir ../migrations/20261124070312_optimize_admin_usage_report.sql
 \ir ../migrations/20261124073600_roll_up_admin_usage_by_day.sql
+\ir ../migrations/20261124081944_accelerate_admin_analytics_tabs.sql
 
 insert into public.store_orders(payment_status,total_price_zar) values ('paid',149), ('pending',149);
 insert into public.auth_sessions select now() - n * interval '1 minute' from generate_series(1,1501) n;
@@ -107,7 +108,7 @@ do $$
 declare
     baseline jsonb := public.get_admin_analytics_snapshot();
     usage jsonb := public.get_admin_usage_analytics();
-    stories jsonb := public.get_admin_listening_analytics(true);
+    stories jsonb := public.get_admin_story_analytics();
     engagement jsonb := public.get_admin_engagement_periods(current_date, date_trunc('week',now()),
         date_trunc('month',now()), date_trunc('year',now()), now());
     inputs json := public.get_admin_report_inputs('revenue');
@@ -140,10 +141,52 @@ begin
     if exists (
         select 1 from pg_proc where pronamespace='public'::regnamespace
         and proname in ('get_admin_usage_analytics','get_admin_listening_analytics','get_admin_award_analytics','get_admin_resource_analytics',
-            'get_admin_blog_analytics','get_admin_engagement_periods','get_admin_report_inputs')
+            'get_admin_financial_overview','get_admin_financial_report_inputs','get_admin_story_analytics','get_admin_blog_analytics','get_admin_engagement_periods','get_admin_report_inputs')
         and (prosecdef or has_function_privilege('anon', oid, 'execute') or has_function_privilege('authenticated', oid, 'execute')
             or not has_function_privilege('service_role', oid, 'execute'))
     ) then raise exception 'Unexpected admin report privileges'; end if;
+end;
+$$;
+
+-- A client with a complete previous snapshot receives only changed sections.
+-- An empty changed section must clear the old data, including after DELETE.
+do $$
+declare
+    original jsonb := public.get_admin_financial_report_inputs(null);
+    changes jsonb;
+begin
+    if original->'inputs' <> public.get_admin_report_inputs('revenue')::jsonb then
+        raise exception 'Full financial inputs changed';
+    end if;
+    changes := public.get_admin_financial_report_inputs(original->'versions');
+    if original->'versions' <> changes->'versions' or exists (
+        select from jsonb_each(changes->'inputs') where value <> '[]'::jsonb
+    ) then raise exception 'Unchanged rows were retransmitted'; end if;
+    update public.store_orders set total_price_zar = 150 where payment_status = 'paid';
+    changes := public.get_admin_financial_report_inputs(original->'versions');
+    if changes#>>'{inputs,orders,0,total_price_zar}' <> '150.00' or changes#>'{inputs,events}' <> '[]'::jsonb
+        or changes#>'{versions,orders}' = original#>'{versions,orders}' then raise exception 'Paid order update was missed'; end if;
+    original := changes;
+    delete from public.store_orders where payment_status = 'paid';
+    changes := public.get_admin_financial_report_inputs(original->'versions');
+    if changes#>'{inputs,orders}' <> '[]'::jsonb or changes#>'{versions,orders}' = original#>'{versions,orders}'
+        then raise exception 'Deleted paid order survived'; end if;
+end;
+$$;
+
+insert into public.subscriptions(subscription_id, subscriber_id, tier_code, provider, source_system, status,
+    next_renewal_at, billing_amount_zar, billing_period_months)
+select gen_random_uuid(), gen_random_uuid(), 'monthly', 'paystack', 'system', 'active',
+    now() + n * interval '1 day', 79, 1 from generate_series(-1,2) n;
+do $$
+declare report jsonb := public.get_admin_financial_overview();
+begin
+    if (report->>'as_of')::timestamptz is distinct from now()
+        or jsonb_array_length(report->'groups') <> 3
+        or (report#>>'{groups,0,quantity}')::int <> 1
+        or report#>>'{groups,0,sample,tier_code}' is distinct from 'monthly' then
+        raise exception 'Financial overview grouping or renewal boundary changed';
+    end if;
 end;
 $$;
 
@@ -155,6 +198,9 @@ create temporary table usage_reference as select public.get_admin_listening_anal
 set local statement_timeout = '8s';
 do $$
 begin
+    if public.get_admin_story_analytics() is distinct from public.get_admin_listening_analytics(true) then
+        raise exception 'Service role Stories report differs from event history';
+    end if;
     if public.get_admin_usage_analytics() is distinct from (select report from usage_reference) then
         raise exception 'Service role Usage report differs from event history';
     end if;
@@ -175,6 +221,11 @@ begin
     if jsonb_path_exists(plan, 'strict $.** ? (@."Relation Name" == "story_listen_events" && @."Actual Loops" > 0 && @."Actual Rows" > 1)') then
         raise exception 'UTC Usage report read raw listening history for its daily chart';
     end if;
+    select prosrc into query_text from pg_proc where oid = 'public.get_admin_story_analytics()'::regprocedure;
+    execute 'explain (analyze, timing off, format json) ' || query_text into plan;
+    if jsonb_path_exists(plan, 'strict $.** ? (@."Relation Name" == "story_listen_events" && @."Actual Loops" > 0 && @."Actual Rows" > 1)') then
+        raise exception 'Stories scanned raw listening history';
+    end if;
 end;
 $$;
 
@@ -183,6 +234,9 @@ $$;
 create function pg_temp.assert_usage_parity() returns void language plpgsql as $$
 declare expected jsonb := public.get_admin_listening_analytics(false);
 begin
+    if public.get_admin_story_analytics() is distinct from public.get_admin_listening_analytics(true) then
+        raise exception 'Stories report differs from event history';
+    end if;
     if public.get_admin_usage_analytics() is distinct from expected then
         raise exception 'Usage report differs from event history';
     end if;

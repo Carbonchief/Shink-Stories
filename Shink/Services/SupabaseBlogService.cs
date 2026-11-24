@@ -52,106 +52,49 @@ public sealed partial class SupabaseBlogService(
             string.Equals(post.Slug, normalizedSlug, StringComparison.OrdinalIgnoreCase));
     }
 
-    public async Task<AdminBlogDashboardData> GetDashboardAsync(
-        string? adminEmail,
-        CancellationToken cancellationToken = default)
+    private async Task<(Uri BaseUri, string Key)> GetAdminConnectionAsync(string? email, CancellationToken token)
     {
-        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
-        {
-            return new AdminBlogDashboardData([], [], []);
-        }
+        if (!await TryResolveAdminContextAsync(email, token)) throw new UnauthorizedAccessException();
+        var key = ResolveSecretKey();
+        if (!TryBuildSupabaseBaseUri(out var baseUri) || string.IsNullOrWhiteSpace(key))
+            throw new InvalidOperationException("Missing blog admin connection.");
+        return (baseUri, key);
+    }
 
-        if (!TryBuildSupabaseBaseUri(out var baseUri))
-        {
-            return new AdminBlogDashboardData([], [], []);
-        }
+    public async Task<AdminBlogPostPage> GetPostPageAsync(string? adminEmail, string? search, string status, int page, CancellationToken cancellationToken = default)
+    {
+        var (baseUri, key) = await GetAdminConnectionAsync(adminEmail, cancellationToken);
+        using var request = CreateJsonRequest(HttpMethod.Post, new Uri(baseUri, "rest/v1/rpc/admin_blog_list_page"), key,
+            new { p_search = search?.Trim() ?? "", p_status = status, p_page = page }, "return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AdminBlogPostPage>(JsonOptions, cancellationToken)
+            ?? throw new JsonException("Missing blog list page.");
+    }
 
-        var apiKey = ResolveSecretKey();
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            return new AdminBlogDashboardData([], [], []);
-        }
+    public async Task<IReadOnlyList<BlogCategoryItem>> GetAdminCategoriesAsync(string? adminEmail, CancellationToken cancellationToken = default)
+    {
+        var (baseUri, key) = await GetAdminConnectionAsync(adminEmail, cancellationToken);
+        var rows = await FetchCategoriesAsync(baseUri, key, cancellationToken, throwOnFailure: true);
+        return rows.Select(row => new BlogCategoryItem(row.CategoryId, row.Slug.Trim(), row.Name.Trim())).ToArray();
+    }
 
-        var postsTask = FetchBlogPostsAsync(baseUri, apiKey, publicOnly: false, cancellationToken);
-        var categoriesTask = FetchCategoriesAsync(baseUri, apiKey, cancellationToken);
-        var tagsTask = FetchTagsAsync(baseUri, apiKey, cancellationToken);
-        var joinsTask = FetchPostTagsAsync(baseUri, apiKey, cancellationToken);
-
-        await Task.WhenAll(postsTask, categoriesTask, tagsTask, joinsTask);
-
-        var categories = categoriesTask.Result
-            .Where(row => row.CategoryId != Guid.Empty)
-            .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
-            .Where(row => !string.IsNullOrWhiteSpace(row.Name))
-            .Select(row => new BlogCategoryItem(
-                row.CategoryId,
-                row.Slug.Trim(),
-                row.Name.Trim()))
-            .OrderBy(category => category.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var tags = tagsTask.Result
-            .Where(row => row.TagId != Guid.Empty)
-            .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
-            .Where(row => !string.IsNullOrWhiteSpace(row.Name))
-            .Select(row => new BlogTagItem(
-                row.TagId,
-                row.Slug.Trim(),
-                row.Name.Trim()))
-            .OrderBy(tag => tag.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var categoriesById = categories.ToDictionary(category => category.CategoryId);
-        var tagsById = tags.ToDictionary(tag => tag.TagId);
-        var tagsByPostId = joinsTask.Result
-            .Where(row => row.PostId != Guid.Empty && row.TagId != Guid.Empty)
-            .GroupBy(row => row.PostId)
-            .ToDictionary(
-                group => group.Key,
-                group => group
-                    .Select(row => tagsById.TryGetValue(row.TagId, out var tag) ? tag : null)
-                    .Where(static tag => tag is not null)
-                    .Cast<BlogTagItem>()
-                    .DistinctBy(tag => tag.TagId)
-                    .OrderBy(tag => tag.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToArray());
-
-        var posts = postsTask.Result
-            .Where(row => row.PostId != Guid.Empty)
-            .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
-            .Where(row => !string.IsNullOrWhiteSpace(row.Title))
-            .Select(row =>
-            {
-                categoriesById.TryGetValue(row.CategoryId ?? Guid.Empty, out var category);
-                tagsByPostId.TryGetValue(row.PostId, out var postTags);
-                var normalizedMarkdown = NormalizeMarkdown(row.ContentMarkdown);
-                var plainTextContent = ResolvePlainTextContent(row.PlainTextContent, normalizedMarkdown);
-
-                return new AdminBlogPostRecord(
-                    PostId: row.PostId,
-                    Slug: row.Slug.Trim(),
-                    Title: row.Title.Trim(),
-                    Summary: ResolveSummary(row.Summary, plainTextContent),
-                    PlainTextContent: plainTextContent,
-                    ContentMarkdown: normalizedMarkdown,
-                    FeaturedImageUrl: NormalizePublicImageUrl(row.FeaturedImageUrl),
-                    AuthorName: NormalizeOptionalText(row.AuthorName, 120),
-                    CategoryId: row.CategoryId,
-                    CategoryName: category?.Name,
-                    Tags: postTags ?? [],
-                    IsPublished: row.IsPublished,
-                    PublishedAt: row.PublishedAt,
-                    CreatedAt: row.CreatedAt,
-                    UpdatedAt: row.UpdatedAt,
-                    SeoTitle: NormalizeOptionalText(row.SeoTitle, 180),
-                    SeoDescription: NormalizeOptionalText(row.SeoDescription, 320));
-            })
-            .OrderByDescending(post => post.UpdatedAt)
-            .ThenByDescending(post => post.PublishedAt ?? DateTimeOffset.MinValue)
-            .ThenBy(post => post.Title, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        return new AdminBlogDashboardData(posts, categories, tags);
+    public async Task<AdminBlogPostRecord?> GetPostAsync(string? adminEmail, Guid postId, CancellationToken cancellationToken = default)
+    {
+        var (baseUri, key) = await GetAdminConnectionAsync(adminEmail, cancellationToken);
+        var uri = new Uri(baseUri, "rest/v1/blog_posts?select=post_id,slug,title,summary,plain_text_content,content_markdown," +
+            "featured_image_url,author_name,category_id,is_published,published_at,created_at,updated_at,seo_title,seo_description," +
+            $"category:blog_categories(name),tags:blog_tags(tag_id,slug,name)&post_id=eq.{postId}&limit=1");
+        var rows = await FetchRowsAsync<BlogPostRow>(uri, key, cancellationToken, throwOnFailure: true);
+        if (rows.FirstOrDefault() is not { } row) return null;
+        var markdown = NormalizeMarkdown(row.ContentMarkdown);
+        var plain = ResolvePlainTextContent(row.PlainTextContent, markdown);
+        var tags = row.Tags.OrderBy(tag => tag.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(tag => new BlogTagItem(tag.TagId, tag.Slug.Trim(), tag.Name.Trim())).ToArray();
+        return new AdminBlogPostRecord(row.PostId, row.Slug.Trim(), row.Title.Trim(), ResolveSummary(row.Summary, plain),
+            plain, markdown, NormalizePublicImageUrl(row.FeaturedImageUrl), NormalizeOptionalText(row.AuthorName, 120),
+            row.CategoryId, row.Category?.Name.Trim(), tags, row.IsPublished, row.PublishedAt, row.CreatedAt, row.UpdatedAt,
+            NormalizeOptionalText(row.SeoTitle, 180), NormalizeOptionalText(row.SeoDescription, 320));
     }
 
     public async Task<AdminOperationResult> SavePostAsync(
@@ -677,7 +620,7 @@ public sealed partial class SupabaseBlogService(
     private async Task<IReadOnlyList<BlogCategoryRow>> FetchCategoriesAsync(
         Uri baseUri,
         string apiKey,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         var uri = new Uri(
             baseUri,
@@ -686,7 +629,7 @@ public sealed partial class SupabaseBlogService(
             "&order=name.asc" +
             "&limit=200");
 
-        return await FetchRowsAsync<BlogCategoryRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsAsync<BlogCategoryRow>(uri, apiKey, cancellationToken, throwOnFailure);
     }
 
     private async Task<IReadOnlyList<BlogTagRow>> FetchTagsAsync(
@@ -718,7 +661,7 @@ public sealed partial class SupabaseBlogService(
         return await FetchRowsAsync<BlogPostTagRow>(uri, apiKey, cancellationToken);
     }
 
-    private async Task<IReadOnlyList<T>> FetchRowsAsync<T>(Uri uri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<T>> FetchRowsAsync<T>(Uri uri, string apiKey, CancellationToken cancellationToken, bool throwOnFailure = false)
     {
         try
         {
@@ -726,6 +669,7 @@ public sealed partial class SupabaseBlogService(
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                if (throwOnFailure) response.EnsureSuccessStatusCode();
                 if (response.StatusCode == HttpStatusCode.NotFound)
                 {
                     return Array.Empty<T>();
@@ -744,7 +688,7 @@ public sealed partial class SupabaseBlogService(
             return await JsonSerializer.DeserializeAsync<List<T>>(stream, JsonOptions, cancellationToken)
                 ?? [];
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception exception) when (!throwOnFailure && (exception is HttpRequestException or TaskCanceledException or JsonException))
         {
             _logger.LogWarning(exception, "Supabase blog fetch failed unexpectedly. uri={Uri}", uri);
             return Array.Empty<T>();
@@ -1058,6 +1002,9 @@ public sealed partial class SupabaseBlogService(
 
     private sealed class BlogPostRow
     {
+        public BlogCategoryRow? Category { get; set; }
+        public BlogTagRow[] Tags { get; set; } = [];
+
         [JsonPropertyName("post_id")]
         public Guid PostId { get; set; }
 

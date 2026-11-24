@@ -15,16 +15,16 @@
 @inject ILogger<AdminBlogPanel> Logger
 @inject IOptions<CloudflareR2Options> CloudflareR2OptionsAccessor
 
-<section class="admin-section">
+<section class="admin-section" inert="@(IsSaving || IsDeleting || changingEditor || IsUploadingMedia || IsUploadingVideo || IsLoading)">
     <div class="admin-section-head">
         <div class="admin-search">
             <input class="blog-admin-search"
                    type="search"
                    @bind="PostSearch"
-                   @bind:event="oninput"
+                   @bind:event="oninput" @bind:after="SearchPostsAsync"
                    placeholder="@T("Soek titel of slug", "Search title or slug")" />
 
-            <select class="blog-admin-filter" @bind="StatusFilter">
+            <select class="blog-admin-filter" @bind="StatusFilter" @bind:after="FilterPostsAsync">
                 <option value="all">@T("Alle statusse", "All statuses")</option>
                 <option value="draft">@T("Konsepte", "Drafts")</option>
                 <option value="published">@T("Gepubliseer", "Published")</option>
@@ -43,7 +43,7 @@
             <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn blog-admin-refresh-action-btn"
                        Variant="Variant.Outlined"
                        Color="Color.Primary"
-                       OnClick="() => ReloadAsync()"
+                       OnClick="RefreshBlogAsync"
                        aria-label='@T("Herlaai", "Refresh")'
                        title='@T("Herlaai", "Refresh")'>
                 <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
@@ -70,22 +70,29 @@
     else
     {
         <div class="blog-admin-layout">
-            <aside class="blog-admin-list">
+            <aside class="blog-admin-list" aria-busy="@(listLoading ? "true" : "false")">
                 <div class="blog-admin-list-header">
-                    <span>@FilteredPosts.Count @T("plasings", "posts")</span>
+                    <span>@PostPage.Total @T("plasings", "posts")</span>
                 </div>
 
-                @if (FilteredPosts.Count == 0)
+                @if (listLoadFailed)
+                {
+                    <div class="blog-admin-empty" role="alert">
+                        @T("Kon nie die bloglys laai nie.", "Could not load the post list.")
+                        <button type="button" @onclick="() => LoadPostPageAsync(requestedListPage)">@T("Probeer weer", "Retry")</button>
+                    </div>
+                }
+                else if (PostPage.Items.Count == 0)
                 {
                     <p class="blog-admin-empty">@T("Geen blog plasings pas by jou soektog nie.", "No blog posts match your search.")</p>
                 }
                 else
                 {
-                    @foreach (var post in FilteredPosts)
+                    @foreach (var post in PostPage.Items)
                     {
                         var isSelected = Editor?.PostId == post.PostId;
                         <button type="button"
-                                class="blog-admin-list-item @(isSelected ? "is-selected" : null)"
+                                @key="post.PostId" class="blog-admin-list-item @(isSelected ? "is-selected" : null)"
                                 @onclick="() => SelectPost(post)">
                             <span class="blog-admin-list-copy">
                                 <span class="blog-admin-list-title">@post.Title</span>
@@ -95,6 +102,14 @@
                             <span class="blog-admin-list-date">@FormatAdminDate(post.UpdatedAt)</span>
                         </button>
                     }
+                }
+                @if (!listLoadFailed && PostPage.Total > AdminBlogPostPage.PageSize)
+                {
+                    <nav class="blog-admin-pager" aria-label='@T("Blogbladsye", "Blog pages")'>
+                        <button type="button" disabled="@(listLoading || PostPage.Page == 0)" @onclick="() => LoadPostPageAsync(PostPage.Page - 1)">@T("Vorige", "Previous")</button>
+                        <span>@(PostPage.Page + 1) / @((PostPage.Total - 1) / AdminBlogPostPage.PageSize + 1)</span>
+                        <button type="button" disabled="@(listLoading || (PostPage.Page + 1) * AdminBlogPostPage.PageSize >= PostPage.Total)" @onclick="() => LoadPostPageAsync(PostPage.Page + 1)">@T("Volgende", "Next")</button>
+                    </nav>
                 }
             </aside>
 
@@ -190,7 +205,7 @@
                                     <datalist id="blog-admin-category-options">
                                         @foreach (var category in Categories)
                                         {
-                                            <option value="@category.Name"></option>
+                                            <option value="@category"></option>
                                         }
                                     </datalist>
                                 </label>
@@ -285,7 +300,7 @@
 
                             <label class="blog-admin-file-picker">
                                 <span>@T("Laai nuwe prent op", "Upload new image")</span>
-                                <InputFile OnChange="OnFeaturedImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
+                                <InputFile id="@FeaturedImageInputId" OnChange="OnFeaturedImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
                             </label>
 
                             @if (!string.IsNullOrWhiteSpace(Editor.FeaturedImageFileName))
@@ -451,7 +466,7 @@
                                 <p class="admin-feedback is-success blog-admin-media-feedback">@MediaStatusMessage</p>
                             }
 
-                            <div class="blog-admin-rich-editor-shell" @ref="_richTextEditorShell">
+                            <div class="blog-admin-rich-editor-shell" @key="_editorSession" @ref="_richTextEditorShell">
                                 <div class="blog-admin-rich-toolbar"
                                      role="toolbar"
                                      aria-label="@T("Rykteks nutsbalk", "Rich text toolbar")"
@@ -562,6 +577,7 @@
 </section>
 
 @code {
+    private const string FeaturedImageInputId = "adminblogpanel-featuredimage";
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
     private const long MaxVideoUploadBytes = 512 * 1024 * 1024;
     private const string InlineImageInputId = "blog-inline-image-input";
@@ -570,8 +586,14 @@
     [Parameter]
     public string CurrentLanguageCode { get; set; } = "af";
 
-    private IReadOnlyList<AdminBlogPostRecord> Posts { get; set; } = Array.Empty<AdminBlogPostRecord>();
-    private IReadOnlyList<BlogCategoryItem> Categories { get; set; } = Array.Empty<BlogCategoryItem>();
+    private AdminBlogPostPage PostPage { get; set; } = new([], 0, 0);
+    private EditableBlogPost? savedDraft;
+    private bool changingEditor;
+    private bool listLoading;
+    private bool listLoadFailed;
+    private int requestedListPage;
+    private CancellationTokenSource? listRequest;
+    private IReadOnlyList<string> Categories { get; set; } = [];
     private EditableBlogPost? Editor { get; set; }
     private string? SignedInEmail { get; set; }
     private string? PostSearch { get; set; }
@@ -598,6 +620,7 @@
     private IJSObjectReference? _richTextEditorModule;
     private DotNetObjectReference<AdminBlogPanel>? _dotNetReference;
     private bool _richTextEditorSyncPending = true;
+    private long _editorSession;
 
     private bool IsNewPost => Editor?.PostId is not Guid postId || postId == Guid.Empty;
 
@@ -614,32 +637,26 @@
     private MarkupString PreviewMarkup =>
         new(BlogContentRenderer.RenderHtml(Editor?.ContentMarkdown));
 
-    private IReadOnlyList<AdminBlogPostRecord> FilteredPosts =>
-        Posts
-            .Where(MatchesStatusFilter)
-            .Where(MatchesSearch)
-            .OrderByDescending(post => post.UpdatedAt)
-            .ThenByDescending(post => post.PublishedAt ?? DateTimeOffset.MinValue)
-            .ThenBy(post => post.Title, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         SignedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
                         ?? authState.User.Identity?.Name;
 
-        await ReloadAsync();
+        await RefreshBlogAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Editor is null || !_richTextEditorSyncPending)
+        if (IsLoading || Editor is null || !_richTextEditorSyncPending)
         {
             return;
         }
 
+        _richTextEditorSyncPending = false;
+        var session = _editorSession;
         var richTextEditorModule = await GetRichTextEditorModuleAsync();
+        if (session != _editorSession || Editor is null) return;
 
         _dotNetReference ??= DotNetObjectReference.Create(this);
         var renderedHtml = BlogContentRenderer.RenderHtml(Editor.ContentMarkdown);
@@ -647,72 +664,148 @@
             "syncRichTextEditor",
             _richTextEditorShell,
             _dotNetReference,
-            renderedHtml);
-
-        _richTextEditorSyncPending = false;
+            renderedHtml, session);
     }
 
     [JSInvokable]
-    public async Task OnRichTextEditorInput(string html)
+    public async Task OnRichTextEditorInput(long session, string? html, IJSStreamReference? stream)
     {
-        if (Editor is null)
+        var content = await AdminEditorContent.ReadAsync(html, stream);
+        if (session != _editorSession || Editor is null || Editor.ContentMarkdown == content)
         {
             return;
         }
 
-        Editor.ContentMarkdown = html ?? string.Empty;
+        Editor.ContentMarkdown = content;
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task ReloadAsync(Guid? selectPostId = null)
-    {
-        IsLoading = true;
-        ErrorMessage = null;
+    private Task SearchPostsAsync() => LoadPostPageAsync(0, debounce: true);
+    private Task FilterPostsAsync() => LoadPostPageAsync(0);
 
+    private async Task LoadPostPageAsync(int page, bool debounce = false)
+    {
+        listRequest?.Cancel();
+        using var request = new CancellationTokenSource();
+        listRequest = request;
+        requestedListPage = page;
+        listLoading = true;
         try
         {
-            var dashboard = await BlogAdminService.GetDashboardAsync(SignedInEmail);
-            Posts = dashboard.Posts;
-            Categories = dashboard.Categories;
-
-            var selected = selectPostId is Guid targetId && targetId != Guid.Empty
-                ? Posts.FirstOrDefault(post => post.PostId == targetId)
-                : Editor?.PostId is Guid currentId && currentId != Guid.Empty
-                    ? Posts.FirstOrDefault(post => post.PostId == currentId)
-                    : Posts.FirstOrDefault();
-
-            Editor = selected is null ? null : EditableBlogPost.From(selected);
-            ResetMediaInputs();
-            MarkRichTextEditorDirty();
+            if (debounce) await Task.Delay(250, request.Token);
+            var result = await BlogAdminService.GetPostPageAsync(SignedInEmail, PostSearch, StatusFilter, page, request.Token);
+            if (request.IsCancellationRequested) return;
+            PostPage = result;
+            listLoadFailed = false;
         }
-        catch (Exception exception)
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (Exception ex)
         {
-            Logger.LogError(exception, "Failed to load blog admin dashboard.");
-            Posts = Array.Empty<AdminBlogPostRecord>();
-            Categories = Array.Empty<BlogCategoryItem>();
-            Editor = null;
-            ErrorMessage = T("Kon nie blog plasings nou laai nie.", "Could not load blog posts right now.");
+            if (request.IsCancellationRequested) return;
+            Logger.LogWarning(ex, "Failed to load a blog list page.");
+            listLoadFailed = true;
         }
         finally
         {
+            if (listRequest == request)
+            {
+                listRequest = null;
+                listLoading = false;
+            }
+        }
+    }
+
+    private async Task RefreshBlogAsync()
+    {
+        if (changingEditor || IsSaving || IsDeleting) return;
+        changingEditor = true;
+        try
+        {
+            if (!await ConfirmDiscardAsync()) return;
+            ErrorMessage = null;
+            var categories = BlogAdminService.GetAdminCategoriesAsync(SignedInEmail);
+            await Task.WhenAll(categories, LoadPostPageAsync(PostPage.Page));
+            Categories = (await categories).Select(category => category.Name).ToArray();
+            if (listLoadFailed) return;
+            var id = Editor?.PostId ?? PostPage.Items.FirstOrDefault()?.PostId;
+            if (id.HasValue) await LoadEditorAsync(id.Value);
+            else ReplaceEditor(null);
+        }
+        catch (Exception ex)
+        {
+            ReportEditorLoadError(ex);
+        }
+        finally
+        {
+            changingEditor = false;
             IsLoading = false;
         }
     }
 
-    private void BeginCreatePost()
+    private async Task BeginCreatePost()
     {
-        ErrorMessage = null;
-        StatusMessage = null;
-        Editor = EditableBlogPost.CreateEmpty();
-        ResetMediaInputs();
-        MarkRichTextEditorDirty();
+        if (changingEditor || IsSaving || IsDeleting) return;
+        changingEditor = true;
+        try
+        {
+            if (await ConfirmDiscardAsync()) ReplaceEditor(EditableBlogPost.CreateEmpty());
+        }
+        catch (Exception ex) { ReportEditorLoadError(ex); }
+        finally { changingEditor = false; }
     }
 
-    private void SelectPost(AdminBlogPostRecord post)
+    private async Task SelectPost(AdminBlogPostListItem post)
+    {
+        if (changingEditor || IsSaving || IsDeleting || Editor?.PostId == post.PostId) return;
+        changingEditor = true;
+        try
+        {
+            if (await ConfirmDiscardAsync()) await LoadEditorAsync(post.PostId);
+        }
+        catch (Exception ex) { ReportEditorLoadError(ex); }
+        finally { changingEditor = false; }
+    }
+
+    private async Task<bool> ConfirmDiscardAsync()
+    {
+        if (Editor is null) return true;
+        if (_richTextEditorModule is not null)
+            await _richTextEditorModule.InvokeVoidAsync("flushRichTextEditor", _richTextEditorShell);
+
+        if (Editor == savedDraft && InlineImageFile is null && CloudflareVideoFile is null &&
+            string.IsNullOrWhiteSpace(InlineImageAlt) && string.IsNullOrWhiteSpace(YouTubeVideoUrl) &&
+            string.IsNullOrWhiteSpace(YouTubeVideoTitle) && string.IsNullOrWhiteSpace(CloudflareVideoUrl) && string.IsNullOrWhiteSpace(CloudflareVideoTitle))
+            return true;
+
+        return await JSRuntime.InvokeAsync<bool>("confirm",
+            T("Wil jy jou ongestoorde blogveranderings weggooi?", "Discard your unsaved blog changes?"));
+    }
+
+    private async Task LoadEditorAsync(Guid postId)
+    {
+        var detail = await BlogAdminService.GetPostAsync(SignedInEmail, postId);
+        if (detail is null)
+        {
+            ErrorMessage = T("Hierdie blogplasing bestaan nie meer nie.", "This blog post no longer exists.");
+            return;
+        }
+        ReplaceEditor(EditableBlogPost.From(detail));
+        if (detail.CategoryName is { } name && !Categories.Contains(name, StringComparer.OrdinalIgnoreCase))
+            Categories = Categories.Append(name).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private void ReportEditorLoadError(Exception ex)
+    {
+        Logger.LogWarning(ex, "Could not load the blog editor.");
+        ErrorMessage = T("Kon nie die blogredigeerder laai nie. Probeer weer.", "Could not load the blog editor. Please retry.");
+    }
+
+    private void ReplaceEditor(EditableBlogPost? editor)
     {
         ErrorMessage = null;
         StatusMessage = null;
-        Editor = EditableBlogPost.From(post);
+        Editor = editor;
+        savedDraft = editor is null ? null : editor with { };
         ResetMediaInputs();
         MarkRichTextEditorDirty();
     }
@@ -776,10 +869,14 @@
             return;
         }
 
-        Editor.FeaturedImageFile = file;
-        Editor.FeaturedImageFileName = file.Name;
-        Editor.FeaturedImagePreviewUrl = await ReadImageFileAsDataUrlAsync(file)
-            ?? ResolvePreviewImageUrl(Editor.FeaturedImageUrl);
+        var editor = Editor;
+        editor.FeaturedImageFile = file;
+        editor.FeaturedImageFileName = file.Name;
+        var preview = await AdminImagePreview.CreateAsync(JSRuntime, FeaturedImageInputId, Logger);
+        if (ReferenceEquals(editor.FeaturedImageFile, file))
+        {
+            editor.FeaturedImagePreviewUrl = preview ?? ResolvePreviewImageUrl(editor.FeaturedImageUrl);
+        }
     }
 
     private void OnInlineImageSelected(InputFileChangeEventArgs args)
@@ -1043,6 +1140,13 @@
 
         try
         {
+            var editor = Editor;
+            if (_richTextEditorModule is not null)
+            {
+                await _richTextEditorModule.InvokeVoidAsync("flushRichTextEditor", _richTextEditorShell);
+                if (!ReferenceEquals(Editor, editor)) return;
+            }
+
             var originalFeaturedImageUrl = Editor.FeaturedImageUrl;
             var effectiveSlug = BuildEffectiveSlug(Editor.Slug, Editor.Title);
             if (string.IsNullOrWhiteSpace(effectiveSlug))
@@ -1088,8 +1192,15 @@
                 return;
             }
 
+            Editor.PostId = result.EntityId ?? Editor.PostId;
+            savedDraft = Editor with { };
             await CleanupReplacedImageAssetAsync(originalFeaturedImageUrl, Editor.FeaturedImageUrl);
-            await ReloadAsync(result.EntityId);
+            try
+            {
+                if (Editor.PostId is Guid id) await LoadEditorAsync(id);
+                await LoadPostPageAsync(PostPage.Page);
+            }
+            catch (Exception ex) { ReportEditorLoadError(ex); }
             StatusMessage = T("Blog plasing suksesvol gestoor.", "Blog post saved successfully.");
         }
         catch (Exception exception)
@@ -1148,8 +1259,13 @@
                 return;
             }
 
-            Editor = null;
-            await ReloadAsync();
+            ReplaceEditor(null);
+            await LoadPostPageAsync(PostPage.Page);
+            if (!listLoadFailed && PostPage.Items.FirstOrDefault() is { } first)
+            {
+                try { await LoadEditorAsync(first.PostId); }
+                catch (Exception ex) { ReportEditorLoadError(ex); }
+            }
             StatusMessage = T("Blog plasing verwyder.", "Blog post deleted.");
         }
         catch (Exception exception)
@@ -1161,28 +1277,6 @@
         {
             IsDeleting = false;
         }
-    }
-
-    private bool MatchesStatusFilter(AdminBlogPostRecord post) =>
-        StatusFilter switch
-        {
-            "draft" => !post.IsPublished,
-            "published" => post.IsPublished && post.PublishedAt <= DateTimeOffset.UtcNow,
-            "scheduled" => post.IsPublished && post.PublishedAt > DateTimeOffset.UtcNow,
-            _ => true
-        };
-
-    private bool MatchesSearch(AdminBlogPostRecord post)
-    {
-        if (string.IsNullOrWhiteSpace(PostSearch))
-        {
-            return true;
-        }
-
-        var search = PostSearch.Trim();
-        return post.Title.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-               post.Slug.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-               (post.Summary?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
     private async Task<IJSObjectReference> GetRichTextEditorModuleAsync()
@@ -1334,24 +1428,6 @@
         return (publicPath, physicalPath);
     }
 
-    private async Task<string?> ReadImageFileAsDataUrlAsync(IBrowserFile file)
-    {
-        try
-        {
-            var normalizedContentType = NormalizeImageContentType(file);
-            await using var stream = file.OpenReadStream(MaxImageUploadBytes);
-            using var buffer = new MemoryStream();
-            await stream.CopyToAsync(buffer);
-            var base64 = Convert.ToBase64String(buffer.ToArray());
-            return $"data:{normalizedContentType};base64,{base64}";
-        }
-        catch (Exception exception) when (exception is IOException or InvalidOperationException)
-        {
-            Logger.LogDebug(exception, "Inline blog image preview generation skipped.");
-            return null;
-        }
-    }
-
     private string? TranslateServiceMessage(string? message) =>
         message switch
         {
@@ -1431,6 +1507,7 @@
 
     private void MarkRichTextEditorDirty()
     {
+        _editorSession++;
         _richTextEditorSyncPending = true;
     }
 
@@ -1518,17 +1595,18 @@
 
     public async ValueTask DisposeAsync()
     {
+        listRequest?.Cancel();
         if (_richTextEditorModule is not null)
         {
             try
             {
                 await _richTextEditorModule.InvokeVoidAsync("disposeRichTextEditor", _richTextEditorShell);
+                await _richTextEditorModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {
+                // Closing the admin page can end the circuit before cleanup reaches the browser.
             }
-
-            await _richTextEditorModule.DisposeAsync();
         }
 
         _dotNetReference?.Dispose();
@@ -1618,7 +1696,7 @@
         return StoryItem.RewriteImagePathForBrowser(normalizedPath);
     }
 
-    private sealed class EditableBlogPost
+    private sealed record EditableBlogPost
     {
         public Guid? PostId { get; set; }
         public string Title { get; set; } = string.Empty;
