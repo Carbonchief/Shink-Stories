@@ -42,7 +42,9 @@
     <Compile Include="..\Shink.Mobile\Navigation\MobileNotificationNavigation.cs" Link="Mobile\MobileNotificationNavigation.cs" />
     <Compile Include="..\Shink.Mobile\Navigation\MobilePushOpen.cs" Link="Mobile\MobilePushOpen.cs" />
     <Compile Include="..\Shink.Mobile\Services\MobilePushInstallation.cs" Link="Mobile\MobilePushInstallation.cs" />
+    <Compile Include="..\Shink.Mobile\Services\MobilePushPermissionOnboarding.cs" Link="Mobile\MobilePushPermissionOnboarding.cs" />
     <Compile Include="..\Shink.Mobile\Services\OfflineDownloadAccessPolicy.cs" Link="Mobile\OfflineDownloadAccessPolicy.cs" />
+    <Compile Include="..\Shink.Mobile\Services\PlaylistPlaybackState.cs" Link="Mobile\PlaylistPlaybackState.cs" />
   </ItemGroup>
 
 </Project>

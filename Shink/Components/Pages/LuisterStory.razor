@@ -1,5 +1,6 @@
 @page "/luister/{Slug}"
 @rendermode InteractiveServer
+@inherits PrerenderedPage
 @using System.Globalization
 @using System.Text.Json
 @using System.Security.Claims
@@ -741,8 +742,6 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        TryRestorePersistedStoryState();
-        IsStoryLoading = CurrentStory is null;
         var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(HttpContextAccessor.HttpContext);
         ShowStoryAccessPopup = false;
         ShowStoryTestModal = false;
@@ -754,10 +753,12 @@ else
             ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
             : null;
 
-        var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
-        var currentStoryTask = StoryCatalogService.FindLuisterBySlugAsync(Slug);
-        var charactersTask = TryLoadPublishedCharactersAsync();
-        var unlockProgressTask = TryLoadCharacterUnlockProgressAsync(SignedInEmail);
+        var restored = TryRestorePersistedStoryState();
+        IsStoryLoading = CurrentStory is null;
+        var luisterStoriesTask = ReadPageDataAsync("stories", null, () => StoryCatalogService.GetLuisterStoriesAsync());
+        var currentStoryTask = restored ? Task.FromResult(CurrentStory) : StoryCatalogService.FindLuisterBySlugAsync(Slug);
+        var charactersTask = ReadPageDataAsync("characters", null, TryLoadPublishedCharactersAsync);
+        var unlockProgressTask = ReadPageDataAsync("unlocks", SignedInEmail, () => TryLoadCharacterUnlockProgressAsync(SignedInEmail));
         await Task.WhenAll(luisterStoriesTask, currentStoryTask, charactersTask, unlockProgressTask);
 
         LuisterStories = luisterStoriesTask.Result;
@@ -806,7 +807,10 @@ else
             return;
         }
 
-        _ = LoadFavoriteStorySlugsInBackgroundAsync();
+        if (RendererInfo.IsInteractive)
+        {
+            _ = LoadFavoriteStorySlugsInBackgroundAsync();
+        }
         AudioUrl = CurrentStory is not null && !IsVideoStory(CurrentStory)
             ? AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug)
             : null;
@@ -819,11 +823,11 @@ else
         IsStoryLoading = false;
     }
 
-    private void TryRestorePersistedStoryState()
+    private bool TryRestorePersistedStoryState()
     {
         if (_hasAttemptedPersistedStateRestore)
         {
-            return;
+            return false;
         }
 
         _hasAttemptedPersistedStateRestore = true;
@@ -831,9 +835,10 @@ else
         if (string.IsNullOrWhiteSpace(stateKey) ||
             !PersistentComponentState.TryTakeFromJson<PersistedLuisterStoryState>(stateKey, out var state) ||
             state is null ||
-            state.CurrentStory is null)
+            state.CurrentStory is null ||
+            !string.Equals(state.Account, SignedInEmail, StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            return false;
         }
 
         CurrentStory = state.CurrentStory;
@@ -847,6 +852,7 @@ else
             : state.PendingLockedStoryPath;
         ShowStoryAccessPopup = state.ShowStoryAccessPopup;
         IsStoryLoading = false;
+        return true;
     }
 
     private Task PersistStoryState()
@@ -860,6 +866,7 @@ else
         PersistentComponentState.PersistAsJson(
             stateKey,
             new PersistedLuisterStoryState(
+                SignedInEmail,
                 CurrentStory,
                 AudioUrl,
                 VideoUrl,
@@ -1359,6 +1366,7 @@ else
     }
 
     private sealed record PersistedLuisterStoryState(
+        string? Account,
         StoryItem CurrentStory,
         string? AudioUrl,
         string? VideoUrl,

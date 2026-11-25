@@ -18,7 +18,8 @@ public sealed class ContinueListeningState
         string? playlistSlug,
         string? playlistTitle,
         decimal? positionSeconds = null,
-        decimal? durationSeconds = null)
+        decimal? durationSeconds = null,
+        bool autoplayEnabled = false)
     {
         if (string.IsNullOrWhiteSpace(story.Slug))
         {
@@ -45,7 +46,8 @@ public sealed class ContinueListeningState
             NormalizeSeconds(positionSeconds),
             playlistSlug,
             playlistTitle,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            autoplayEnabled);
 
         SaveItem(item);
     }
@@ -68,6 +70,16 @@ public sealed class ContinueListeningState
                 UpdatedAtUtc = DateTimeOffset.UtcNow
             },
             notifyChanged: false);
+    }
+
+    public void UpdateAutoplay(MobileStorySummary story, bool enabled)
+    {
+        if (_current is { } current && current.AutoplayEnabled != enabled &&
+            string.Equals(current.Slug, story.Slug, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(current.Source, story.Source, StringComparison.OrdinalIgnoreCase))
+        {
+            SaveItem(current with { AutoplayEnabled = enabled }, notifyChanged: false);
+        }
     }
 
     public void Clear()
@@ -128,4 +140,5 @@ public sealed record ContinueListeningItem(
     decimal? PositionSeconds,
     string? PlaylistSlug,
     string? PlaylistTitle,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    bool AutoplayEnabled = false);

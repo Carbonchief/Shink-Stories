@@ -14,7 +14,7 @@ public sealed class MobileOfflinePlaybackSourceTests
             start.IndexOf("ResolvePlayableAudioAsync", StringComparison.Ordinal));
         StringAssert.Contains(start, "if (string.IsNullOrWhiteSpace(playbackUrl))");
         var session = Read("Services/StoryPlaybackSession.cs");
-        StringAssert.Contains(session, "!_playlistPlaybackState.IsOfflineQueue && string.IsNullOrWhiteSpace(localAudio)");
+        StringAssert.Contains(session, "!current.PlaybackQueue.IsOfflineQueue && string.IsNullOrWhiteSpace(localAudio)");
         StringAssert.Contains(session, "GetStoryAsync(nextStory.Slug, nextStory.Source, cancellationToken)");
     }
 

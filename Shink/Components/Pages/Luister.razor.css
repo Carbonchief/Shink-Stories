@@ -924,3 +924,7 @@ h1 {
         grid-auto-columns: minmax(146px, 44vw);
     }
 }
+
+.luister-search-loader[hidden] {
+    display: none;
+}

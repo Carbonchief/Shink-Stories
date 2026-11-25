@@ -150,6 +150,7 @@ public sealed class LuisterPlaylistRouteTests
         var page = new LuisterPlaylist();
         using var services = new ServiceCollection()
             .AddLogging()
+            .AddMemoryCache()
             .AddSingleton<NavigationManager>(new TestNavigationManager(path))
             .AddSingleton<AuthenticationStateProvider>(new TestAuthenticationProvider(fixture.SignedIn))
             .AddSingleton<IHttpContextAccessor>(new HttpContextAccessor { HttpContext = new DefaultHttpContext() })

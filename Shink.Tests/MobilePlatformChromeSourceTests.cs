@@ -80,8 +80,9 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(palette, "BarSurfaceTint = Color.FromArgb(\"#10FFFEFA\")");
         StringAssert.Contains(palette, "BarFeatherSoftTint = Color.FromArgb(\"#02FFFEFA\")");
         StringAssert.Contains(palette, "BarFeatherMidTint = Color.FromArgb(\"#08FFFEFA\")");
-        StringAssert.Contains(palette, "BarNativeBlurTint = Color.FromArgb(\"#14005E68\")");
-        StringAssert.Contains(palette, "TopBarNativeBlurTint = Color.FromArgb(\"#14005E68\")");
+        StringAssert.Contains(palette, "BarNativeBlurTint = Color.FromArgb(\"#005E68\").WithAlpha(BarTintOpacity)");
+        StringAssert.Contains(palette, "TopBarNativeBlurTint = BarNativeBlurTint");
+        StringAssert.Contains(palette.ReplaceLineEndings("\n"), "#if IOS\n    private const float BarTintOpacity = 0.50f;");
         StringAssert.Contains(palette, "PrimaryIcon = Colors.White");
         StringAssert.Contains(source, "MobileLiquidGlass.ApplyBottomBar(");
         StringAssert.Contains(source, "SafeAreaEdges = SafeAreaEdges.None,");
@@ -206,10 +207,14 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(source, "AndroidBarGlassView");
         StringAssert.Contains(source, ": Android.Views.View(context)");
         StringAssert.Contains(source, "private void CaptureBackdrop()");
-        StringAssert.Contains(source, "OperatingSystem.IsAndroidVersionAtLeast(31)");
+        StringAssert.Contains(source, "if (OperatingSystem.IsAndroidVersionAtLeast(31) && IsHardwareAccelerated)");
+        Assert.DoesNotContain("!OperatingSystem.IsAndroidVersionAtLeast(31)", source, StringComparison.Ordinal,
+            "Older devices must observe scrolls and reach the bitmap capture path.");
         StringAssert.Contains(source, "canvas.DrawRect(0, 0, Width, Height, _fallbackPaint)");
         StringAssert.Contains(source, "recording.DrawRenderNode(_backdropNode)");
-        Assert.DoesNotContain("Android.Graphics.Bitmap", source, StringComparison.Ordinal);
+        StringAssert.Contains(source, "CaptureBitmapBackdrop(source,");
+        StringAssert.Contains(source, "_bitmapBackdrop.Draw(canvas, Width, Height)");
+        StringAssert.Contains(source, "_bitmapBackdrop.FinishCapture(_tintPaint, _bitmapFade!)");
         StringAssert.Contains(source, "Alpha = NativeBarBlurOpacity");
         StringAssert.Contains(source, "AttachAndroid(view, tint, fadeFromTop: false)");
         StringAssert.Contains(source, "AttachAndroid(view, tint, fadeFromTop: true)");
@@ -225,7 +230,7 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(source, "var source = FindLiveBackdropSource() ?? glassHost");
         StringAssert.Contains(source, "candidate.FindViewWithTag(AndroidGlassViewTag) is null");
         StringAssert.Contains(source, "canvas.DrawRenderNode(surface)");
-        StringAssert.Contains(source, "DrawBackdropContent(recording, source)");
+        StringAssert.Contains(source, "DrawBackdropContent(canvas, source)");
         StringAssert.Contains(source, "DrawUnderlaySiblings(canvas, ancestor,");
         StringAssert.Contains(source, "_rootLocation[0] - source.ScrollX, _rootLocation[1] - source.ScrollY");
         StringAssert.Contains(source, "_liveBackdropSource.GetGlobalVisibleRect(_sourceVisibleBounds)");
@@ -233,8 +238,7 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(source, "ScheduleBackdropCapture(650)");
         StringAssert.Contains(source, "Invalidate();");
         StringAssert.Contains(chrome, "BarSurfaceTint = Color.FromArgb(\"#10FFFEFA\")");
-        StringAssert.Contains(chrome, "BarNativeBlurTint = Color.FromArgb(\"#14005E68\")");
-        StringAssert.Contains(chrome, "TopBarNativeBlurTint = Color.FromArgb(\"#14005E68\")");
+        StringAssert.Contains(chrome.ReplaceLineEndings("\n"), "#else\n    private const float BarTintOpacity = 20f / 255f;");
     }
 
     [TestMethod]

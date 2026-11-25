@@ -14,21 +14,25 @@ internal enum MobileAndroidIcon
 
 internal static class MobileAndroidChromePalette
 {
-    // Match the website home navbar: a 3%-to-6% warm-white surface over the
-    // same colour-preserving live blur on iOS and Android.
+    // The feather fades the warm-white surface into the page artwork.
     public static readonly Color BarSurfaceTint = Color.FromArgb("#10FFFEFA");
     public static readonly Color BarFeatherSoftTint = Color.FromArgb("#02FFFEFA");
     public static readonly Color BarFeatherMidTint = Color.FromArgb("#08FFFEFA");
-    // A clearer low-opacity teal wash offsets the material's neutral-grey cast
-    // without hiding the artwork or turning the bar into a solid colour.
-    public static readonly Color BarNativeBlurTint = Color.FromArgb("#14005E68");
+    // UIKit's light blur brightens the artwork, so it needs more of the
+    // shared teal to match Android's toolbar over the same background.
+#if IOS
+    private const float BarTintOpacity = 0.50f;
+#else
+    private const float BarTintOpacity = 20f / 255f;
+#endif
+    public static readonly Color BarNativeBlurTint = Color.FromArgb("#005E68").WithAlpha(BarTintOpacity);
     public static readonly Color PrimaryIcon = Colors.White;
     public static readonly Color SecondaryIcon = Colors.White;
     public static readonly Color SelectedBackground = Colors.Transparent;
     public static readonly Color TopBarBackground = Colors.Transparent;
     public static readonly Color TopBarSurfaceStartTint = Color.FromArgb("#08FFFEFA");
     public static readonly Color TopBarSurfaceEndTint = Color.FromArgb("#10FFFEFA");
-    public static readonly Color TopBarNativeBlurTint = Color.FromArgb("#14005E68");
+    public static readonly Color TopBarNativeBlurTint = BarNativeBlurTint;
     public static readonly Color TopBarIcon = Colors.White;
     public static readonly Color ProfileBackground = Color.FromArgb("#4D7FBE");
 }

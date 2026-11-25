@@ -484,17 +484,17 @@
     private bool IsFreeSignup =>
         SelectedPlan is null &&
         !IsSchoolOptionsSignupFlow &&
-        string.IsNullOrWhiteSpace(SignUpForm.DiscountCode) &&
-        string.IsNullOrWhiteSpace(DiscountCode);
+        string.IsNullOrWhiteSpace(SignUpForm.DiscountCode);
     private string GoogleSignInHref => BuildSocialSignInHref("google");
     private string AppleSignInHref => BuildSocialSignInHref("apple");
     private string EmailSignupHref => NavigationManager.GetUriWithQueryParameter("method", "email");
-    private string SignupChoicesHref => ResolveSelectedPlan() is null
+    private string SignupChoicesHref => ResolveSelectedPlan() is null && string.IsNullOrWhiteSpace(DiscountCode)
         ? NavigationManager.GetUriWithQueryParameter("method", (string?)null)
         : NavigationManager.GetUriWithQueryParameters(new Dictionary<string, object?>
         {
             ["method"] = null,
             ["plan"] = null,
+            ["discountCode"] = null,
             ["returnUrl"] = GetSafeNonCheckoutReturnUrl()
         });
 
@@ -515,9 +515,10 @@
         SelectedPlan = ResolveSelectedPlan();
         IsSchoolOptionsSignupFlow = IsSchoolOptionsSource(Source) || SelectedPlan?.IsSchoolPlan == true;
         IsEmailSignupSelected = string.Equals(SignupMethod, "email", StringComparison.Ordinal);
-        var linkDiscount = string.IsNullOrWhiteSpace(DiscountCode)
+        var requestedCode = DiscountCode ?? CheckoutQueryValue(GetSafeReturnUrl(ReturnUrl), "discountCode");
+        var linkDiscount = string.IsNullOrWhiteSpace(requestedCode)
             ? null
-            : new SignupDiscountPreviewRequest(DiscountCode.Trim(), SelectedPlan?.TierCode);
+            : new SignupDiscountPreviewRequest(requestedCode.Trim(), SelectedPlan?.TierCode);
         if (linkDiscount != _lastLinkDiscount)
         {
             _lastLinkDiscount = linkDiscount;
@@ -605,7 +606,8 @@
                 SelectedTierCode: SelectedPlan?.TierCode,
                 DiscountCode: SignUpForm.DiscountCode.Trim(),
                 MarketingConsent: !IsSchoolOptionsSignupFlow && SelectedPlan is null && SignUpForm.MarketingConsent,
-                ReferralCode: SignUpForm.ReferralCode.Trim());
+                ReferralCode: SignUpForm.ReferralCode.Trim(),
+                ReturnUrl: ResolveRequestedReturnPath());
 
             var response = await authModule.InvokeAsync<AuthBrowserResponse>("postAuthJson", "/api/auth/signup", payload);
             if (response.Ok)
@@ -613,7 +615,7 @@
                 SignUpSucceeded = true;
                 StatusMessage = response.Message ?? "Welkom! Jou rekening is geskep en jy is nou ingeteken.";
                 ResetForm();
-                await RedirectToTargetAsync(GetRedirectTarget(response.RedirectPath, response.CodeApplied));
+                await RedirectToTargetAsync(GetSafeReturnUrl(response.RedirectPath) ?? "/luister");
                 return;
             }
 
@@ -744,7 +746,7 @@
     {
         SelectedPlan = null;
         IsEmailSignupSelected = true;
-        ClearDiscountPreview();
+        RemoveDiscountCode();
     }
 
     private async Task PreviewDiscountCodeAsync()
@@ -816,30 +818,6 @@
         }
 
         return Task.FromResult("/luister");
-    }
-
-    private string GetRedirectTarget(string? apiRedirectPath = null, bool codeApplied = false)
-    {
-        var apiTarget = GetAvatarContinuation(apiRedirectPath);
-        var serverChoseCheckout = apiTarget?.StartsWith("/betaal/", StringComparison.OrdinalIgnoreCase) == true;
-        return ProfileAvatarCatalog.SelectionPath(
-            (codeApplied || serverChoseCheckout ? apiTarget : null)
-            ?? GetSelectedPlanCheckoutPath()
-            ?? GetSafeNonCheckoutReturnUrl()
-            ?? apiTarget
-            ?? "/luister");
-    }
-
-    private static string? GetAvatarContinuation(string? redirectPath)
-    {
-        var safePath = GetSafePostAuthPath(redirectPath);
-        if (safePath is null || !safePath.StartsWith(ProfileAvatarCatalog.PagePath + "?", StringComparison.Ordinal))
-        {
-            return safePath;
-        }
-
-        var query = QueryHelpers.ParseQuery(safePath[safePath.IndexOf('?')..]);
-        return ProfileAvatarCatalog.SafeReturnPath(query["returnUrl"]);
     }
 
     private async Task RedirectToTargetAsync(string target)
@@ -928,25 +906,6 @@
         return normalizedReturnUrl;
     }
 
-    private static string? GetSafePostAuthPath(string? path)
-    {
-        var normalizedPath = NormalizeReturnUrl(path);
-        if (string.IsNullOrWhiteSpace(normalizedPath))
-        {
-            return null;
-        }
-
-        if (!normalizedPath.StartsWith("/", StringComparison.Ordinal) ||
-            normalizedPath.StartsWith("//", StringComparison.Ordinal) ||
-            normalizedPath.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        return normalizedPath;
-    }
-
     private string? GetSafeNonCheckoutReturnUrl()
     {
         var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
@@ -996,44 +955,20 @@
     private string? ResolveRequestedReturnPath()
     {
         var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
-        if (string.IsNullOrWhiteSpace(safeReturnUrl))
+        return safeReturnUrl?.StartsWith("/betaal/", StringComparison.OrdinalIgnoreCase) == true
+            ? GetSafeReturnUrl(CheckoutQueryValue(safeReturnUrl, "returnUrl"))
+            : safeReturnUrl;
+    }
+
+    private static string? CheckoutQueryValue(string? checkoutPath, string key)
+    {
+        if (checkoutPath?.StartsWith("/betaal/", StringComparison.OrdinalIgnoreCase) != true)
         {
             return null;
         }
 
-        if (TryExtractNestedReturnUrl(safeReturnUrl, out var nestedReturnUrl))
-        {
-            return nestedReturnUrl;
-        }
-
-        return safeReturnUrl.StartsWith("/betaal/", StringComparison.OrdinalIgnoreCase)
-            ? null
-            : safeReturnUrl;
-    }
-
-    private static bool TryExtractNestedReturnUrl(string safeReturnUrl, out string? nestedReturnUrl)
-    {
-        nestedReturnUrl = null;
-        if (string.IsNullOrWhiteSpace(safeReturnUrl) ||
-            !safeReturnUrl.StartsWith("/betaal/", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var queryIndex = safeReturnUrl.IndexOf('?');
-        if (queryIndex < 0 || queryIndex == safeReturnUrl.Length - 1)
-        {
-            return false;
-        }
-
-        var queryValues = QueryHelpers.ParseQuery(safeReturnUrl[(queryIndex + 1)..]);
-        if (!queryValues.TryGetValue("returnUrl", out var returnUrlValues))
-        {
-            return false;
-        }
-
-        nestedReturnUrl = GetSafeReturnUrl(returnUrlValues.LastOrDefault());
-        return !string.IsNullOrWhiteSpace(nestedReturnUrl);
+        var queryIndex = checkoutPath.IndexOf('?');
+        return queryIndex < 0 ? null : QueryHelpers.ParseQuery(checkoutPath[queryIndex..]).GetValueOrDefault(key).LastOrDefault();
     }
 
     private static string BuildSignInHref(string? safeReturnUrl, string? selectedPlanCheckoutPath)
@@ -1274,7 +1209,8 @@
         string? SelectedTierCode,
         string? DiscountCode,
         bool MarketingConsent,
-        string? ReferralCode);
+        string? ReferralCode,
+        string? ReturnUrl);
 
     private sealed record SignupDiscountPreviewRequest(
         string? DiscountCode,
@@ -1295,7 +1231,7 @@
         decimal? DiscountedAmountZar = null,
         string? DurationDescription = null);
 
-    private sealed record AuthBrowserResponse(bool Ok, int Status, string? Message, string? RedirectPath, bool CodeApplied);
+    private sealed record AuthBrowserResponse(bool Ok, int Status, string? Message, string? RedirectPath);
 
     private sealed class SignUpFormModel
     {

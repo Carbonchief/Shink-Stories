@@ -1,6 +1,17 @@
 (function () {
     "use strict";
 
+    // The layout survives the replacement of the prerendered Luister component.
+    function rememberPendingSearch(input) {
+        if (input && input.id === "luister-search" && !input.hasAttribute("data-search-ready")) {
+            var main = document.getElementById("main-content");
+            if (main) main.dataset.pendingLuisterSearch = input.value;
+        }
+    }
+    document.addEventListener("input", function (event) { rememberPendingSearch(event.target); });
+    var initialSearch = document.getElementById("luister-search");
+    if (initialSearch && initialSearch.value) rememberPendingSearch(initialSearch);
+
     schedulePostHogInitialization();
     initializeBrowserShell();
 
@@ -223,14 +234,23 @@
                 ? "/_framework/bit.blazor.web.es2019.js?v=20260409-2"
                 : "/_framework/blazor.web.js?v=20260409-2";
 
-            loadScript("_content/MudBlazor/MudBlazor.min.js")
-                .then(function () {
-                    return loadScript(blazorRuntimeSource, { autostart: false });
-                })
+            var adminControls;
+            window.schinkLoadAdminControls = function () {
+                if (!adminControls) {
+                    adminControls = loadScript("_content/MudBlazor/MudBlazor.min.js").catch(function (error) {
+                        adminControls = null;
+                        throw error;
+                    });
+                }
+                return adminControls;
+            };
+
+            loadScript(blazorRuntimeSource, { autostart: false })
                 .then(function () {
                     return startBlazorRuntime();
                 })
                 .then(function () {
+                    window.dispatchEvent(new Event("schink:blazor-ready"));
                     finishSupportCheck();
                 })
                 .catch(function (scriptError) {

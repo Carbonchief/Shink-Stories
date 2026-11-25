@@ -2,7 +2,7 @@
 
 New `subscriber_notifications` rows automatically enqueue pushes for that same subscriber's registered phones. The existing story, character unlock, blog and resource publishing workflows remain the source of notification copy, audience and deduplication. There is no separate mobile audience or send action. Existing inbox rows are not replayed when a phone opts in.
 
-Users enable push through **Kennisgewings → Skakel selfoonkennisgewings aan** or **Instellings → Kennisgewings → Selfoonkennisgewings**. Permission is requested only after this action. Settings also supports disabling push and opening the phone's notification settings. Stories and characters open in the app; blogs and resources open on the Schink website. Unknown notification types open the inbox.
+A push-enabled app asks once per installation after successful mobile signup or sign-in with email, Google or Apple. Guests and ordinary session refreshes do not trigger a prompt. On phones where the OS already allows notifications, Schink asks for opt-in in Afrikaans. The first choice and any choice made in older app versions are preserved across later sign-ins. Users can change it through **Kennisgewings → Skakel selfoonkennisgewings aan** or **Instellings → Kennisgewings → Selfoonkennisgewings**. Stories and characters open in the app; blogs and resources open on the Schink website. Unknown notification types open the inbox.
 
 ## Activation (requires approval)
 
@@ -51,7 +51,7 @@ Register Android package `com.schink.stories.mobile` in the intended Firebase pr
 
 Set `SchinkPushEnabled=true` for the existing Android build scripts. `SchinkFirebaseConfig` optionally selects a different local configuration path. Push-enabled Android builds fail clearly if the configuration file is missing. Firebase client configuration is bundled; server service account credentials must never be bundled. The package is pinned to `Xamarin.Firebase.Messaging` 124.1.2 because the Firebase 25 series raises Android's minimum API to 23, while demo APKs must retain API 21. Launcher icons and package identity are unchanged.
 
-Android 13+ requests notification permission. On Android 8+, new installs create the **Schink-kennisgewings** channel at high importance for heads-up banners. Android keeps the channel settings on upgrade. To enable banners for an existing install, open **Instellings → Kennisgewings → Selfoonkennisgewings → Selfoon se instellings** and enable the channel’s pop-up option. The Android setting name varies by phone. FCM requires working Google Play services; devices without those services retain the in-app inbox but do not receive this FCM delivery. Huawei-specific HMS delivery is not implemented.
+Android 13+ requests notification permission. On Android 8+, new installs create the **Schink-kennisgewings** channel at high importance for heads-up banners. After opt-in, Schink offers a one-time shortcut to review the phone’s pop-up setting. The user can open it or skip it. Android keeps the channel settings on upgrade. To enable banners for an existing install, open **Instellings → Kennisgewings → Selfoonkennisgewings → Selfoon se instellings** and enable the channel’s pop-up option. The Android setting name varies by phone. FCM requires working Google Play services; devices without those services retain the in-app inbox but do not receive this FCM delivery. Huawei-specific HMS delivery is not implemented.
 
 ## Story and character artwork
 

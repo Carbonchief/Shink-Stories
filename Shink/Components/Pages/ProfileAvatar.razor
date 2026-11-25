@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | Kies jou profielprentjie</PageTitle>
 <HeadContent>
@@ -64,12 +65,18 @@
     private string? SelectedAvatarId { get; set; }
     private bool IsEditing => string.Equals(Mode, "edit", StringComparison.Ordinal);
     private string ContinuePath => ProfileAvatarCatalog.ContinueAfterSelection(ReturnUrl, IsEditing);
-    private string ContinueLabel => IsEditing ? "Save" :
-        ContinuePath == "/luister" ? "Begin luister" : "Gaan voort na betaling";
+    private string ContinueLabel => IsEditing ? "Save" : ContinuePath == "/skool-admin" ? "Gaan voort" : "Begin luister";
     private string SignInPath => "/teken-in?returnUrl=" + Uri.EscapeDataString(ProfileAvatarCatalog.SelectionPath(ContinuePath, IsEditing));
 
     protected override async Task OnParametersSetAsync()
     {
+        // Previously issued signup links put checkout behind the picker.
+        if (!IsEditing && ProfileAvatarCatalog.SignupCheckoutPath(ReturnUrl) is { } checkout)
+        {
+            NavigationManager.NavigateTo(checkout, forceLoad: true);
+            return;
+        }
+
         var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         IsSignedIn = auth.User.Identity?.IsAuthenticated == true;
         if (!IsSignedIn)

@@ -38,7 +38,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
     private readonly StoryPlaybackSession _storyPlaybackSession;
-    private readonly PlaylistPlaybackState _playlistPlaybackState;
+    private PlaylistPlaybackState _playlistPlaybackState;
     private readonly IOfflineStoryDownloadService _offlineDownloadService;
     private readonly ObservableCollection<PlaylistTrackItem> _tracks = [];
     private readonly CollectionView _trackList;
@@ -116,6 +116,8 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     {
         if (query.TryGetValue("playlist", out var value) && value is MobilePlaylist playlist)
         {
+            if (query.TryGetValue("playbackQueue", out var queue) && queue is PlaylistPlaybackState playbackQueue)
+                _playlistPlaybackState = playbackQueue;
             SetPlaylist(playlist);
             _accessRefresh.MarkRefreshed(_sessionState.Current);
         }
@@ -521,7 +523,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         {
             _playlistPlaybackState.SetShuffle(!_playlistPlaybackState.IsShuffleEnabled, _currentStory);
             TrackPlaylistEvent("mobile_playlist_shuffle_changed");
-            _storyPlaybackSession.RefreshAutoplayPreparation();
+            _storyPlaybackSession.RefreshAutoplayPreparation(_playlistPlaybackState);
             RebuildHeader();
         };
 
@@ -532,7 +534,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
             _playlistPlaybackState.SetAutoplay(!_playlistPlaybackState.IsAutoplayEnabled);
             TrackPlaylistEvent("mobile_playlist_autoplay_changed");
             _playlistPlaybackState.TrackManualStorySelection(_currentStory);
-            _storyPlaybackSession.RefreshAutoplayPreparation();
+            _storyPlaybackSession.RefreshAutoplayPreparation(_playlistPlaybackState);
             RebuildHeader();
         };
 
@@ -918,7 +920,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
             return;
         }
 
-        if (_storyPlaybackSession.IsCurrentStory(_currentStory) && _storyPlaybackSession.IsPlaying)
+        if (IsCurrentStoryPlaying())
         {
             _storyPlaybackSession.Pause();
             StopProgressTimer();
@@ -977,7 +979,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         }
         try
         {
-            if (_storyPlaybackSession.IsCurrentStory(detail.Story))
+            if (_storyPlaybackSession.IsCurrentStory(detail.Story, _playlistPlaybackState))
             {
                 await _storyPlaybackSession.ResumeAsync();
                 StartProgressTimer();
@@ -1000,7 +1002,8 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
                 _playlist?.Slug,
                 _playlist?.Title,
                 detail.Story.DurationSeconds,
-                originPlaylist: _playlist);
+                originPlaylist: _playlist,
+                playbackQueue: _playlistPlaybackState);
             StartProgressTimer();
             UpdatePlaybackButton();
         }
@@ -1118,7 +1121,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     private void OnPlaybackEnded(object? sender, EventArgs args) =>
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            if (!_storyPlaybackSession.IsCurrentStory(_currentStory))
+            if (!_storyPlaybackSession.IsCurrentStory(_currentStory, _playlistPlaybackState))
             {
                 return;
             }
@@ -1132,6 +1135,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         MainThread.BeginInvokeOnMainThread(() =>
         {
             if (!_isPageActive ||
+                !ReferenceEquals(_storyPlaybackSession.Current?.PlaybackQueue, _playlistPlaybackState) ||
                 _playlist is null ||
                 !string.Equals(_playlist.Slug, args.Playlist.Slug, StringComparison.OrdinalIgnoreCase))
             {
@@ -1175,7 +1179,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
     private void UpdateProgressState()
     {
-        var isCurrentStory = _storyPlaybackSession.IsCurrentStory(_currentStory);
+        var isCurrentStory = _storyPlaybackSession.IsCurrentStory(_currentStory, _playlistPlaybackState);
         var position = isCurrentStory ? _storyPlaybackSession.CurrentPosition : TimeSpan.Zero;
         var duration = (isCurrentStory ? _storyPlaybackSession.Duration : null) ??
             (_currentStory?.DurationSeconds is > 0 ? TimeSpan.FromSeconds((double)_currentStory.DurationSeconds.Value) : null);
@@ -1268,7 +1272,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     private async Task SeekToProgressValueAsync(double value)
     {
         var duration = ResolvePlaybackDuration();
-        if (!_storyPlaybackSession.IsCurrentStory(_currentStory) ||
+        if (!_storyPlaybackSession.IsCurrentStory(_currentStory, _playlistPlaybackState) ||
             duration is not { TotalSeconds: > 0 })
         {
             return;
@@ -1287,7 +1291,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     }
 
     private bool IsCurrentStoryPlaying() =>
-        _storyPlaybackSession.IsCurrentStory(_currentStory) && _storyPlaybackSession.IsPlaying;
+        _storyPlaybackSession.IsCurrentStory(_currentStory, _playlistPlaybackState) && _storyPlaybackSession.IsPlaying;
 
     private bool HasPreviousStory() => ResolveRelativeStory(-1) is not null;
 
@@ -1307,7 +1311,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     }
 
     private bool ShouldAutoplaySelection() =>
-        _storyPlaybackSession.IsPlaying || _playlistPlaybackState.IsAutoplayEnabled;
+        IsCurrentStoryPlaying() || _playlistPlaybackState.IsAutoplayEnabled;
 
     private void CyclePlaybackSpeed()
     {
@@ -1326,7 +1330,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         };
         _playlistPlaybackState.SetAutoplayLimit(next, _currentStory);
         TrackPlaylistEvent("mobile_playlist_limit_changed");
-        _storyPlaybackSession.RefreshAutoplayPreparation();
+        _storyPlaybackSession.RefreshAutoplayPreparation(_playlistPlaybackState);
     }
 
     private string FormatAutoplayLimitDescription() =>

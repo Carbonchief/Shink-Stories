@@ -35,6 +35,10 @@
     {
         <meta http-equiv="refresh" content="@($"5;url={PaymentSuccessAutoRedirectPath}")" />
     }
+    else if (IsSignupPaymentReturn && IsUserAuthenticated)
+    {
+        <meta http-equiv="refresh" content="5" />
+    }
     <JsonLdScript Json="@OpsiesJsonLd" />
 </HeadContent>
 
@@ -47,7 +51,17 @@
              decoding="async" />
     </div>
 
-    @if (string.Equals(PaymentStatus, "sukses", StringComparison.OrdinalIgnoreCase))
+    @if (IsSignupPaymentReturn)
+    {
+        <p class="opsies-payment-status" role="status" aria-live="polite">
+            Ons wag vir bevestiging van jou betaling.
+            @if (!IsUserAuthenticated)
+            {
+                <a href="@PaystackRecoverySignInHref">Teken in om voort te gaan</a>
+            }
+        </p>
+    }
+    else if (IsPaymentSuccess)
     {
         <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">
             Dankie! Jou betaling is ontvang. Ons neem jou oor 5 sekondes na die luisterblad.
@@ -664,7 +678,12 @@
 
     private string OpsiesCanonicalUrl => NavigationManager.ToAbsoluteUri("/opsies").ToString();
     private bool IsPaymentSuccess => string.Equals(PaymentStatus, "sukses", StringComparison.OrdinalIgnoreCase);
-    private string? PaymentSuccessAutoRedirectPath => IsPaymentSuccess
+    private string? SignupPickerDestination =>
+        IsPaymentSuccess || string.Equals(PaymentStatus, "verwerk", StringComparison.OrdinalIgnoreCase)
+            ? ProfileAvatarCatalog.OnboardingReturnPath(ReturnUrl)
+            : null;
+    private bool IsSignupPaymentReturn => SignupPickerDestination is not null;
+    private string? PaymentSuccessAutoRedirectPath => IsPaymentSuccess && !IsSignupPaymentReturn
         ? GetSafeReturnUrl(ReturnUrl) ?? "/luister"
         : null;
     private bool CanContinueUpgrade => !SubscriptionCheckoutTransitionKinds.BlocksCheckout(UpgradeTransitionKind);
@@ -841,6 +860,17 @@
 
         var userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
                         ?? authState.User.Identity?.Name;
+
+        // The browser can return while the payment notification is still being processed.
+        if (SignupPickerDestination is { } destination)
+        {
+            if (PaymentPlanCatalog.FindBySlug(Plan) is { IsAdminOnly: false } plan &&
+                await SubscriptionLedgerService.HasBillableSubscriptionForTierAsync(userEmail, plan.TierCode))
+            {
+                NavigationManager.NavigateTo(ProfileAvatarCatalog.SelectionPath(destination), forceLoad: true);
+            }
+            return;
+        }
 
         CurrentPaidTierCode = (await SubscriptionLedgerService.GetCurrentPaidSubscriptionAsync(userEmail))?.TierCode;
         HasActiveStoryCornerPlan = string.Equals(

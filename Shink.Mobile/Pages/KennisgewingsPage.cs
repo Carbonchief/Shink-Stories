@@ -14,7 +14,6 @@ public sealed class KennisgewingsPage : ContentPage
     private readonly MobilePushService _push;
     private readonly Button _pushButton;
     private readonly MobileAnalyticsService _analytics;
-    private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly NavigationGate _navigationGate = new();
     private readonly VerticalStackLayout _list;
@@ -31,14 +30,12 @@ public sealed class KennisgewingsPage : ContentPage
         MobileApiClient apiClient,
         SessionState sessionState,
         MobileAnalyticsService analytics,
-        PlaylistPlaybackState playlistPlaybackState,
         PlayerTransitionBackdropState transitionBackdropState,
         MobilePushService push)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _analytics = analytics;
-        _playlistPlaybackState = playlistPlaybackState;
         _transitionBackdropState = transitionBackdropState;
         _push = push;
 
@@ -728,7 +725,6 @@ public sealed class KennisgewingsPage : ContentPage
                             return;
                         }
 
-                        _playlistPlaybackState.Clear();
                         await CapturePlayerTransitionBackdropAsync();
                         await Shell.Current.GoToAsync(
                             $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(target.Value)}&source={Uri.EscapeDataString(target.Source ?? "luister")}",

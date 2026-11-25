@@ -16,6 +16,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
     private const double StoryCardMaximumWidth = 174;
     private const double StoryCardHorizontalMargin = 7;
     private const double StoryGridHorizontalSpacing = 12;
+    private const double BackButtonOverlayHeight = 96;
     private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
     private static readonly Color DefaultPageColor = Color.FromArgb("#FFFFFF");
     private static readonly Color DefaultTextColor = Color.FromArgb("#33424B");
@@ -110,6 +111,9 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
                 HorizontalTextAlignment = TextAlignment.Center
             }
         };
+#if IOS
+        _storiesView.Loaded += OnStoriesViewFirstLoaded;
+#endif
 
         var pageContent = new Grid
         {
@@ -122,6 +126,29 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         };
         Content = PersistentPlaybackHost.Wrap(pageContent, storyPlaybackSession);
     }
+
+#if IOS
+    private UIKit.UICollectionView? NativeStoriesCollection =>
+        (_storiesView.Handler?.PlatformView as UIKit.UIView)?.NextResponder is UIKit.UICollectionViewController controller
+            ? controller.CollectionView
+            : null;
+
+    private void OnStoriesViewFirstLoaded(object? sender, EventArgs e)
+    {
+        _storiesView.Loaded -= OnStoriesViewFirstLoaded;
+        _storiesView.Dispatcher.Dispatch(() =>
+        {
+            // MAUI puts the showcase header in the top inset, above story index zero.
+            if (NativeStoriesCollection is { } collection)
+            {
+                collection.LayoutIfNeeded();
+                collection.SetContentOffset(
+                    new CoreGraphics.CGPoint(collection.ContentOffset.X, -collection.AdjustedContentInset.Top),
+                    animated: false);
+            }
+        });
+    }
+#endif
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
@@ -645,10 +672,22 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
 
     private Task ScrollToStoriesAsync()
     {
-        if (_stories.Count > 0)
+        if (_stories.Count == 0)
+            return Task.CompletedTask;
+
+#if IOS
+        if (NativeStoriesCollection is { } collection)
         {
-            _storiesView.ScrollTo(0, position: ScrollToPosition.Start, animate: true);
+            collection.LayoutIfNeeded();
+            // The grid starts at content offset zero. Leave the first row below the back button.
+            var inset = collection.AdjustedContentInset;
+            var bottom = collection.ContentSize.Height - collection.Bounds.Height + inset.Bottom;
+            var target = Math.Max(-inset.Top, Math.Min(-BackButtonOverlayHeight, bottom));
+            collection.SetContentOffset(new CoreGraphics.CGPoint(collection.ContentOffset.X, target), animated: true);
+            return Task.CompletedTask;
         }
+#endif
+        _storiesView.ScrollTo(0, position: ScrollToPosition.Start, animate: true);
         return Task.CompletedTask;
     }
 
@@ -681,8 +720,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
             parameters: new Dictionary<string, object>
             {
                 ["preview"] = story,
-                ["playlistTitle"] = _playlist.Title,
-                ["playlistSlug"] = _playlist.Slug
+                ["playbackQueue"] = _playlistPlaybackState
             });
     }
 
@@ -761,7 +799,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
                 SafeAreaRegions.Container,
                 SafeAreaRegions.None,
                 SafeAreaRegions.None),
-            HeightRequest = 96,
+            HeightRequest = BackButtonOverlayHeight,
             Padding = new Thickness(16, 2, 0, 0),
             BackgroundColor = Colors.Transparent,
             HorizontalOptions = LayoutOptions.Fill,

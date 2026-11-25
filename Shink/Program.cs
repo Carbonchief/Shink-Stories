@@ -1723,6 +1723,11 @@ app.MapPost("/betaal/{planSlug}/verander", async (
                 await httpContext.RequestServices
                     .GetRequiredService<IGratisSubscriberEmailSequenceService>()
                     .MarkPaidAsync(signedInEmail, httpContext.RequestAborted);
+                if (ProfileAvatarCatalog.OnboardingReturnPath(safeReturnUrl) is not null)
+                {
+                    return Results.LocalRedirect(safeReturnUrl!);
+                }
+
                 return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-toegepas", plan.Slug, safeReturnUrl));
             }
 
@@ -2136,9 +2141,10 @@ app.MapGet("/betaal/paystack/callback", async (
         !IsSuccessfulPaystackTransactionStatus(verifyResult.TransactionStatus) ||
         string.IsNullOrWhiteSpace(verifyResult.RawPayload))
     {
+        var sessionStatus = MapPaystackCheckoutSessionStatus(verifyResult.TransactionStatus);
         await paystackCheckoutService.MarkCheckoutSessionStatusAsync(
             resolvedReference,
-            MapPaystackCheckoutSessionStatus(verifyResult.TransactionStatus),
+            sessionStatus,
             httpContext.RequestAborted);
 
         logger.LogWarning(
@@ -2147,7 +2153,13 @@ app.MapGet("/betaal/paystack/callback", async (
             verifyResult.TransactionStatus,
             verifyResult.ErrorMessage);
 
-        return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan, returnUrl));
+        var paymentStatus = sessionStatus switch
+        {
+            "failed" => "misluk",
+            "cancelled" => "gekanselleer",
+            _ => "verwerk"
+        };
+        return Results.Redirect(BuildSubscriptionPaymentRedirectPath(paymentStatus, plan, returnUrl));
     }
 
     var payload = TryBuildPaystackChargeSuccessPayload(verifyResult.RawPayload);
@@ -2172,6 +2184,10 @@ app.MapGet("/betaal/paystack/callback", async (
     if (persistResult.IsCardVerification)
     {
         return Results.Redirect("/intekening-en-betaling");
+    }
+    if (persistResult.IsDeferred)
+    {
+        return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan, returnUrl));
     }
 
     await paystackCheckoutService.MarkCheckoutSessionStatusAsync(
@@ -2529,7 +2545,9 @@ app.MapGet("/auth/callback", async (
         GetSafeAuthReturnUrl(requestedReturnUrl) ??
         await ResolvePostAuthRedirectPathAsync(subscriptionLedgerService, signedInEmail, httpContext.RequestAborted);
 
-    return Results.Redirect(isNewSubscriber ? ProfileAvatarCatalog.SelectionPath(redirectPath) : redirectPath);
+    return Results.Redirect(isNewSubscriber
+        ? ProfileAvatarCatalog.AfterFirstSignIn(redirectPath)
+        : redirectPath);
 });
 
 app.MapGet("/api/mobile/auth/google/start", async (
@@ -3143,6 +3161,18 @@ app.MapPost("/api/auth/signup", async (
         }
     }
 
+    var isDiscountedCheckout = discountPreview?.DiscountKind == SubscriptionDiscountKinds.Percentage;
+    var checkoutPlan = discountPreview switch
+    {
+        null => PaymentPlanCatalog.FindByTierCode(request.SelectedTierCode),
+        { DiscountKind: SubscriptionDiscountKinds.Percentage } => PaymentPlanCatalog.FindByTierCode(discountPreview.ResolvedTierCode),
+        _ => null
+    };
+    if ((isDiscountedCheckout && checkoutPlan is null) || checkoutPlan is { IsAdminOnly: true })
+    {
+        return Results.BadRequest(new { message = "Kies asseblief 'n geldige betaalplan." });
+    }
+
     var signUpResult = await supabaseAuthService.SignUpWithPasswordAsync(
         request.Email!,
         request.Password!,
@@ -3186,40 +3216,7 @@ app.MapPost("/api/auth/signup", async (
         request.MobileNumber,
         cancellationToken: httpContext.RequestAborted);
 
-    if (!string.IsNullOrWhiteSpace(request.DiscountCode) &&
-        string.Equals(discountPreview?.DiscountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal))
-    {
-        var plan = PaymentPlanCatalog.FindByTierCode(discountPreview!.ResolvedTierCode);
-        if (plan is null)
-        {
-            return Results.BadRequest(new { message = "Kies asseblief 'n geldige betaalplan vir hierdie afslagkode." });
-        }
-
-        var checkoutPath = QueryHelpers.AddQueryString(
-            $"/betaal/{Uri.EscapeDataString(plan.Slug)}",
-            new Dictionary<string, string?>
-            {
-                ["provider"] = "paystack",
-                ["discountCode"] = request.DiscountCode
-            });
-
-        var discountSignInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService, subscriptionLedgerService, httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
-        if (!discountSignInCookieResult.IsSuccess)
-        {
-            return Results.Json(
-                new { message = discountSignInCookieResult.ErrorMessage ?? "Jou rekening is geskep, maar ons kon nou nie jou afslagbetaling begin nie. Probeer asseblief weer teken in." },
-                statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
-
-        return Results.Ok(new
-        {
-            message = "Welkom! Jou rekening is geskep. Voltooi nou jou Paystack-betaling met die afslagkode.",
-            redirectPath = ProfileAvatarCatalog.SelectionPath(checkoutPath),
-            codeApplied = false
-        });
-    }
-
-    if (!string.IsNullOrWhiteSpace(request.DiscountCode))
+    if (!isDiscountedCheckout && !string.IsNullOrWhiteSpace(request.DiscountCode))
     {
         var applyResult = await subscriptionLedgerService.ApplySignupDiscountCodeAsync(
             signedInEmail,
@@ -3239,7 +3236,7 @@ app.MapPost("/api/auth/signup", async (
         discountCodeApplied = true;
     }
 
-    if (request.MarketingConsent &&
+    if (request.MarketingConsent && !isDiscountedCheckout &&
         string.IsNullOrWhiteSpace(request.SelectedTierCode) &&
         gratisProvisioned &&
         !await subscriptionLedgerService.HasActivePaidSubscriptionAsync(signedInEmail, httpContext.RequestAborted))
@@ -3259,11 +3256,11 @@ app.MapPost("/api/auth/signup", async (
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
-    var redirectPath = await ResolvePostAuthRedirectPathAsync(subscriptionLedgerService, signedInEmail, httpContext.RequestAborted);
     return Results.Ok(new
     {
-        message =
-            discountCodeApplied
+        message = isDiscountedCheckout
+            ? "Welkom! Jou rekening is geskep. Voltooi nou jou Paystack-betaling met die afslagkode."
+            : discountCodeApplied
                 ? "Welkom! Jou rekening is geskep, jou kode is toegepas en jy is nou ingeteken."
                 : profileStored && gratisProvisioned
                     ? "Welkom! Jou rekening is geskep en jy is nou ingeteken."
@@ -3272,7 +3269,8 @@ app.MapPost("/api/auth/signup", async (
                         : gratisProvisioned
                             ? "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profielbesonderhede nou stoor nie."
                             : "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profiel- en gratis toegangbesonderhede nou voltooi nie.",
-        redirectPath = ProfileAvatarCatalog.SelectionPath(redirectPath),
+        redirectPath = ProfileAvatarCatalog.SignupPath(
+            checkoutPlan, request.ReturnUrl, isDiscountedCheckout ? request.DiscountCode : null),
         codeApplied = discountCodeApplied
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
@@ -5347,21 +5345,15 @@ static string? GetSafeStoryReturnUrl(string? returnUrl)
 
 static string? GetSafeCheckoutReturnUrl(string? returnUrl, PaymentPlan plan)
 {
-    var storyReturnUrl = GetSafeStoryReturnUrl(returnUrl);
-    if (!string.IsNullOrWhiteSpace(storyReturnUrl))
+    var afterPicker = ProfileAvatarCatalog.OnboardingReturnPath(returnUrl);
+    var destination = afterPicker ?? returnUrl;
+    var safePath = GetSafeStoryReturnUrl(destination);
+    if (plan.IsSchoolPlan && string.Equals(NormalizeReturnPathCandidate(destination), "/skool-admin", StringComparison.OrdinalIgnoreCase))
     {
-        return storyReturnUrl;
+        safePath = "/skool-admin";
     }
 
-    var normalized = NormalizeReturnPathCandidate(returnUrl);
-    if (!plan.IsSchoolPlan || string.IsNullOrWhiteSpace(normalized))
-    {
-        return null;
-    }
-
-    return string.Equals(normalized, "/skool-admin", StringComparison.OrdinalIgnoreCase)
-        ? "/skool-admin"
-        : null;
+    return afterPicker is null ? safePath : ProfileAvatarCatalog.SelectionPath(safePath);
 }
 
 static string? NormalizeReturnPathCandidate(string? value)
@@ -6490,6 +6482,15 @@ static async Task<IResult?> TryRedirectRecoveredPaystackSubscriptionAsync(
             recoveryResult.Reference,
             customerEmail,
             persistResult.ErrorMessage);
+        return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan.Slug, returnUrl));
+    }
+
+    if (persistResult.IsCardVerification)
+    {
+        return Results.Redirect("/intekening-en-betaling");
+    }
+    if (persistResult.IsDeferred)
+    {
         return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan.Slug, returnUrl));
     }
 
@@ -8649,7 +8650,8 @@ sealed record AuthSignUpApiRequest(
     string? SelectedTierCode,
     string? DiscountCode,
     bool MarketingConsent,
-    string? ReferralCode = null);
+    string? ReferralCode = null,
+    string? ReturnUrl = null);
 sealed record SignupDiscountPreviewApiRequest(string? DiscountCode, string? SelectedTierCode);
 sealed record StoryViewTrackApiRequest(string? StoryPath, string? Source, string? ReferrerPath);
 sealed record MobileCharacterListenRequest(string? StreamSlug);

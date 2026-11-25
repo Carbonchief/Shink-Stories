@@ -1,5 +1,6 @@
 @page "/luister/speellys/{PlaylistSlug}/stories"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@rendermode InteractiveServer
+@inherits PrerenderedPage
 @using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
@@ -395,7 +396,7 @@ else
         SignedInEmail = authState.User.Identity?.IsAuthenticated == true
             ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
             : null;
-        AccessProfile = await ResolveLuisterAccessProfileAsync(authState.User);
+        AccessProfile = await ReadPageDataAsync("access", SignedInEmail, () => ResolveLuisterAccessProfileAsync(authState.User));
 
         CurrentPlaylist = null;
         CurrentPlaylistStories = Array.Empty<StoryItem>();
@@ -411,9 +412,12 @@ else
         {
             try
             {
-                var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
-                CurrentPlaylist = playlists.FirstOrDefault(playlist =>
-                    string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+                CurrentPlaylist = await ReadPageDataAsync($"playlist:{PlaylistSlug}", SignedInEmail, async () =>
+                {
+                    var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
+                    return playlists.FirstOrDefault(playlist =>
+                        string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+                });
 
                 CurrentPlaylistStories = CurrentPlaylist?.Stories ?? Array.Empty<StoryItem>();
             }
@@ -425,7 +429,7 @@ else
 
             await Task.WhenAll(
                 LoadShowcaseFallbackAssetsAsync(),
-                LoadFavoriteStorySlugsAsync());
+                RendererInfo.IsInteractive ? LoadFavoriteStorySlugsAsync() : Task.CompletedTask);
         }
         finally
         {
@@ -524,7 +528,7 @@ else
                 return;
             }
 
-            var characters = await CharacterCatalogService.GetPublishedCharactersAsync();
+            var characters = await ReadPageDataAsync("characters", null, () => CharacterCatalogService.GetPublishedCharactersAsync());
             var matchingCharacter = characters.FirstOrDefault(character =>
                 !string.IsNullOrWhiteSpace(character.ImagePath) &&
                 CharacterUnlockEvaluator.GetRelevantStorySlugs(character).Any(slug =>

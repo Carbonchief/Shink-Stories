@@ -4,8 +4,9 @@ using Shink.Mobile.Pages;
 
 namespace Shink.Mobile.Services;
 
-public sealed class MobilePushService(MobileApiClient api, SessionState session, PlaylistPlaybackState playlist)
+public sealed class MobilePushService(MobileApiClient api, SessionState session)
 {
+    private readonly MobilePushPermissionOnboarding _permissionOnboarding = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly SemaphoreSlim _navigationGate = new(1, 1);
     private MobilePushOpen? _pendingOpen;
@@ -74,6 +75,35 @@ public sealed class MobilePushService(MobileApiClient api, SessionState session,
         }
     }
 
+    public async Task OfferAfterSignInAsync(string? email)
+    {
+        bool IsSameAccount() => session.Current.IsSignedIn && !string.IsNullOrWhiteSpace(email)
+            && string.Equals(email, session.Current.Email, StringComparison.OrdinalIgnoreCase);
+        if (!IsSameAccount() || !MobilePushPlatform.BuildEnabled) return;
+        try
+        {
+            await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                if (Shell.Current is not { } shell || !MobilePushPlatform.IsSupported()) return;
+                Func<Task<bool>>? offerBannerSettings = null;
+#if ANDROID
+                offerBannerSettings = () => MobilePushPlatform.OfferBannerSettingsAsync(shell, IsSameAccount);
+#endif
+                await _permissionOnboarding.OfferAsync(IsSameAccount, async () =>
+                {
+                    // Older Android versions and previously authorized installations
+                    // have no native consent dialog to show. Ask in Schink instead.
+                    if (await MobilePushPlatform.HasPermissionAsync(requestPermission: false))
+                        return await shell.DisplayAlertAsync("Selfoonkennisgewings",
+                            "Wil jy op hierdie selfoon hoor wanneer daar nuwe stories, karakters en ander nuus is?",
+                            "Skakel aan", "Nie nou nie");
+                    return await MobilePushPlatform.HasPermissionAsync(requestPermission: true);
+                }, Refresh, offerBannerSettings);
+            });
+        }
+        catch { SetStatus("Jy kan selfoonkennisgewings later in Instellings aanskakel."); }
+    }
+
     public async Task SetEnabledAsync(bool enabled)
     {
         // Stop local display immediately, even while revocation is being retried.
@@ -126,6 +156,14 @@ public sealed class MobilePushService(MobileApiClient api, SessionState session,
             SetStatus("Laat kennisgewings in jou selfoon se instellings toe.");
             return;
         }
+#if ANDROID
+        if (!MobilePushPlatform.IsChannelEnabled())
+        {
+            await api.UnregisterPushDeviceAsync(cancellationToken);
+            SetStatus("Skakel Schink-kennisgewings in jou selfoon se instellings aan.");
+            return;
+        }
+#endif
         var token = await MainThread.InvokeOnMainThreadAsync(() => MobilePushPlatform.GetTokenAsync(cancellationToken));
         if (requestPermission || MobilePushInstallation.NeedsRefresh(email, token))
             await api.RegisterPushDeviceAsync(platform, MobilePushPlatform.PushEnvironment, token, email, cancellationToken);
@@ -158,7 +196,6 @@ public sealed class MobilePushService(MobileApiClient api, SessionState session,
                     await Shell.Current.GoToAsync("//Luister", animate: false);
                     if (!string.IsNullOrWhiteSpace(target.Value))
                     {
-                        playlist.Clear();
                         await Shell.Current.GoToAsync($"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(target.Value)}&source={Uri.EscapeDataString(target.Source ?? "luister")}", animate: false);
                     }
                     break;

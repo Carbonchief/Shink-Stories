@@ -315,9 +315,12 @@
     {
         var apiPath = GetSafePostAuthPath(apiRedirectPath);
         var requestedPath = GetSafeReturnUrl(ReturnUrl);
-        return apiPath?.StartsWith(ProfileAvatarCatalog.PagePath + "?", StringComparison.Ordinal) == true
-            ? requestedPath is null ? apiPath : ProfileAvatarCatalog.SelectionPath(requestedPath)
-            : requestedPath ?? apiPath ?? "/luister";
+        if (requestedPath is not null && ProfileAvatarCatalog.OnboardingReturnPath(apiPath) is not null)
+        {
+            return ProfileAvatarCatalog.AfterFirstSignIn(requestedPath);
+        }
+
+        return requestedPath ?? apiPath ?? "/luister";
     }
 
     private async Task RedirectToTargetAsync(string target)

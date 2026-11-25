@@ -19,11 +19,17 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico?v=20260319" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20260319" />
     <link rel="stylesheet" href="@Assets["lib/fontawesome/css/all.min.css"]" />
-    <link rel="stylesheet" href="_content/MudBlazor/MudBlazor.min.css" />
+    @if (string.Equals(GetCurrentRoutePath().TrimEnd('/'), "/admin", StringComparison.OrdinalIgnoreCase))
+    {
+        <link rel="stylesheet" href="_content/MudBlazor/MudBlazor.min.css" />
+    }
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["Shink.styles.css"]" />
     <link rel="stylesheet" href="@Assets["css/app-shell.css"]" />
-    <link rel="stylesheet" href="@Assets["css/winkel-store.css"]" />
+    @if (IsWinkelRoute)
+    {
+        <link rel="stylesheet" href="@Assets["css/winkel-store.css"]" />
+    }
     <ImportMap AdditionalAttributes="ImportMapAttributes" />
     <HeadOutlet />
 </head>
@@ -96,8 +102,12 @@
 
     <script src="@Assets["js/browser-support.js"]" defer></script>
     <script src="@Assets["js/app-shell.js"]" defer></script>
-    <script src="@Assets["js/winkel-quantity.js"]" defer></script>
-    <script type="module" src="@Assets["Components/Store/StoreShell.razor.js"]"></script>
+    @if (IsWinkelRoute)
+    {
+        <script src="@Assets["js/winkel-quantity.js"]" defer></script>
+        <script type="module" src="@Assets["Components/Store/StoreShell.razor.js"]"></script>
+    }
+    <script type="module" src="@Assets["js/store-navigation.js"]"></script>
 </body>
 
 </html>
@@ -121,6 +131,7 @@
     private string? PostHogProjectApiKey => PostHogSettings.ProjectApiKey;
     private string? PostHogHostUrl => PostHogSettings.HostUrl;
     private string? PostHogUserEmail => GetAuthenticatedUserEmail();
+    private bool IsWinkelRoute => new PathString(GetCurrentRoutePath()).StartsWithSegments("/winkel");
     private bool IsKaraktersRoute => string.Equals(GetCurrentRoutePath(), "/karakters", StringComparison.OrdinalIgnoreCase);
 
     protected override void OnInitialized()

@@ -23,9 +23,14 @@ public static partial class MobilePushPlatform
             if (status != PermissionStatus.Granted) return false;
         }
         EnsureChannel();
+        return NotificationManagerCompat.From(Platform.AppContext)?.AreNotificationsEnabled() == true;
+    }
+
+    public static bool IsChannelEnabled()
+    {
+        if (Build.VERSION.SdkInt < BuildVersionCodes.O) return true;
         var manager = (NotificationManager?)Platform.AppContext.GetSystemService(global::Android.Content.Context.NotificationService);
-        return NotificationManagerCompat.From(Platform.AppContext)?.AreNotificationsEnabled() == true
-            && (Build.VERSION.SdkInt < BuildVersionCodes.O || manager?.GetNotificationChannel(ChannelId)?.Importance != NotificationImportance.None);
+        return manager?.GetNotificationChannel(ChannelId) is { Importance: not NotificationImportance.None };
     }
 
     public static partial async Task<string> GetTokenAsync(CancellationToken cancellationToken)
@@ -47,6 +52,16 @@ public static partial class MobilePushPlatform
         {
             Description = "Nuwe stories, karakters, blogs en hulpbronne."
         });
+    }
+
+    public static async Task<bool> OfferBannerSettingsAsync(Page page, Func<bool> isCurrentAccount)
+    {
+        if (!await HasPermissionAsync(requestPermission: false) || !isCurrentAccount()) return false;
+        var open = await page.DisplayAlertAsync("Opspringkennisgewings",
+            "Wil jy kennisgewings boaan jou skerm sien? Maak jou selfoon se instellings oop en skakel die opspringopsie vir Schink-kennisgewings aan as dit af is.",
+            "Maak instellings oop", "Slaan oor");
+        if (open && isCurrentAccount() && MobilePushInstallation.Enabled) OpenNotificationSettings();
+        return true;
     }
 
     public static void OpenNotificationSettings()

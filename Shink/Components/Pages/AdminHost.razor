@@ -1,0 +1,22 @@
+@page "/admin"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject IJSRuntime JS
+
+@if (_ready)
+{
+    <Admin />
+}
+
+@code {
+    private bool _ready;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("schinkLoadAdminControls");
+            _ready = true;
+            StateHasChanged();
+        }
+    }
+}

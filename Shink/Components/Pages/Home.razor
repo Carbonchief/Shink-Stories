@@ -1,5 +1,6 @@
 @page "/"
 @rendermode InteractiveServer
+@inherits PrerenderedPage
 @attribute [StreamRendering(true)]
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
@@ -279,6 +280,22 @@ else
                   PrimaryActionHref="@StoryAccessPopupPrimaryHref"
                   SignInHref="@StoryAccessPopupSignInHref"
                   OnClose="CloseStoryAccessPopupAsync" />
+
+<section class="home-author home-scroll-reveal home-reveal-delay-standard" aria-labelledby="home-author-title">
+    <img src="/branding/martin-schwella-skrywer.webp" alt="Martin Schwella" width="512" height="512" loading="lazy" decoding="async" />
+    <h2 id="home-author-title">Ontmoet die skrywer</h2>
+    <p>
+        Schink Stories word geskryf, geteken en vertel deur <strong><em>Martin Schwella</em></strong> –
+        ’n pappa van vier, met ’n lewenslange liefde vir <em>stories, teken</em> en <strong><em>snaakse stemme.</em></strong>
+    </p>
+    <p>Elke storie begin met ’n idee en eindig na vele pret op Schink Stories gereed vir julle storietyd!</p>
+    <p><strong>Geen AI</strong> – net oorspronklike stories, kreatiwiteit en verbeelding!</p>
+    <p>
+        Ons glo stories kan kinders help om hul wêreld beter te verstaan. Kom ons bou ons kinders se karakter,
+        een storie op ’n slag, sodat hulle sorgvry die wêreld waarin hulle grootword met selfvertroue kan aanpak.
+    </p>
+    <p>Sien julle vir storietyd!</p>
+</section>
 
 <section class="home-testimonials section-block home-scroll-reveal home-reveal-delay-standard p-3" aria-labelledby="home-ouers-se">
     <div class="home-testimonials-header">
@@ -691,8 +708,8 @@ else
                 : null;
             HasResolvedAuthState = true;
 
-            var accessProfileTask = ResolveLuisterAccessProfileAsync(authState.User);
-            var luisterPlaylistsTask = StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
+            var accessProfileTask = ReadPageDataAsync("access", SignedInEmail, () => ResolveLuisterAccessProfileAsync(authState.User));
+            var luisterPlaylistsTask = ReadPageDataAsync("playlists", SignedInEmail, () => StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail));
 
             await Task.WhenAll(accessProfileTask, luisterPlaylistsTask);
 

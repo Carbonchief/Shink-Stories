@@ -624,8 +624,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "await CapturePlayerTransitionBackdropAsync();");
         StringAssert.Contains(luisterPage, "private async Task CapturePlayerTransitionBackdropAsync()");
         StringAssert.Contains(luisterPage, "await _transitionBackdropState.CaptureAsync();");
-        StringAssert.Contains(luisterPage, "[\"playlistTitle\"] = playlist.Title");
-        StringAssert.Contains(luisterPage, "[\"playlistSlug\"] = playlist.Slug");
+        StringAssert.Contains(luisterPage, "PlaylistPlaybackState.ForStory(playlist, story)");
+        StringAssert.Contains(luisterPage, "[\"playbackQueue\"] = queue");
         Assert.IsFalse(luisterPage.Contains("story => BuildLuisterStoryCarouselCard(story)", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("tap.Tapped += async (_, _) => await OpenStoryAsync(story);", StringComparison.Ordinal));
     }
@@ -1288,7 +1288,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "await ReplaceActiveStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());");
         StringAssert.Contains(storyDetail, "_playlistPlaybackState.TrackAutoplayAdvance(story);");
         StringAssert.Contains(storyDetail, "_playlistPlaybackState.TrackManualStorySelection(story);");
-        StringAssert.Contains(storyDetail, "_storyPlaybackSession.RefreshAutoplayPreparation();");
+        StringAssert.Contains(storyDetail, "_storyPlaybackSession.RefreshAutoplayPreparation(_playlistPlaybackState);");
         StringAssert.Contains(playlistState, "public bool IsAutoplayEnabled { get; private set; }");
         StringAssert.Contains(playlistState, "public bool IsShuffleEnabled { get; private set; }");
         StringAssert.Contains(playlistState, "public int? AutoplayLimitStories { get; private set; }");
@@ -1765,7 +1765,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "await _apiClient.PrepareAudioPlaybackSourceAsync(");
         StringAssert.Contains(luisterPage, "await _storyPlaybackSession.PlayAsync(");
         StringAssert.Contains(luisterPage, "originPlaylist: playlist");
-        StringAssert.Contains(luisterPage, "MergeContinueListeningMetadata(resolvedStory.Value.Story, item)");
+        StringAssert.Contains(luisterPage, "MergeContinueListeningMetadata(resolved.Story, item)");
         StringAssert.Contains(luisterPage, "DurationSeconds = story.DurationSeconds is > 0 ? story.DurationSeconds : item.DurationSeconds");
         StringAssert.Contains(luisterPage, "nextItems.Add(LuisterFeedItem.ContinueListening());");
     }

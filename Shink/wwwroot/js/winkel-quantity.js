@@ -1,4 +1,7 @@
 (function () {
+    if (window.schinkWinkelQuantityReady) return;
+    window.schinkWinkelQuantityReady = true;
+
     function toNumber(value, fallback) {
         var parsed = parseInt(value, 10);
         return isNaN(parsed) ? fallback : parsed;

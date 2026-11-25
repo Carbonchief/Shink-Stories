@@ -268,25 +268,17 @@ internal sealed class PersistentNowPlayingBar : ContentView
                     animate: true,
                     parameters: new ShellNavigationQueryParameters
                     {
-                        ["playlist"] = playlist
+                        ["playlist"] = playlist,
+                        ["playbackQueue"] = current.PlaybackQueue
                     });
                 return;
             }
 
             var parameters = new ShellNavigationQueryParameters
             {
-                ["preview"] = current.Story
+                ["preview"] = current.Story,
+                ["playbackQueue"] = current.PlaybackQueue
             };
-            if (!string.IsNullOrWhiteSpace(current.PlaylistSlug))
-            {
-                parameters["playlistSlug"] = current.PlaylistSlug;
-            }
-
-            if (!string.IsNullOrWhiteSpace(current.PlaylistTitle))
-            {
-                parameters["playlistTitle"] = current.PlaylistTitle;
-            }
-
             await Shell.Current.GoToAsync(
                 $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(current.Story.Slug)}&source={Uri.EscapeDataString(current.Story.Source)}",
                 animate: true,

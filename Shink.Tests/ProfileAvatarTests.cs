@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shink.Services;
 using Shink.Components.Content;
-using Signup = Shink.Components.Pages.Signup;
+using Microsoft.AspNetCore.WebUtilities;
 using Login = Shink.Components.Pages.Login;
 using ProfileAvatarPage = Shink.Components.Pages.ProfileAvatar;
 
@@ -82,11 +82,11 @@ public sealed class ProfileAvatarTests
     }
 
     [TestMethod]
-    [DataRow("/betaal/schink-stories-maandeliks?provider=paystack&discountCode=EERSTEMAAND26",
-             "/betaal/schink-stories-maandeliks?provider=paystack&discountCode=EERSTEMAAND26")]
+    [DataRow("/luister/storie?playlist=een", "/luister/storie?playlist=een")]
+    [DataRow("/skool-admin", "/skool-admin")]
     [DataRow("/betaal/paystack/callback", "/luister")]
     [DataRow("//elsewhere.example/betaal/schink-stories-maandeliks", "/luister")]
-    public async Task Onboarding_PreservesOnlyValidCheckoutContinuations(string target, string expected)
+    public async Task Onboarding_ContinuesToListeningOrSchoolAfterSaving(string target, string expected)
     {
         var page = new ProfileAvatarPage { ReturnUrl = target };
         var continuePath = (string)typeof(ProfileAvatarPage)
@@ -164,26 +164,55 @@ public sealed class ProfileAvatarTests
     }
 
     [TestMethod]
-    [DataRow(false, "/luister/suurlemoentjie")]
-    [DataRow(true, "/luister")]
-    public void SignupRedirect_VisitsPickerBeforeStoryOrAppliedVoucherAccess(bool codeApplied, string expectedContinuation)
+    [DataRow(null, null, "/luister")]
+    [DataRow(null, null, "/luister/suurlemoentjie")]
+    [DataRow("schink-stories-maandeliks", null, "/luister")]
+    [DataRow("schink-stories-jaarliks", null, "/luister/suurlemoentjie?playlist=gunstelinge")]
+    [DataRow("storie-hoekie-maandeliks", "EERSTE26", "/luister/storie")]
+    [DataRow("skool-klein-jaarliks", null, "/skool-admin")]
+    public void Signup_PutsAnyRequiredCheckoutBeforeThePicker(string? planSlug, string? discountCode, string destination)
     {
-        var signup = new Signup { ReturnUrl = "/luister/suurlemoentjie" };
-        var method = typeof(Signup).GetMethod("GetRedirectTarget", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var result = (string)method.Invoke(signup, [ProfileAvatarCatalog.SelectionPath("/luister"), codeApplied])!;
-        Assert.AreEqual(ProfileAvatarCatalog.SelectionPath(expectedContinuation), result);
+        var next = ProfileAvatarCatalog.SignupPath(PaymentPlanCatalog.FindBySlug(planSlug), destination, discountCode);
+        var picker = next;
+        if (planSlug is not null)
+        {
+            var checkout = new Uri(new Uri("https://schink.example"), next);
+            Assert.AreEqual("/betaal/" + planSlug, checkout.AbsolutePath);
+            var query = QueryHelpers.ParseQuery(checkout.Query);
+            Assert.AreEqual("paystack", query["provider"].ToString());
+            Assert.AreEqual(discountCode ?? "", query.GetValueOrDefault("discountCode").ToString());
+            picker = query["returnUrl"].ToString();
+        }
+
+        Assert.AreEqual(ProfileAvatarCatalog.SelectionPath(destination), picker);
+        Assert.AreEqual(destination, ProfileAvatarCatalog.OnboardingReturnPath(picker));
     }
 
     [TestMethod]
-    public void SignupRedirect_PreservesServersDiscountCheckoutAfterFormReset()
+    public async Task PreviouslyOpenedSignupPickerPostContinuesToCheckoutBeforeSaving()
     {
-        var signup = new Signup { ReturnUrl = "/luister/suurlemoentjie" };
-        typeof(Signup).GetProperty("SelectedPlan", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(signup, PaymentPlanCatalog.FindBySlug("schink-stories-maandeliks"));
         const string checkout = "/betaal/schink-stories-maandeliks?provider=paystack&discountCode=HALF";
-        var method = typeof(Signup).GetMethod("GetRedirectTarget", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var result = (string)method.Invoke(signup, [ProfileAvatarCatalog.SelectionPath(checkout), false])!;
-        Assert.AreEqual(ProfileAvatarCatalog.SelectionPath(checkout), result);
+        var principal = Listener();
+        var context = Context(principal, new TestAuthentication(principal, new()), "panda", checkout, isEditing: false);
+        var store = new AvatarStore();
+        var result = (RedirectHttpResult)await ProfileAvatarEndpoints.SaveAsync(context, new TestAntiforgery(), store);
+
+        var expected = ProfileAvatarCatalog.SignupPath(PaymentPlanCatalog.FindBySlug("schink-stories-maandeliks"), "/luister", "HALF");
+        Assert.AreEqual(expected, result.Url);
+        Assert.IsNull(store.Avatar);
+    }
+
+    [TestMethod]
+    public void FirstSignInAtCheckoutPreservesThePlanAndDiscountAndDefersThePicker()
+    {
+        const string checkout = "/betaal/schink-stories-maandeliks?provider=paystack&discountCode=HALF&returnUrl=%2Fluister%2Fstorie";
+        var login = new Login { ReturnUrl = checkout };
+        var method = typeof(Login).GetMethod("GetRedirectTarget", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var result = method.Invoke(login, [ProfileAvatarCatalog.SelectionPath("/luister")]);
+        var expected = ProfileAvatarCatalog.SignupPath(PaymentPlanCatalog.FindBySlug("schink-stories-maandeliks"), "/luister/storie", "HALF");
+        Assert.AreEqual(expected, result);
+        Assert.AreEqual(expected, ProfileAvatarCatalog.AfterFirstSignIn(expected));
+        Assert.AreEqual(checkout, method.Invoke(login, ["/luister"]), "Returning customers continue directly through their existing checkout.");
     }
 
     [TestMethod]

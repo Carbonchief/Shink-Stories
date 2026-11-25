@@ -1,25 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { test } from "node:test";
+import {
+    normalizeCart, calculateTotals, changeQuantity, captureCheckout, replaceCartItems, completePurchase,
+} from "../../Shink/Components/Store/StoreShell.razor.js";
 
-// Import the shipped module directly without changing the repository's module mode.
-const source = await readFile(
-    new URL(
-        "../../Shink/Components/Store/StoreShell.razor.js",
-        import.meta.url,
-    ),
-    "utf8",
-);
-const {
-    normalizeCart,
-    calculateTotals,
-    changeQuantity,
-    captureCheckout,
-    replaceCartItems,
-    completePurchase,
-} = await import(
-    `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
-);
 const products = [
     { slug: "tiekie", price: 25000, freeDelivery: false },
     { slug: "georgie", price: 25000, freeDelivery: false },

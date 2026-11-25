@@ -34,7 +34,7 @@ internal sealed class TabletOnboardingView : AbsoluteLayout
         EndPoint = new Point(0, 1)
     };
     private double _safeTop;
-    private int _slideIndex;
+    private int _artworkNumber;
     private string _description = string.Empty;
     private bool _isLandscape;
 
@@ -54,9 +54,9 @@ internal sealed class TabletOnboardingView : AbsoluteLayout
         SizeChanged += (_, _) => ArrangeArtwork();
     }
 
-    public void ShowSlide(int index, string description, bool animate = false)
+    public void ShowSlide(int artworkNumber, string description, bool animate = false)
     {
-        _slideIndex = index;
+        _artworkNumber = artworkNumber;
         _description = description;
         UpdateArtwork(animate);
     }
@@ -80,8 +80,8 @@ internal sealed class TabletOnboardingView : AbsoluteLayout
     private void UpdateArtwork(bool animate)
     {
         var image = _isLandscape
-            ? $"schink_onboarding_tablet_landscape_{_slideIndex + 1:00}.jpg"
-            : $"schink_onboarding_tablet_{_slideIndex + 1:00}.jpg";
+            ? $"schink_onboarding_tablet_landscape_{_artworkNumber:00}.jpg"
+            : $"schink_onboarding_tablet_{_artworkNumber:00}.jpg";
         _artwork.Show(image, _description, animate);
 
         ArrangeArtwork();

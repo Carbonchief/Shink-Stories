@@ -131,6 +131,7 @@ public sealed class LuisterGratisPlaylistVisibilityTests
 
         using var services = new ServiceCollection()
             .AddLogging()
+            .AddMemoryCache()
             .AddSingleton<NavigationManager, TestNavigationManager>()
             .AddSingleton<AuthenticationStateProvider>(new TestAuthenticationProvider(signedIn))
             .AddSingleton(Service<IStoryCatalogService>(method => method.Name == nameof(IStoryCatalogService.GetLuisterPlaylistsAsync)

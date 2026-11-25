@@ -1,5 +1,6 @@
 @page "/luister"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@rendermode InteractiveServer
+@inherits PrerenderedPage
 @using System.Globalization
 @using System.Security.Claims
 @using System.Text.Json
@@ -54,15 +55,11 @@
                    type="search"
                    placeholder="Soek stories"
                    autocomplete="off"
-                   value="@SearchQuery"
-                   @oninput="HandleSearchInputAsync" />
-            @if (IsSearching)
-            {
-                <span class="luister-search-loader" aria-live="polite">
-                    <span class="luister-search-spinner" aria-hidden="true"></span>
-                    <span class="luister-search-loader-text">Soek...</span>
-                </span>
-            }
+                   @ref="_searchInput" />
+            <span class="luister-search-loader" aria-live="polite" hidden>
+                <span class="luister-search-spinner" aria-hidden="true"></span>
+                <span class="luister-search-loader-text">Soek...</span>
+            </span>
         </form>
     </section>
 
@@ -298,15 +295,19 @@ else
     private IJSObjectReference? _luisterModule;
     private bool _luisterModuleLoadFailed;
     private bool _checkedPendingCharacterUnlockPopup;
-    private CancellationTokenSource? _searchDebounceCts;
+    private ElementReference _searchInput;
+    private DotNetObjectReference<Luister>? _searchReference;
+    private bool _carouselsChanged = true;
     private string? SignedInEmail { get; set; }
     private string SearchQuery { get; set; } = string.Empty;
-    private bool IsSearching { get; set; }
     private LuisterAccessProfile AccessProfile { get; set; } = new(false, false, false);
     private string? PageLoadErrorMessage { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
     private bool ShowCharacterUnlockPopup { get; set; }
-    private bool IsFirstLuisterVisit { get; set; }
+    public sealed record LuisterVisit(string Account, bool IsFirst);
+    [PersistentState] public LuisterVisit? RecordedVisit { get; set; }
+    private bool IsFirstLuisterVisit => RecordedVisit is { IsFirst: true } visit &&
+        string.Equals(visit.Account, SignedInEmail, StringComparison.OrdinalIgnoreCase);
     private bool IsLoadingPage { get; set; } = true;
     private bool AllowEmptyState { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
@@ -351,7 +352,7 @@ else
 
             try
             {
-                AccessProfile = await ResolveLuisterAccessProfileAsync(authState.User);
+                AccessProfile = await ReadPageDataAsync("access", SignedInEmail, () => ResolveLuisterAccessProfileAsync(authState.User));
             }
             catch
             {
@@ -360,9 +361,13 @@ else
 
             try
             {
-                var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
-                IsFirstLuisterVisit = playlists.Count > 0 && !string.IsNullOrWhiteSpace(SignedInEmail) &&
-                    await SubscriptionLedgerService.RecordFirstLuisterVisitAsync(SignedInEmail, Guid.NewGuid());
+                var playlists = await ReadPageDataAsync("playlists", SignedInEmail, () => StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail));
+                if (playlists.Count > 0 && !string.IsNullOrWhiteSpace(SignedInEmail) &&
+                    !string.Equals(RecordedVisit?.Account, SignedInEmail, StringComparison.OrdinalIgnoreCase))
+                {
+                    var first = await SubscriptionLedgerService.RecordFirstLuisterVisitAsync(SignedInEmail, PageLoadId);
+                    RecordedVisit = new(SignedInEmail, first);
+                }
                 LuisterPlaylists = playlists
                     .Where(playlist => !AccessProfile.HasStoryCornerOrAll ||
                         !string.Equals(GetPlaylistSlug(playlist), StoryAccessPolicy.GratisPlaylistSlug, StringComparison.OrdinalIgnoreCase))
@@ -374,7 +379,10 @@ else
             }
 
             UpdateFilteredPlaylists();
-            _ = LoadFavoriteStorySlugsInBackgroundAsync();
+            if (RendererInfo.IsInteractive)
+            {
+                _ = LoadFavoriteStorySlugsInBackgroundAsync();
+            }
         }
         catch
         {
@@ -861,53 +869,18 @@ else
         return StoryAccessCheckoutLinks.BuildPageHref(returnPath);
     }
 
-    private async Task HandleSearchInputAsync(ChangeEventArgs args)
+    [JSInvokable]
+    public Task ApplySearchAsync(string query)
     {
-        SearchQuery = args.Value?.ToString() ?? string.Empty;
-        _searchDebounceCts?.Cancel();
-        _searchDebounceCts?.Dispose();
-
-        var trimmedQuery = SearchQuery.Trim();
-        if (string.IsNullOrWhiteSpace(trimmedQuery))
-        {
-            IsSearching = false;
-            UpdateFilteredPlaylists();
-            return;
-        }
-
-        var debounceCts = new CancellationTokenSource();
-        _searchDebounceCts = debounceCts;
-        IsSearching = true;
-        await InvokeAsync(StateHasChanged);
-
-        try
-        {
-            await Task.Delay(180, debounceCts.Token);
-            if (debounceCts.IsCancellationRequested)
-            {
-                return;
-            }
-
-            UpdateFilteredPlaylists();
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-        finally
-        {
-            if (ReferenceEquals(_searchDebounceCts, debounceCts))
-            {
-                IsSearching = false;
-                _searchDebounceCts = null;
-                debounceCts.Dispose();
-                await InvokeAsync(StateHasChanged);
-            }
-        }
+        if (SearchQuery == query) return Task.CompletedTask;
+        SearchQuery = query;
+        UpdateFilteredPlaylists();
+        return InvokeAsync(StateHasChanged);
     }
 
     private void UpdateFilteredPlaylists()
     {
+        _carouselsChanged = true;
         var trimmedQuery = SearchQuery.Trim();
         if (string.IsNullOrWhiteSpace(trimmedQuery))
         {
@@ -947,6 +920,8 @@ else
             await TryShowPendingCharacterUnlockPopupAsync();
         }
 
+        if (!_carouselsChanged) return;
+        _carouselsChanged = false;
         var module = await TryGetLuisterModuleAsync();
         if (module is null)
         {
@@ -955,7 +930,8 @@ else
 
         try
         {
-            await module.InvokeVoidAsync("initializeLuisterPage");
+            _searchReference ??= DotNetObjectReference.Create(this);
+            await module.InvokeVoidAsync("initializeLuisterPage", _searchInput, _searchReference);
         }
         catch (OperationCanceledException)
         {
@@ -1131,8 +1107,7 @@ else
     public async ValueTask DisposeAsync()
     {
         CancelEmptyStateDelay();
-        _searchDebounceCts?.Cancel();
-        _searchDebounceCts?.Dispose();
+
 
         if (_luisterModule is null)
         {
@@ -1141,7 +1116,7 @@ else
 
         try
         {
-            await _luisterModule.InvokeVoidAsync("disposeLuisterPage");
+            await _luisterModule.InvokeVoidAsync("disposeLuisterPage", _searchInput);
             await _luisterModule.DisposeAsync();
         }
         catch (OperationCanceledException)
@@ -1151,6 +1126,10 @@ else
         catch (JSDisconnectedException)
         {
             // Ignore JS disconnects during teardown.
+        }
+        finally
+        {
+            _searchReference?.Dispose();
         }
     }
 

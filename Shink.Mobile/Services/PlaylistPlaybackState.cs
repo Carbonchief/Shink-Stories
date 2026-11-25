@@ -17,7 +17,7 @@ public sealed class PlaylistPlaybackState
 
     public bool IsOfflineQueue { get; private set; }
 
-    public bool IsAutoplayEnabled { get; private set; } = true;
+    public bool IsAutoplayEnabled { get; private set; }
 
     public bool IsShuffleEnabled { get; private set; }
 
@@ -26,22 +26,42 @@ public sealed class PlaylistPlaybackState
     public int AutoplayStoriesPlayedInRun { get; private set; }
 
     public void Set(MobilePlaylist playlist, MobileStorySummary? currentStory = null) =>
-        SetCore(playlist, currentStory, isOfflineQueue: false);
+        SetCore(playlist, currentStory, isOfflineQueue: false, autoplay: true);
 
-    public void SetOfflineQueue(MobilePlaylist playlist, MobileStorySummary? currentStory = null) =>
-        SetCore(playlist, currentStory, isOfflineQueue: true);
+    // The catalogue can supply neighbouring stories even when the listener selected only a story.
+    public static PlaylistPlaybackState ForStory(MobilePlaylist? playlist, MobileStorySummary story, bool autoplay = false)
+    {
+        var queue = new PlaylistPlaybackState();
+        if (playlist is not null)
+        {
+            queue.SetCore(playlist, story, isOfflineQueue: false, autoplay: autoplay);
+        }
+        return queue;
+    }
+
+    public static PlaylistPlaybackState CreateOfflineQueue(IEnumerable<MobileStorySummary> downloads, bool autoplay)
+    {
+        var stories = downloads.Where(story =>
+            !string.Equals(story.StoryType, "video", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var artwork = stories.FirstOrDefault()?.ImageUrl ?? string.Empty;
+        var queue = new PlaylistPlaybackState();
+        queue.SetCore(new MobilePlaylist("afgelaai-aflyn", "Afgelaai", "Jou afgelaaide stories",
+            artwork, artwork, stories), currentStory: null, isOfflineQueue: true, autoplay: autoplay);
+        return queue;
+    }
 
     private void SetCore(
         MobilePlaylist playlist,
         MobileStorySummary? currentStory,
-        bool isOfflineQueue)
+        bool isOfflineQueue,
+        bool autoplay)
     {
         var isNewPlaylistContext = CurrentPlaylist is null ||
                                    !string.Equals(CurrentPlaylist.Slug, playlist.Slug, StringComparison.OrdinalIgnoreCase) ||
                                    IsOfflineQueue != isOfflineQueue;
         if (isNewPlaylistContext)
         {
-            IsAutoplayEnabled = true;
+            IsAutoplayEnabled = autoplay;
             AutoplayStoriesPlayedInRun = 0;
         }
 
@@ -91,6 +111,15 @@ public sealed class PlaylistPlaybackState
         }
 
         return orderedStories;
+    }
+
+    public MobileStorySummary? GetNextAudioStory(MobileStorySummary currentStory)
+    {
+        var currentKey = GetStoryKey(currentStory);
+        return GetPlaybackStories(currentStory)
+            .SkipWhile(story => !string.Equals(GetStoryKey(story), currentKey, StringComparison.OrdinalIgnoreCase))
+            .Skip(1)
+            .FirstOrDefault(story => !string.Equals(story.StoryType, "video", StringComparison.OrdinalIgnoreCase));
     }
 
     public void SetAutoplay(bool isEnabled)
@@ -188,9 +217,7 @@ public sealed class PlaylistPlaybackState
             _shuffleOrder.All(key => storyKeys.Contains(key, StringComparer.OrdinalIgnoreCase));
         var currentStoryKey = currentStory is null ? null : GetStoryKey(currentStory);
 
-        if (hasSameStories &&
-            (string.IsNullOrWhiteSpace(currentStoryKey) ||
-             string.Equals(_shuffleOrder.FirstOrDefault(), currentStoryKey, StringComparison.OrdinalIgnoreCase)))
+        if (hasSameStories)
         {
             return;
         }
@@ -210,7 +237,7 @@ public sealed class PlaylistPlaybackState
     }
 
     private static string GetStoryKey(MobileStorySummary story) =>
-        $"{story.Source}|{story.Slug}";
+        $"{(string.IsNullOrWhiteSpace(story.Source) ? "luister" : story.Source)}|{story.Slug}";
 
     private static MobileStorySummary NormalizePlaylistStory(MobileStorySummary story, bool preserveSource = false) =>
         preserveSource || string.Equals(story.Source, "luister", StringComparison.OrdinalIgnoreCase)

@@ -6,7 +6,6 @@ namespace Shink.Mobile.Pages;
 
 public sealed class DownloadedPage : ContentPage
 {
-    private const string OfflinePlaylistSlug = "afgelaai-aflyn";
     private const double FloatingTopBarContentInset = 92;
     private const double BottomBarContentInset = 216;
     private const double BottomBarOverlayHeight = MobileBottomBar.NavigationHeight;
@@ -21,7 +20,6 @@ public sealed class DownloadedPage : ContentPage
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly IOfflineStoryDownloadService _offlineDownloadService;
-    private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly StoryPlaybackSession _storyPlaybackSession;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly VerticalStackLayout _content;
@@ -37,14 +35,12 @@ public sealed class DownloadedPage : ContentPage
         MobileApiClient apiClient,
         SessionState sessionState,
         IOfflineStoryDownloadService offlineDownloadService,
-        PlaylistPlaybackState playlistPlaybackState,
         StoryPlaybackSession storyPlaybackSession,
         PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _offlineDownloadService = offlineDownloadService;
-        _playlistPlaybackState = playlistPlaybackState;
         _storyPlaybackSession = storyPlaybackSession;
         _transitionBackdropState = transitionBackdropState;
 
@@ -329,10 +325,9 @@ public sealed class DownloadedPage : ContentPage
         playAllButton.Text = "Begin...";
         try
         {
-            var currentDownloads = ApplySavedOrder(
-                (await _offlineDownloadService.GetPlayableDownloadsAsync())
-                    .Where(item => item.StoryType != "video").ToArray());
-            if (currentDownloads.Count == 0)
+            var currentDownloads = ApplySavedOrder(await _offlineDownloadService.GetPlayableDownloadsAsync());
+            var queue = CreateOfflineQueue(currentDownloads, autoplay: true);
+            if (queue.Stories.Count == 0)
             {
                 await DisplayAlertAsync(
                     "Geen aflaaie nie",
@@ -341,11 +336,8 @@ public sealed class DownloadedPage : ContentPage
                 return;
             }
 
-            var stories = currentDownloads
-                .Select(_offlineDownloadService.CreateOfflineStory)
-                .ToArray();
-            var firstDownload = currentDownloads[0];
-            var firstStory = stories[0];
+            var firstStory = queue.Stories[0];
+            var firstDownload = currentDownloads.First(item => item.Slug == firstStory.Slug && item.Source == firstStory.Source);
             var firstDetail = _offlineDownloadService.CreateOfflineDetail(firstDownload);
             var playbackUrl = await _offlineDownloadService.ResolvePlayableAudioAsync(firstDetail);
             if (string.IsNullOrWhiteSpace(playbackUrl))
@@ -353,31 +345,19 @@ public sealed class DownloadedPage : ContentPage
                 throw new InvalidOperationException("Die eerste afgelaaide storie is nie meer beskikbaar nie.");
             }
 
-            var playlist = new MobilePlaylist(
-                OfflinePlaylistSlug,
-                "Afgelaai",
-                "Jou afgelaaide stories",
-                firstStory.ImageUrl,
-                firstStory.ImageUrl,
-                stories);
             _storyPlaybackSession.Stop();
-            _playlistPlaybackState.SetOfflineQueue(playlist, firstStory);
-            _playlistPlaybackState.SetShuffle(false, firstStory);
-            _playlistPlaybackState.SetAutoplayLimit(null, firstStory);
-            _playlistPlaybackState.SetAutoplay(true);
 
             await _storyPlaybackSession.PlayAsync(
                 playbackUrl,
                 firstStory,
                 _apiClient.BuildImageUrl(firstStory.ImageUrl),
-                playlist.Slug,
-                playlist.Title,
+                queue.Slug,
+                queue.Title,
                 firstStory.DurationSeconds,
-                originPlaylist: null);
+                playbackQueue: queue);
         }
         catch (Exception ex)
         {
-            _playlistPlaybackState.Clear();
             await DisplayAlertAsync("Kon nie aflaaie speel nie", ex.Message, "Maak toe");
         }
         finally
@@ -702,17 +682,26 @@ public sealed class DownloadedPage : ContentPage
 
     private async Task OpenDownloadedStoryAsync(OfflineStoryDownload download)
     {
-        _playlistPlaybackState.Clear();
         await CapturePlayerTransitionBackdropAsync();
         var story = _offlineDownloadService.CreateOfflineStory(download);
+        var parameters = new Dictionary<string, object> { ["preview"] = story };
+        if (!string.Equals(story.StoryType, "video", StringComparison.OrdinalIgnoreCase))
+        {
+            var queue = CreateOfflineQueue(_orderedDownloads, autoplay: false);
+            var activeQueue = _storyPlaybackSession.Current?.PlaybackQueue;
+            parameters["playbackQueue"] = _storyPlaybackSession.IsCurrentStory(story) &&
+                activeQueue is { IsOfflineQueue: true } && activeQueue.Stories.SequenceEqual(queue.Stories)
+                ? activeQueue
+                : queue;
+        }
         await Shell.Current.GoToAsync(
             $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(download.Slug)}&source={Uri.EscapeDataString(download.Source)}",
             animate: false,
-            parameters: new Dictionary<string, object>
-            {
-                ["preview"] = story
-            });
+            parameters: parameters);
     }
+
+    private PlaylistPlaybackState CreateOfflineQueue(IEnumerable<OfflineStoryDownload> downloads, bool autoplay) =>
+        PlaylistPlaybackState.CreateOfflineQueue(downloads.Select(_offlineDownloadService.CreateOfflineStory), autoplay);
 
     private async Task CapturePlayerTransitionBackdropAsync()
     {

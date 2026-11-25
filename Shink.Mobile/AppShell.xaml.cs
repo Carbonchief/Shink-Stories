@@ -265,6 +265,12 @@ public partial class AppShell : Shell
             if (!_sessionState.Current.IsSignedIn || _sessionState.Current.HasPaidSubscription) return;
             try
             {
+                // This route can open independently as the signed-in shell is
+                // built. Finish the permission dialog before the parental gate.
+                var email = _sessionState.Current.Email;
+                await _push.OfferAfterSignInAsync(email);
+                if (!_sessionState.Current.IsSignedIn || _sessionState.Current.HasPaidSubscription
+                    || !string.Equals(email, _sessionState.Current.Email, StringComparison.OrdinalIgnoreCase)) return;
                 await PageHelpers.OpenPlansAsync(_sessionState, returnPath);
             }
             catch (Exception ex)

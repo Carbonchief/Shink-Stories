@@ -17,19 +17,23 @@ public sealed class OnboardingPage : ContentPage
     private const double PhoneLogoTop = 74;
     // At this scale the smallest main copy is still roughly 12 points high.
     private const double MinimumPhoneArtworkScale = 0.39;
-    private sealed record Slide(string Image, string Description, double ContentBottom);
+    private sealed record Slide(int ArtworkNumber, string Description, double ContentBottom);
 
     private static readonly Slide[] Slides =
     [
-        new("schink_onboarding_01.jpg",
+        new(1,
             "Welkom by Schink Stories. Kom geniet opbouende Afrikaanse stories wat kinders laat luister, lag en leer! " +
             "120+ Afrikaanse oudiostories. Waardes en lewenslesse. Geen donkertemas. Geen advertensies. Nuwe stories elke maand.", 1260),
-        new("schink_onboarding_02.jpg",
+        new(5,
+            "Egte stories. Geen AI. Schink Stories word geskryf, geteken en vertel deur Martin Schwella, " +
+            "’n pappa van vier met ’n liefde vir stories, teken en snaakse stemme. " +
+            "Geen AI – net opbouende stories vir jou kind om te geniet!", 1260),
+        new(2,
             "Stories waar jy ook al is! Laai julle gunsteling stories af en luister sonder internet. " +
             "By die huis, op die langpad of waar julle ook al gaan.", 1312),
-        new("schink_onboarding_03.jpg",
+        new(3,
             "Ontmoet die karakters. Daar is soveel stories om te ontdek en karakters om te leer ken! Luister, speel en ontdek.", 1320),
-        new("schink_onboarding_04.jpg",
+        new(4,
             "Dis storietyd! Kom lag, kom luister en kom leer! Begin gratis met stories, of kry volle toegang tot al ons stories.", 1150)
     ];
 
@@ -268,21 +272,14 @@ public sealed class OnboardingPage : ContentPage
         var progress = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
-            WidthRequest = 176,
+            WidthRequest = ProgressStepWidth * Slides.Length,
             HeightRequest = 44,
-            HorizontalOptions = LayoutOptions.Center,
-            ColumnDefinitions =
-            {
-                new ColumnDefinition(new GridLength(44)),
-                new ColumnDefinition(new GridLength(44)),
-                new ColumnDefinition(new GridLength(44)),
-                new ColumnDefinition(new GridLength(44))
-            }
+            HorizontalOptions = LayoutOptions.Center
         };
         var connector = new BoxView
         {
             Color = ProgressInactive,
-            WidthRequest = 132,
+            WidthRequest = ProgressStepWidth * (Slides.Length - 1),
             HeightRequest = 5,
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center,
@@ -292,6 +289,7 @@ public sealed class OnboardingPage : ContentPage
         Grid.SetColumnSpan(connector, Slides.Length);
         for (var index = 0; index < Slides.Length; index++)
         {
+            progress.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(ProgressStepWidth)));
             var slideIndex = index;
             var button = new Button
             {
@@ -436,7 +434,7 @@ public sealed class OnboardingPage : ContentPage
         back.Swiped += (_, _) => MoveBack();
         composition.GestureRecognizers.Add(forward);
         composition.GestureRecognizers.Add(back);
-        composition.ShowSlide(_slideIndex, DescribeSlide(_slideIndex));
+        composition.ShowSlide(Slides[_slideIndex].ArtworkNumber, DescribeSlide(_slideIndex));
         _stage.Children.Add(composition);
         return composition;
     }
@@ -525,8 +523,9 @@ public sealed class OnboardingPage : ContentPage
         _hasShownSlide = true;
         _slideIndex = index;
         var description = DescribeSlide(index);
-        _artwork.Show(Slides[index].Image, description, animate && _artworkViewport.IsVisible);
-        _tabletComposition?.ShowSlide(index, description, animate && !_artworkViewport.IsVisible);
+        var artworkNumber = Slides[index].ArtworkNumber;
+        _artwork.Show($"schink_onboarding_{artworkNumber:00}.jpg", description, animate && _artworkViewport.IsVisible);
+        _tabletComposition?.ShowSlide(artworkNumber, description, animate && !_artworkViewport.IsVisible);
         _backButton.IsEnabled = index > 0;
         _backButton.IsVisible = index > 0;
         var finalSlide = index == Slides.Length - 1;

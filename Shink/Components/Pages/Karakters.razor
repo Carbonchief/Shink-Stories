@@ -1,5 +1,6 @@
 @page "/karakters"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@rendermode InteractiveServer
+@inherits PrerenderedPage
 @using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components.Authorization
@@ -357,16 +358,16 @@
         {
             await TryResolveSignedInStateAsync();
 
-            var charactersTask = CharacterCatalogService.GetPublishedCharactersAsync();
-            var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
-            var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
+            var charactersTask = ReadPageDataAsync("characters", null, () => CharacterCatalogService.GetPublishedCharactersAsync());
+            var freeStoriesTask = ReadPageDataAsync("free-stories", null, () => StoryCatalogService.GetFreeStoriesAsync());
+            var luisterStoriesTask = ReadPageDataAsync("stories", null, () => StoryCatalogService.GetLuisterStoriesAsync());
 
             await Task.WhenAll(charactersTask, freeStoriesTask, luisterStoriesTask);
 
             var progressItems = Array.Empty<UserStoryProgressItem>();
             var profileListenItems = Array.Empty<UserCharacterProfileListenItem>();
 
-            if (IsSignedIn && !string.IsNullOrWhiteSpace(SignedInEmail))
+            if (RendererInfo.IsInteractive && IsSignedIn && !string.IsNullOrWhiteSpace(SignedInEmail))
             {
                 (progressItems, profileListenItems) = await TryLoadUserUnlockProgressAsync(SignedInEmail);
             }

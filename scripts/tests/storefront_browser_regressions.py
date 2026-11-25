@@ -280,6 +280,9 @@ def free_port():
 
 
 class StorefrontBrowserTests(unittest.TestCase):
+    def test_public_blazor_pages(self):
+        self.run_scenarios("public-pages", 2)
+
     def test_checkout_regressions(self):
         self.run_scenarios("core", 10)
 

@@ -23,6 +23,7 @@ public sealed class AccountPage : ContentPage, IQueryAttributable
 
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
+    private readonly MobilePushService _push;
 #if IOS
     private readonly AppleSignInService _appleSignInService = new();
 #endif
@@ -62,10 +63,12 @@ public sealed class AccountPage : ContentPage, IQueryAttributable
     public AccountPage(
         MobileApiClient apiClient,
         SessionState sessionState,
-        StoryPlaybackSession storyPlaybackSession)
+        StoryPlaybackSession storyPlaybackSession,
+        MobilePushService push)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
+        _push = push;
         Title = "Rekening";
         BackgroundColor = Color.FromArgb("#0D6F73");
         SafeAreaEdges = SafeAreaEdges.None;
@@ -673,8 +676,7 @@ public sealed class AccountPage : ContentPage, IQueryAttributable
                 try
                 {
                     var result = await _apiClient.SignInAsync(loginEmailEntry.Text ?? string.Empty, loginPasswordEntry.Text ?? string.Empty);
-                    await RefreshSessionAsync(result.Message);
-                    await OpenPostAuthenticationDestinationAsync();
+                    await FinishAuthenticationAsync(result);
                 }
                 catch (Exception ex)
                 {
@@ -717,8 +719,7 @@ public sealed class AccountPage : ContentPage, IQueryAttributable
 
                     var signInResult = await _apiClient.CompleteGoogleSignInAsync(token,
                         marketingConsent: false);
-                    await RefreshSessionAsync(signInResult.Message);
-                    await OpenPostAuthenticationDestinationAsync();
+                    await FinishAuthenticationAsync(signInResult);
                 }
                 catch (TaskCanceledException)
                 {
@@ -771,8 +772,7 @@ public sealed class AccountPage : ContentPage, IQueryAttributable
                         result.LastName,
                         result.DisplayName,
                         marketingConsent: false);
-                    await RefreshSessionAsync(signInResult.Message);
-                    await OpenPostAuthenticationDestinationAsync();
+                    await FinishAuthenticationAsync(signInResult);
                 }
                 catch (TaskCanceledException)
                 {
@@ -884,8 +884,7 @@ public sealed class AccountPage : ContentPage, IQueryAttributable
                         string.Empty,
                         signupPasswordEntry.Text ?? string.Empty,
                         marketingConsent: emailConsent.IsChecked);
-                    await RefreshSessionAsync(result.Message);
-                    await OpenPostAuthenticationDestinationAsync();
+                    await FinishAuthenticationAsync(result);
                 }
                 catch (Exception ex)
                 {
@@ -1593,6 +1592,15 @@ public sealed class AccountPage : ContentPage, IQueryAttributable
         {
             SetStatus(ex.Message, isError: true);
         }
+    }
+
+    private async Task FinishAuthenticationAsync((bool IsSuccess, string Message) result)
+    {
+        await RefreshSessionAsync(result.Message);
+        if (!result.IsSuccess || !_sessionState.Current.IsSignedIn) return;
+
+        await _push.OfferAfterSignInAsync(_sessionState.Current.Email);
+        await OpenPostAuthenticationDestinationAsync();
     }
 
     private async Task OpenPostAuthenticationDestinationAsync()

@@ -24,19 +24,31 @@ public class SignupFlowTests
     {
         const string plan = "schink-stories-maandeliks";
         const string checkoutPath = "/betaal/" + plan;
-        var signup = new Signup { Plan = plan, ReturnUrl = checkoutPath };
+        var signup = new Signup { Plan = plan, ReturnUrl = checkoutPath, DiscountCode = "PROMO" };
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
         typeof(Signup).GetProperty("NavigationManager", flags)!
             .SetValue(signup, new SignupNavigationManager(checkoutPath, plan, method: null));
         typeof(Signup).GetProperty("SelectedPlan", flags)!
             .SetValue(signup, PaymentPlanCatalog.FindBySlug(plan));
+        var form = typeof(Signup).GetProperty("SignUpForm", flags)!.GetValue(signup)!;
+        var discount = form.GetType().GetProperty("DiscountCode")!;
+        discount.SetValue(form, "PROMO");
         typeof(Signup).GetMethod("SelectGratisPlan", flags)!.Invoke(signup, null);
 
+        Assert.AreEqual(string.Empty, discount.GetValue(form));
         Assert.IsTrue((bool)typeof(Signup).GetProperty("IsFreeSignup", flags)!.GetValue(signup)!);
         Assert.AreEqual("/teken-in?returnUrl=%2Fluister", typeof(Signup).GetProperty("SignInHref", flags)!.GetValue(signup));
         Assert.AreEqual("/api/auth/google/start?returnUrl=%2Fluister", typeof(Signup).GetProperty("GoogleSignInHref", flags)!.GetValue(signup));
         Assert.AreEqual("/api/auth/apple/start?returnUrl=%2Fluister", typeof(Signup).GetProperty("AppleSignInHref", flags)!.GetValue(signup));
         Assert.AreEqual("https://schink.example/teken-op", typeof(Signup).GetProperty("SignupChoicesHref", flags)!.GetValue(signup));
+    }
+
+    [TestMethod]
+    public async Task SignupFromDiscountedCheckoutRetainsTheCodeFromTheSignInReturnUrl()
+    {
+        using var document = new HtmlParser().ParseDocument(await RenderAsync(
+            returnUrl: "/betaal/schink-stories-maandeliks?discountCode=PROMO&returnUrl=%2Fluister%2Fstorie"));
+        Assert.AreEqual("PROMO", document.QuerySelector("#signup-discount-code")?.GetAttribute("value"));
     }
 
     [TestMethod]

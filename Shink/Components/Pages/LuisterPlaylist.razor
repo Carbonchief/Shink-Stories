@@ -1,6 +1,7 @@
 @page "/luister/speellys/{PlaylistSlug}"
 @page "/my-stories/speellys/{PersonalPlaylistId:guid}"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@rendermode InteractiveServer
+@inherits PrerenderedPage
 @using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.WebUtilities
@@ -45,7 +46,11 @@
 @if (IsRedirectingToOpsies)
 {
     <section class="playlist-empty-state">
-        <h1>Hierdie speellys is nog gesluit.</h1>
+        <h1>@(IsPersonalPlaylist || CurrentPlaylist is null ? "Hierdie speellys is nog gesluit." : CurrentPlaylist.Title)</h1>
+        @if (!IsPersonalPlaylist && !string.IsNullOrWhiteSpace(CurrentPlaylist?.Description))
+        {
+            <p>@CurrentPlaylist.Description</p>
+        }
         <p>Teken in of kies 'n plan om met hierdie speellys voort te gaan.</p>
         <a href="@StoryAccessPopupPrimaryHref">Gaan voort</a>
     </section>
@@ -371,6 +376,8 @@ else
                   OnClose="CloseStoryAccessPopupAsync" />
 
 @code {
+    [CascadingParameter] private HttpContext? PrerenderRequest { get; set; }
+
     [Parameter]
     public string? PlaylistSlug { get; set; }
 
@@ -518,6 +525,9 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        // Personal playlists are private and only load once the owner's circuit connects.
+        if (IsPersonalPlaylist && PrerenderRequest is not null && !RendererInfo.IsInteractive) return;
+
         IsLoadingPlaylist = true;
         CancelEmptyStateDelay();
         AllowEmptyState = false;
@@ -556,9 +566,7 @@ else
                     return;
                 }
 
-                var previewPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync();
-                CurrentPlaylist = previewPlaylists.FirstOrDefault(playlist =>
-                    string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+                CurrentPlaylist = await ReadPublicPlaylistAsync(null);
 
                 if (CurrentPlaylist is null)
                 {
@@ -600,9 +608,7 @@ else
             }
             else
             {
-                var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(signedInEmail);
-                CurrentPlaylist = playlists.FirstOrDefault(playlist =>
-                    string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+                CurrentPlaylist = await ReadPublicPlaylistAsync(signedInEmail);
             }
 
             if (CurrentPlaylist is null)
@@ -663,7 +669,10 @@ else
                 return;
             }
 
-            _ = LoadFavoriteStorySlugsInBackgroundAsync();
+            if (RendererInfo.IsInteractive)
+            {
+                _ = LoadFavoriteStorySlugsInBackgroundAsync();
+            }
             AudioUrl = GetSignedAudioUrl(CurrentStory.Slug);
             ResolveAdjacentStories();
             ShowStoryAccessPopup = false;
@@ -674,6 +683,13 @@ else
             await UpdateEmptyStateVisibilityAsync();
         }
     }
+
+    private Task<StoryPlaylist?> ReadPublicPlaylistAsync(string? email) =>
+        ReadPageDataAsync($"playlist:{PlaylistSlug}", email, async () =>
+        {
+            var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(email);
+            return playlists.FirstOrDefault(playlist => string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+        });
 
     private async Task UpdateEmptyStateVisibilityAsync()
     {

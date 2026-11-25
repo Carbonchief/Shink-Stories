@@ -154,7 +154,7 @@ internal static class MobileTopBar
         };
 
         // Keep colourful page artwork visible beneath the shared native blur.
-        // Both platforms use the same tint, transparency, and page-facing fade.
+        // Both platforms use the same teal and page-facing fade.
         if (applyMaterial)
         {
             MobileLiquidGlass.ApplyTopBar(

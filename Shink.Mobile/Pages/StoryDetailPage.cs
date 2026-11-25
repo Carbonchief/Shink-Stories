@@ -45,7 +45,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private readonly IAudioPlaybackService _audioPlaybackService;
     private readonly StoryPlaybackSession _storyPlaybackSession;
     private readonly IOfflineStoryDownloadService _offlineDownloadService;
-    private readonly PlaylistPlaybackState _playlistPlaybackState;
+    private PlaylistPlaybackState _playlistPlaybackState = new();
     private readonly ContinueListeningState _continueListeningState;
     private readonly IOrientationService _orientationService;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
@@ -108,7 +108,6 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         IAudioPlaybackService audioPlaybackService,
         StoryPlaybackSession storyPlaybackSession,
         IOfflineStoryDownloadService offlineDownloadService,
-        PlaylistPlaybackState playlistPlaybackState,
         ContinueListeningState continueListeningState,
         IOrientationService orientationService,
         PlayerTransitionBackdropState transitionBackdropState)
@@ -118,7 +117,6 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _audioPlaybackService = audioPlaybackService;
         _storyPlaybackSession = storyPlaybackSession;
         _offlineDownloadService = offlineDownloadService;
-        _playlistPlaybackState = playlistPlaybackState;
         _continueListeningState = continueListeningState;
         _orientationService = orientationService;
         _transitionBackdropState = transitionBackdropState;
@@ -238,24 +236,12 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             Source = story.Source;
         }
 
-        if (query.TryGetValue("playlistSlug", out var playlistSlug))
+        if (query.TryGetValue("playbackQueue", out var queue) && queue is PlaylistPlaybackState playbackQueue)
         {
-            _playlistSlug = playlistSlug?.ToString();
-            _playlistTitle = _playlistPlaybackState.Title;
-            _playlistStories = string.Equals(_playlistPlaybackState.Slug, _playlistSlug, StringComparison.OrdinalIgnoreCase)
-                ? _playlistPlaybackState.Stories
-                : Array.Empty<MobileStorySummary>();
-        }
-        else
-        {
-            _playlistStories = Array.Empty<MobileStorySummary>();
-            _playlistTitle = null;
-            _playlistSlug = null;
-        }
-
-        if (query.TryGetValue("playlistTitle", out var playlistTitle))
-        {
-            _playlistTitle = playlistTitle?.ToString();
+            _playlistPlaybackState = playbackQueue;
+            _playlistSlug = playbackQueue.Slug;
+            _playlistTitle = playbackQueue.Title;
+            _playlistStories = playbackQueue.Stories;
         }
     }
 
@@ -2103,7 +2089,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             _playlistSlug,
             _playlistTitle,
             ResolveCatalogDurationSeconds(detail),
-            originPlaylist: ResolveOriginPlaylist());
+            originPlaylist: ResolveOriginPlaylist(),
+            playbackQueue: _playlistPlaybackState);
         playButton.Text = "II";
         StartProgressTimer();
     }
@@ -2163,7 +2150,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         try
         {
-            if (_storyPlaybackSession.IsCurrentStory(detail.Story))
+            if (_storyPlaybackSession.IsCurrentStory(detail.Story, _playlistPlaybackState))
             {
                 await _storyPlaybackSession.ResumeAsync();
                 playButton.Text = "II";
@@ -2189,7 +2176,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
             // Root-relative signed routes can parse as file URIs on mobile.
             // Only an explicit file scheme identifies a saved download here.
-            if (detail.AudioUrl?.StartsWith("file:", StringComparison.OrdinalIgnoreCase) == true)
+            if (_playlistPlaybackState.IsOfflineQueue ||
+                detail.AudioUrl?.StartsWith("file:", StringComparison.OrdinalIgnoreCase) == true)
             {
                 throw new InvalidOperationException("Die afgelaaide klank is nie meer beskikbaar nie. Laai die storie weer af wanneer jy aanlyn is.");
             }
@@ -2200,7 +2188,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 detail.Story.Source);
             await PlayPreparedAudioAsync(playbackUrl, detail, playButton);
         }
-        catch (Exception) when (IsR2AudioUrl(detail.AudioUrl))
+        catch (Exception) when (!_playlistPlaybackState.IsOfflineQueue && IsR2AudioUrl(detail.AudioUrl))
         {
             try
             {
@@ -2302,7 +2290,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         _playlistPlaybackState.SetAutoplay(!_playlistPlaybackState.IsAutoplayEnabled);
         _playlistPlaybackState.TrackManualStorySelection(detail.Story);
-        _storyPlaybackSession.RefreshAutoplayPreparation();
+        _storyPlaybackSession.RefreshAutoplayPreparation(_playlistPlaybackState);
         RenderDetail(detail, trackView: false);
     }
 
@@ -2315,7 +2303,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             _ => null
         };
         _playlistPlaybackState.SetAutoplayLimit(nextLimit, detail.Story);
-        _storyPlaybackSession.RefreshAutoplayPreparation();
+        _storyPlaybackSession.RefreshAutoplayPreparation(_playlistPlaybackState);
         RenderDetail(detail, trackView: false);
     }
 
@@ -2323,7 +2311,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         _playlistPlaybackState.SetShuffle(!_playlistPlaybackState.IsShuffleEnabled, detail.Story);
         _playlistStories = GetOrderedPlaylistStories(detail.Story);
-        _storyPlaybackSession.RefreshAutoplayPreparation();
+        _storyPlaybackSession.RefreshAutoplayPreparation(_playlistPlaybackState);
         RenderDetail(detail, trackView: false);
     }
 
@@ -2336,10 +2324,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         $"{speed:0.##}x";
 
     private bool IsCurrentStoryPlaying(MobileStoryDetailResponse detail) =>
-        _storyPlaybackSession.IsCurrentStory(detail.Story) && _storyPlaybackSession.IsPlaying;
+        _storyPlaybackSession.IsCurrentStory(detail.Story, _playlistPlaybackState) && _storyPlaybackSession.IsPlaying;
 
     private bool ShouldAutoplaySelection() =>
-        _storyPlaybackSession.IsPlaying || _playlistPlaybackState.IsAutoplayEnabled;
+        (ReferenceEquals(_storyPlaybackSession.Current?.PlaybackQueue, _playlistPlaybackState) && _storyPlaybackSession.IsPlaying) ||
+        _playlistPlaybackState.IsAutoplayEnabled;
 
     private MobilePlaylist? ResolveOriginPlaylist()
     {
@@ -2468,7 +2457,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             return playlistStories[playlistIndex - 1];
         }
 
-        return detail.PreviousStory;
+        return _playlistPlaybackState.IsOfflineQueue ? null : detail.PreviousStory;
     }
 
     private MobileStorySummary? ResolveNextStory(MobileStoryDetailResponse detail)
@@ -2480,7 +2469,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             return playlistStories[playlistIndex + 1];
         }
 
-        return detail.NextStory;
+        return _playlistPlaybackState.IsOfflineQueue ? null : detail.NextStory;
     }
 
     private IReadOnlyList<MobileStorySummary> GetOrderedPlaylistStories(MobileStorySummary? currentStory = null)
@@ -3592,7 +3581,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             return;
         }
 
-        var isCurrentStory = _storyPlaybackSession.IsCurrentStory(_currentDetail?.Story);
+        var isCurrentStory = _storyPlaybackSession.IsCurrentStory(_currentDetail?.Story, _playlistPlaybackState);
         var position = isCurrentStory ? _storyPlaybackSession.CurrentPosition : TimeSpan.Zero;
         var duration = isCurrentStory ? _storyPlaybackSession.Duration ?? _activeCatalogDuration : _activeCatalogDuration;
 
@@ -3727,7 +3716,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private async Task SeekToProgressValueAsync(double value)
     {
         var duration = ResolveActivePlaybackDuration();
-        if (!_storyPlaybackSession.IsCurrentStory(_currentDetail?.Story) ||
+        if (!_storyPlaybackSession.IsCurrentStory(_currentDetail?.Story, _playlistPlaybackState) ||
             duration is not { TotalSeconds: > 0 })
         {
             return;
@@ -3749,7 +3738,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private void SaveContinueListening(MobileStoryDetailResponse detail)
     {
-        if (_storyPlaybackSession.HasActiveStory && !_storyPlaybackSession.IsCurrentStory(detail.Story))
+        if (_storyPlaybackSession.HasActiveStory && !_storyPlaybackSession.IsCurrentStory(detail.Story, _playlistPlaybackState))
         {
             return;
         }
@@ -3758,10 +3747,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             detail.Story,
             _playlistSlug,
             _playlistTitle,
-            _storyPlaybackSession.IsCurrentStory(detail.Story)
+            _storyPlaybackSession.IsCurrentStory(detail.Story, _playlistPlaybackState)
                 ? NormalizeTrackingSeconds(_storyPlaybackSession.CurrentPosition.TotalSeconds)
                 : null,
-            ResolveCatalogDurationSeconds(detail));
+            ResolveCatalogDurationSeconds(detail),
+            autoplayEnabled: _playlistPlaybackState.IsAutoplayEnabled);
     }
 
     private static string FormatTime(TimeSpan value) =>
@@ -3920,7 +3910,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
-            var isCurrentStory = _storyPlaybackSession.IsCurrentStory(_currentDetail?.Story);
+            var isCurrentStory = _storyPlaybackSession.IsCurrentStory(_currentDetail?.Story, _playlistPlaybackState);
             if (_activePlayButton is not null)
             {
                 _activePlayButton.Text = isCurrentStory && _audioPlaybackService.IsPlaying ? "II" : "▶";
@@ -3942,7 +3932,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            if (!_isPageActive || !_storyPlaybackSession.IsCurrentStory(_currentDetail?.Story))
+            if (!_isPageActive || !_storyPlaybackSession.IsCurrentStory(_currentDetail?.Story, _playlistPlaybackState))
             {
                 return;
             }
@@ -3963,12 +3953,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         MainThread.BeginInvokeOnMainThread(() =>
         {
             if (!_isPageActive ||
+                !ReferenceEquals(_storyPlaybackSession.Current?.PlaybackQueue, _playlistPlaybackState) ||
                 string.IsNullOrWhiteSpace(_playlistSlug) ||
                 !string.Equals(_playlistSlug, args.Playlist.Slug, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
+            CancelActiveLoad();
             _pendingAutoplayAfterLoad = false;
             StorySlug = args.Detail.Story.Slug;
             Source = args.Detail.Story.Source;

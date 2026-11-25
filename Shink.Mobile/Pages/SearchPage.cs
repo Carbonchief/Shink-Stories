@@ -17,7 +17,6 @@ public sealed class SearchPage : ContentPage
     private static readonly Color SearchBackgroundColor = Color.FromArgb("#279AA1");
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
-    private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly StoryPlaybackSession _storyPlaybackSession;
     private readonly MobileAnalyticsService _analytics;
     private readonly NavigationGate _navigationGate = new();
@@ -51,13 +50,11 @@ public sealed class SearchPage : ContentPage
     public SearchPage(
         MobileApiClient apiClient,
         SessionState sessionState,
-        PlaylistPlaybackState playlistPlaybackState,
         StoryPlaybackSession storyPlaybackSession,
         MobileAnalyticsService analytics)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
-        _playlistPlaybackState = playlistPlaybackState;
         _storyPlaybackSession = storyPlaybackSession;
         _analytics = analytics;
 
@@ -923,25 +920,12 @@ public sealed class SearchPage : ContentPage
                 return;
             }
 
-            if (candidate.Playlist is not null)
-            {
-                _playlistPlaybackState.Set(candidate.Playlist, story);
-            }
-            else
-            {
-                _playlistPlaybackState.Clear();
-            }
-
             var routeSource = ResolveStorySource(story);
             var parameters = new Dictionary<string, object>
             {
-                ["preview"] = story
+                ["preview"] = story,
+                ["playbackQueue"] = PlaylistPlaybackState.ForStory(candidate.Playlist, story)
             };
-            if (candidate.Playlist is not null)
-            {
-                parameters["playlistTitle"] = candidate.Playlist.Title;
-                parameters["playlistSlug"] = candidate.Playlist.Slug;
-            }
 
             await Shell.Current.GoToAsync(
                 $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(routeSource)}",

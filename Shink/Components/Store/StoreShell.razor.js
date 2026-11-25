@@ -1,8 +1,6 @@
-const CART_KEY = "schink.store.cart.v1";
+import { CART_KEY, MAX_ITEMS, MAX_PER_PRODUCT, readState, saveState, updateBadges } from "./StoreBasket.razor.js";
+
 const DRAFT_KEY = "schink.store.checkout.v1";
-const COOKIE_KEY = "shink.store.cart";
-const MAX_PER_PRODUCT = 10;
-const MAX_ITEMS = 20;
 
 export function normalizeCart(input, products) {
     const known = new Set(products.map((product) => product.slug));
@@ -158,104 +156,6 @@ export function completePurchase(
     );
 }
 
-function parseState(value) {
-    try {
-        const parsed = JSON.parse(value || "null");
-        return {
-            items: Array.isArray(parsed?.items) ? parsed.items : [],
-            updatedAt: Number.isFinite(parsed?.updatedAt)
-                ? parsed.updatedAt
-                : 0,
-            completedReferences: Array.isArray(parsed?.completedReferences)
-                ? parsed.completedReferences
-                      .filter((value) => typeof value === "string")
-                      .slice(-50)
-                : [],
-            pendingCheckouts: Array.isArray(parsed?.pendingCheckouts)
-                ? parsed.pendingCheckouts
-                      .filter(
-                          (checkout) =>
-                              typeof checkout?.id === "string" &&
-                              /^[a-f0-9]{32}$/.test(checkout.id) &&
-                              Array.isArray(checkout.items),
-                      )
-                      .slice(-20)
-                      .map((checkout) => ({
-                          id: checkout.id,
-                          items: checkout.items
-                              .slice(0, 20)
-                              .filter(
-                                  (item) =>
-                                      typeof item?.slug === "string" &&
-                                      Number.isInteger(item.quantity) &&
-                                      item.quantity > 0 &&
-                                      item.quantity <= MAX_PER_PRODUCT,
-                              ),
-                      }))
-                : [],
-        };
-    } catch {
-        return {
-            items: [],
-            completedReferences: [],
-            pendingCheckouts: [],
-            updatedAt: 0,
-        };
-    }
-}
-
-function readState() {
-    let local;
-    let session;
-    try {
-        local = localStorage.getItem(CART_KEY);
-    } catch {
-        /* Optional storage. */
-    }
-    try {
-        session = sessionStorage.getItem(CART_KEY);
-    } catch {
-        /* Optional storage. */
-    }
-    if (local || session) {
-        const localState = parseState(local),
-            sessionState = parseState(session);
-        return sessionState.updatedAt > localState.updatedAt
-            ? sessionState
-            : localState;
-    }
-    const cookie = document.cookie
-        .split("; ")
-        .find((value) => value.startsWith(`${COOKIE_KEY}=`));
-    try {
-        return parseState(
-            decodeURIComponent(cookie?.slice(COOKIE_KEY.length + 1) || ""),
-        );
-    } catch {
-        return parseState(null);
-    }
-}
-
-function saveState(state) {
-    state.updatedAt = Math.max(Date.now(), (state.updatedAt || 0) + 1);
-    const value = JSON.stringify(state);
-    let saved = false;
-    try {
-        localStorage.setItem(CART_KEY, value);
-        saved = true;
-    } catch {
-        /* Private browsing fallback. */
-    }
-    try {
-        sessionStorage.setItem(CART_KEY, value);
-        saved = true;
-    } catch {
-        /* Cookie fallback. */
-    }
-    if (saved) return;
-    document.cookie = `${COOKIE_KEY}=${encodeURIComponent(value)}; Path=/; Max-Age=2592000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
-}
-
 const money = (cents) => `R ${(cents / 100).toFixed(2)}`;
 const all = (root, selector) => [...root.querySelectorAll(selector)];
 function textAll(root, selector, text) {
@@ -264,29 +164,9 @@ function textAll(root, selector, text) {
     });
 }
 
-function updateBadges(items) {
-    const count = items.reduce(
-        (sum, item) =>
-            sum +
-            (Number.isInteger(item?.quantity)
-                ? Math.max(0, Math.min(MAX_PER_PRODUCT, item.quantity))
-                : 0),
-        0,
-    );
-    textAll(document, "[data-store-count]", String(Math.min(MAX_ITEMS, count)));
-    document.documentElement.classList.toggle("has-store-cart", count > 0);
-    all(document, "[data-store-cart-link]").forEach((link) =>
-        link.setAttribute(
-            "aria-label",
-            `Mandjie met ${count} ${count === 1 ? "item" : "items"}`,
-        ),
-    );
-}
-
 let currentRoot;
 let currentView;
 let disposeCurrent;
-let enhancedNavigationBound = false;
 let lastAnalyticsRender;
 let checkoutTracked = false;
 let lastAnalyticsTimestamp = 0;
@@ -348,20 +228,10 @@ function viewKey(root) {
     return `${location.pathname}${location.search}:${root?.dataset.storeView || ""}:${root?.dataset.storeCompletedReference || ""}`;
 }
 
-function bindEnhancedNavigation() {
-    if (!enhancedNavigationBound && window.Blazor?.addEventListener) {
-        window.Blazor.addEventListener("enhancedload", () => {
-            currentRoot = null;
-            initialize();
-        });
-        enhancedNavigationBound = true;
-    }
-}
-
-export function initialize() {
+export function initialize(force = false) {
     const root = document.querySelector("[data-store]");
     const key = viewKey(root);
-    if (root && currentRoot === root && currentView === key) return;
+    if (!force && currentRoot === root && currentView === key) return;
     disposeCurrent?.();
     currentRoot = root;
     currentView = key;
@@ -997,23 +867,5 @@ export function initialize() {
         );
 }
 
-if (typeof document !== "undefined") {
-    bindEnhancedNavigation();
-    initialize();
-    // Native links and Blazor enhanced navigation both need to restore the basket.
-    document.addEventListener("enhancedload", initialize);
-    document.addEventListener("load", bindEnhancedNavigation, true);
-    window.addEventListener("pageshow", () => {
-        currentRoot = null;
-        initialize();
-    });
-    window.addEventListener("storage", () => {
-        if (!document.querySelector("[data-store]"))
-            updateBadges(readState().items);
-    });
-    new MutationObserver(() => {
-        bindEnhancedNavigation();
-        const root = document.querySelector("[data-store]");
-        if (root !== currentRoot || viewKey(root) !== currentView) initialize();
-    }).observe(document.body, { childList: true, subtree: true });
-}
+// A direct store visit must finish wiring the initial view before the document load event.
+if (typeof document !== "undefined") initialize();

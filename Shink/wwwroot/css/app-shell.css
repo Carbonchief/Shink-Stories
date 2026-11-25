@@ -196,3 +196,42 @@ html.unsupported-browser #app-shell-root {
     outline: 3px solid rgba(243, 154, 50, 0.4);
     outline-offset: 2px;
 }
+
+.winkel-header-cart {
+    display: none;
+    gap: 0.35rem;
+    align-items: center;
+    text-decoration: none;
+    color: inherit;
+    padding: 0.5rem;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.has-store-cart .winkel-header-cart,
+.winkel-route .winkel-header-cart {
+    display: inline-flex;
+}
+.winkel-header-cart .winkel-cart-count {
+    display: inline-grid;
+    place-items: center;
+    padding: 0 0.3rem;
+    border-radius: 50%;
+    color: #fff;
+    font-weight: 800;
+    background: #c8591f;
+    min-width: 1.3rem;
+    height: 1.3rem;
+    font-size: 0.7rem;
+}
+.is-search-active .winkel-header-cart {
+    display: none;
+}
+@media (max-width: 400px) {
+    .site-header .brand-wordmark {
+        width: 84px;
+    }
+    .winkel-header-cart {
+        padding: 0.25rem;
+        gap: 0.2rem;
+    }
+}

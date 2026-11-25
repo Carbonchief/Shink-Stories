@@ -1043,6 +1043,38 @@ async (page) => {
             "The pager still offers a page beyond the order count.");
     });
 
+    currentSuite = "public-pages";
+    await check("Luister retains search entered before the server circuit connects", async (tab) => {
+        let release;
+        const gate = new Promise(resolve => { release = resolve; });
+        await tab.route("**/_blazor/negotiate**", async route => { await gate; await route.continue(); });
+        const search = tab.getByRole("searchbox", { name: "Soek stories" });
+        try {
+            await tab.goto(base + "/luister", { waitUntil: "domcontentloaded" });
+            await search.fill("geen-plaaslike-treffer");
+        } finally {
+            release();
+        }
+        await tab.getByText(/Geen stories pas by jou soektog/).waitFor();
+        assert(await search.inputValue() === "geen-plaaslike-treffer", "Search input was lost on activation.");
+        await search.fill("");
+        await tab.getByText(/Geen stories pas by jou soektog/).waitFor({ state: "hidden" });
+    });
+    await check("public pages ship their metadata and load the shop on navigation", async (tab) => {
+        for (const path of ["/luister", "/karakters", "/luister/speellys/storie-hoekie", "/luister/speellys/storie-hoekie/stories"]) {
+            const response = await tab.request.get(base + path);
+            const html = await response.text();
+            assert(response.ok() && /<title>[^<]+<\/title>/.test(html) && html.includes('property="og:title"'), "Missing initial metadata on " + path);
+        }
+        await tab.goto(base + "/meer-oor-ons");
+        const assets = await tab.evaluate(() => performance.getEntriesByType("resource").map(asset => asset.name));
+        assert(!assets.some(name => /MudBlazor\.min|StoreShell\.|winkel-quantity\.|winkel-store\./i.test(name)), "Shop or admin assets loaded on Meer oor Ons.");
+        await tab.getByRole("button", { name: "Maak navigasie oop" }).click();
+        await tab.getByRole("link", { name: "Winkel", exact: true }).click();
+        await add(tab, "tiekie");
+        assert(await basketCount(tab) === 1, "The shop did not initialize after enhanced navigation.");
+    });
+
     const summary = { passed: results.filter(result => result.passed).length, failed: results.filter(result => !result.passed).length, results };
     if (summary.failed) throw new Error(JSON.stringify(summary));
     return summary;

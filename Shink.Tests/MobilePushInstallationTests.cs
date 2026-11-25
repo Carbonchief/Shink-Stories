@@ -85,6 +85,7 @@ namespace Shink.Mobile.Services
         public Dictionary<string, object> Values { get; } = [];
         public T Get<T>(string key, T fallback) => Values.TryGetValue(key, out var value) ? (T)value : fallback;
         public void Set<T>(string key, T value) => Values[key] = value!;
+        public bool ContainsKey(string key) => Values.ContainsKey(key);
         public void Remove(string key) => Values.Remove(key);
     }
     internal static class Preferences

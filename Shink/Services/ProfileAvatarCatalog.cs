@@ -60,19 +60,47 @@ public static class ProfileAvatarCatalog
             ["mode"] = isEditing ? "edit" : null
         });
 
-    public static string ContinueAfterSelection(string? returnPath, bool isEditing)
+    public static string SignupPath(PaymentPlan? plan, string? returnPath, string? discountCode)
     {
-        var safeReturnPath = SafeReturnPath(returnPath);
-        if (isEditing)
+        var picker = SelectionPath(ContinueAfterSelection(returnPath, isEditing: false));
+        return plan is null ? picker : QueryHelpers.AddQueryString($"/betaal/{plan.Slug}", new Dictionary<string, string?>
         {
-            return safeReturnPath;
+            ["provider"] = "paystack",
+            ["discountCode"] = discountCode,
+            ["returnUrl"] = picker
+        });
+    }
+
+    public static string AfterFirstSignIn(string target) =>
+        SignupCheckoutPath(target) ?? SelectionPath(OnboardingReturnPath(target) ?? target);
+
+    public static string? SignupCheckoutPath(string? target)
+    {
+        var safePath = SafeReturnPath(target);
+        var parts = safePath.Split('?', 2);
+        const string checkoutPrefix = "/betaal/";
+        if (!parts[0].StartsWith(checkoutPrefix, StringComparison.OrdinalIgnoreCase) ||
+            PaymentPlanCatalog.FindBySlug(parts[0][checkoutPrefix.Length..]) is not { IsAdminOnly: false })
+        {
+            return null;
         }
 
-        const string checkoutPrefix = "/betaal/";
-        var path = safeReturnPath.Split('?', '#')[0];
-        return path.StartsWith(checkoutPrefix, StringComparison.OrdinalIgnoreCase) &&
-               PaymentPlanCatalog.FindBySlug(path[checkoutPrefix.Length..]) is { IsAdminOnly: false }
-            ? safeReturnPath
+        var query = QueryHelpers.ParseQuery(parts.ElementAtOrDefault(1));
+        var returnUrl = query.GetValueOrDefault("returnUrl").ToString();
+        query["returnUrl"] = SelectionPath(OnboardingReturnPath(returnUrl) ?? returnUrl);
+        return QueryHelpers.AddQueryString(parts[0], query);
+    }
+
+    public static string? OnboardingReturnPath(string? path) =>
+        path?.StartsWith(PagePath + "?", StringComparison.Ordinal) == true
+            ? SafeReturnPath(QueryHelpers.ParseQuery(path[PagePath.Length..]).GetValueOrDefault("returnUrl"))
+            : null;
+
+    public static string ContinueAfterSelection(string? returnPath, bool isEditing)
+    {
+        var safePath = SafeReturnPath(returnPath);
+        return isEditing || safePath == "/skool-admin" || StoryAccessPolicy.TryParseStoryPath(safePath, out _, out _)
+            ? safePath
             : "/luister";
     }
 }

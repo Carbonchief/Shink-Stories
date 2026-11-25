@@ -1,12 +1,14 @@
 # Mobile onboarding
 
-The four phone JPEGs are the original, unmodified onboarding designs from
+The five phone JPEGs are the original, unmodified onboarding designs from
 [the supplied Drive folder](https://drive.google.com/drive/folders/1LK1EFcr9J6KchoXx1tC1uCtIeDJxJ2EX).
-They include the Afrikaans copy, illustrations, logo, and four-step indicator.
+They include the Afrikaans copy, illustrations, and logo. The table lists them
+in screen order. “Egte stories. Geen AI.” introduces Martin immediately after the welcome screen.
 
 | Bundled asset | Drive original |
 | --- | --- |
 | `schink_onboarding_01.jpg` | `Schink_Stories_onboarding_01_App.jpg` |
+| `schink_onboarding_05.jpg` | `Schink_Stories_onboarding_05.jpg` |
 | `schink_onboarding_02.jpg` | `Schink_Stories_onboarding_02_app.jpg` |
 | `schink_onboarding_03.jpg` | `Schink_Stories_onboarding_03_app.jpg` |
 | `schink_onboarding_04.jpg` | `Schink_Stories_onboarding_04 - App.jpg` |
@@ -33,7 +35,7 @@ The gold progress marker stretches and glides between dots in either direction
 over 420 ms, with its width capped at 24 points (18 points at rest). Rapid
 navigation retargets the current shape without queuing old
 animations. Reduce Motion uses an immediate state change, and leaving the page
-stops the animation. The four native dot buttons retain their accessibility
+stops the animation. The five native dot buttons retain their accessibility
 labels and touch targets.
 
 Tablet windows at least 600 points wide use dedicated 2048 × 2732 portrait images
@@ -46,10 +48,12 @@ same native controls.
 | Bundled tablet asset | Drive original |
 | --- | --- |
 | `schink_onboarding_tablet_01.jpg` | `Schink_Stories_App_onboarding_iPad.jpg` |
+| `schink_onboarding_tablet_05.jpg` | `Schink_Stories_App_onboarding_iPad_05.jpg` |
 | `schink_onboarding_tablet_02.jpg` | `Schink_Stories_App_onboarding_iPad_02.jpg` |
 | `schink_onboarding_tablet_03.jpg` | `Schink_Stories_App_onboarding_iPad_03.jpg` |
 | `schink_onboarding_tablet_04.jpg` | `Schink_Stories_App_onboarding_iPad_04.jpg` |
 | `schink_onboarding_tablet_landscape_01.jpg` | `Schink_Stories_App_onboarding_iPad_Landscape_01.jpg` |
+| `schink_onboarding_tablet_landscape_05.jpg` | `Schink_Stories_App_onboarding_iPad_Landscape_5.jpg` |
 | `schink_onboarding_tablet_landscape_02.jpg` | `Schink_Stories_App_onboarding_iPad_Landscape_02.jpg` |
 | `schink_onboarding_tablet_landscape_03.jpg` | `Schink_Stories_App_onboarding_iPad_Landscape_03.jpg` |
 | `schink_onboarding_tablet_landscape_04.jpg` | `Schink_Stories_App_onboarding_iPad_Landscape_04.jpg` |
@@ -62,7 +66,7 @@ save the same completion flag, so signing out later does not start it again.
 The session refresh can run while onboarding is open without recreating the page.
 
 To verify locally, use a disposable simulator install: advance and swipe through
-all four images, go back, finish, and relaunch. Repeat with skip and with a cached
+all five images, go back, finish, and relaunch. Repeat with skip and with a cached
 signed-in session. Check a short phone plus small and large tablets in both
 orientations, including screen-reader descriptions, uncropped illustrations,
 reachable controls, and a phone layout regression. No server or content changes

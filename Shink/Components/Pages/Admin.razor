@@ -1,5 +1,3 @@
-@page "/admin"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IAsyncDisposable
 @using System.Globalization
 @using System.Security.Claims
@@ -994,7 +992,7 @@
                       Class="admin-grid"
                       Items="FilteredStories"
                       SortLabel='@T("Sorteer volgens", "Sort by")'
-                      RowsPerPage="100"
+                      RowsPerPage="25"
                       Dense="true"
                       Hover="true"
                       Bordered="true"
@@ -1220,7 +1218,7 @@
             <MudTable T="AdminPlaylistRecord"
                       Class="admin-grid admin-playlist-grid"
                       Items="FilteredPlaylists"
-                      RowsPerPage="100"
+                      RowsPerPage="25"
                       Dense="true"
                       Hover="true"
                       Bordered="true"
@@ -5332,7 +5330,9 @@
     private bool ClearModalLoadingOnNextRender { get; set; }
     private HashSet<Guid> TogglingPlaylistIds { get; } = [];
     private Dictionary<Guid, int> PlaylistOrderDraftPositions { get; } = [];
-    private string? SavedPlaylistOrderSignature { get; set; }
+    private Dictionary<Guid, int> SavedPlaylistPositions { get; set; } = [];
+    private IReadOnlyList<Guid> DraftPlaylistIds { get; set; } = [];
+
     private bool PlaylistOrderBeforeUnloadGuardEnabled { get; set; }
     private IDisposable? AdminLocationChangingRegistration { get; set; }
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
@@ -5440,18 +5440,41 @@
     private AdminSubscriberColumnFilters SubscriberColumnFilters { get; } = new();
     private AdminStoryColumnFilters StoryColumnFilters { get; } = new();
     private AdminPlaylistColumnFilters PlaylistColumnFilters { get; } = new();
-    private IReadOnlyList<AdminStoryRecord> FilteredStories =>
-        AdminGridFilterLogic.FilterStories(Stories, StorySearch, StoryColumnFilters);
-    private IReadOnlyList<AdminPlaylistRecord> OrderedPlaylistsForAdmin =>
-        Playlists
-            .OrderBy(playlist => GetPlaylistDraftPosition(playlist.PlaylistId))
-            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    private IReadOnlyList<AdminPlaylistRecord> FilteredPlaylists =>
-        AdminGridFilterLogic.FilterPlaylists(OrderedPlaylistsForAdmin, PlaylistSearch, PlaylistColumnFilters);
-    private bool HasUnsavedPlaylistOrderChanges =>
-        !string.IsNullOrWhiteSpace(SavedPlaylistOrderSignature) &&
-        !string.Equals(SavedPlaylistOrderSignature, BuildCurrentPlaylistOrderSignature(), StringComparison.Ordinal);
+    private (IReadOnlyList<AdminStoryRecord> Rows, string Search, string Title, string Status, string Access)? _storyFilterKey;
+    private IReadOnlyList<AdminStoryRecord> _filteredStoryRows = [];
+    private IReadOnlyList<AdminStoryRecord> FilteredStories
+    {
+        get
+        {
+            var key = (Stories, StorySearch, StoryColumnFilters.TitleText, StoryColumnFilters.Status, StoryColumnFilters.AccessLevel);
+            if (_storyFilterKey != key)
+            {
+                _filteredStoryRows = AdminGridFilterLogic.FilterStories(Stories, StorySearch, StoryColumnFilters);
+                _storyFilterKey = key;
+            }
+            return _filteredStoryRows;
+        }
+    }
+
+    private IReadOnlyList<AdminPlaylistRecord> OrderedPlaylistsForAdmin { get; set; } = [];
+    private (IReadOnlyList<AdminPlaylistRecord> Rows, string Search, string Title, string Enabled, string Home, string Showcase)? _playlistFilterKey;
+    private IReadOnlyList<AdminPlaylistRecord> _filteredPlaylistRows = [];
+    private IReadOnlyList<AdminPlaylistRecord> FilteredPlaylists
+    {
+        get
+        {
+            var key = (OrderedPlaylistsForAdmin, PlaylistSearch, PlaylistColumnFilters.TitleText, PlaylistColumnFilters.IsEnabled,
+                PlaylistColumnFilters.ShowOnHome, PlaylistColumnFilters.ShowShowcase);
+            if (_playlistFilterKey != key)
+            {
+                _filteredPlaylistRows = AdminGridFilterLogic.FilterPlaylists(OrderedPlaylistsForAdmin, PlaylistSearch, PlaylistColumnFilters);
+                _playlistFilterKey = key;
+            }
+            return _filteredPlaylistRows;
+        }
+    }
+
+    private bool HasUnsavedPlaylistOrderChanges { get; set; }
     private PieChartOptions ActiveMembersPerLevelPieChartOptions { get; } = new()
     {
         ShowValues = true
@@ -6661,7 +6684,7 @@
         try
         {
             var targetStoryId = selectedStoryId ?? StoryEditor?.StoryId;
-            Stories = await AdminManagementService.GetStoriesAsync(CurrentAdminEmail, StorySearch);
+            Stories = await AdminManagementService.GetStoriesAsync(CurrentAdminEmail);
             HasLoadedStories = true;
             var selectedStory = targetStoryId is not null
                 ? Stories.FirstOrDefault(story => story.StoryId == targetStoryId.Value)
@@ -6726,8 +6749,7 @@
             Logger.LogError(exception, "Failed to refresh playlists.");
             HasLoadedPlaylists = false;
             Playlists = Array.Empty<AdminPlaylistRecord>();
-            PlaylistOrderDraftPositions.Clear();
-            SavedPlaylistOrderSignature = null;
+            ResetPlaylistOrderDraft();
             PlaylistEditor = null;
             PlaylistStoryEditor = [];
             PlaylistEditorStateSignature = null;
@@ -9037,10 +9059,8 @@
             return false;
         }
 
-        var orderedIds = BuildPlaylistOrderSaveIds().ToList();
-        var currentIndex = orderedIds.IndexOf(playlistId);
-        var nextIndex = currentIndex + direction;
-        return currentIndex >= 0 && nextIndex >= 0 && nextIndex < orderedIds.Count;
+        var position = GetPlaylistDraftPosition(playlistId);
+        return position > 0 && position + direction >= 1 && position + direction <= DraftPlaylistIds.Count;
     }
 
     private async Task SavePlaylistOrderDraftAsync()
@@ -9088,8 +9108,9 @@
             .Select(playlist => playlist.PlaylistId)
             .ToArray();
 
+        SavedPlaylistPositions = orderedIds.Select((id, index) => (id, position: index + 1))
+            .ToDictionary(item => item.id, item => item.position);
         SetPlaylistOrderDraft(orderedIds);
-        SavedPlaylistOrderSignature = BuildPlaylistOrderSignature(orderedIds);
     }
 
     private void SetPlaylistOrderDraft(IReadOnlyList<Guid> orderedPlaylistIds)
@@ -9103,50 +9124,18 @@
                 PlaylistOrderDraftPositions[playlistId] = index + 1;
             }
         }
+        DraftPlaylistIds = orderedPlaylistIds.ToArray();
+        OrderedPlaylistsForAdmin = Playlists.OrderBy(playlist => GetPlaylistDraftPosition(playlist.PlaylistId))
+            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase).ToArray();
+        HasUnsavedPlaylistOrderChanges = DraftPlaylistIds.Any(IsPlaylistOrderDraftChanged);
     }
 
-    private int GetPlaylistDraftPosition(Guid playlistId)
-    {
-        if (PlaylistOrderDraftPositions.TryGetValue(playlistId, out var position))
-        {
-            return position;
-        }
+    private int GetPlaylistDraftPosition(Guid playlistId) => PlaylistOrderDraftPositions.GetValueOrDefault(playlistId);
 
-        var fallbackPosition = Playlists
-            .OrderBy(playlist => playlist.SortOrder)
-            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
-            .Select((playlist, index) => new { playlist.PlaylistId, Position = index + 1 })
-            .FirstOrDefault(item => item.PlaylistId == playlistId)
-            ?.Position;
+    private bool IsPlaylistOrderDraftChanged(Guid playlistId) =>
+        SavedPlaylistPositions.TryGetValue(playlistId, out var saved) && saved != GetPlaylistDraftPosition(playlistId);
 
-        return fallbackPosition ?? 0;
-    }
-
-    private bool IsPlaylistOrderDraftChanged(Guid playlistId)
-    {
-        var savedPosition = Playlists
-            .OrderBy(playlist => playlist.SortOrder)
-            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
-            .Select((playlist, index) => new { playlist.PlaylistId, Position = index + 1 })
-            .FirstOrDefault(item => item.PlaylistId == playlistId)
-            ?.Position;
-
-        return savedPosition is not null &&
-               savedPosition.Value != GetPlaylistDraftPosition(playlistId);
-    }
-
-    private IReadOnlyList<Guid> BuildPlaylistOrderSaveIds() =>
-        Playlists
-            .OrderBy(playlist => GetPlaylistDraftPosition(playlist.PlaylistId))
-            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
-            .Select(playlist => playlist.PlaylistId)
-            .ToArray();
-
-    private string BuildCurrentPlaylistOrderSignature() =>
-        BuildPlaylistOrderSignature(BuildPlaylistOrderSaveIds());
-
-    private static string BuildPlaylistOrderSignature(IReadOnlyList<Guid> orderedPlaylistIds) =>
-        string.Join("|", orderedPlaylistIds.Select(id => id.ToString("D")));
+    private IReadOnlyList<Guid> BuildPlaylistOrderSaveIds() => DraftPlaylistIds;
 
     private void ApplySelectedPlaylistsToStoryEditor()
     {

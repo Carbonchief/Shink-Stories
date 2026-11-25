@@ -1301,14 +1301,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _owner = owner;
             Padding = new Thickness(PageHorizontalPadding, 0);
 
-            _title = new Label
-            {
-                FontSize = 22,
-                FontAttributes = FontAttributes.Bold,
-                TextColor = Color.FromArgb("#222222"),
-                HorizontalOptions = LayoutOptions.Fill,
-                HorizontalTextAlignment = TextAlignment.Center
-            };
+            _title = owner.BuildPlaylistTitleLink();
             _description = new Label
             {
                 FontSize = 14,
@@ -1367,6 +1360,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             }
 
             _playlist = null;
+            _title.BindingContext = null;
             _carousel.ItemsSource = null;
             _showcase.Clear();
             IsVisible = false;
@@ -1376,7 +1370,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         {
             IsVisible = true;
             MobileResponsiveLayout.ApplyCenteredContent(_section, _owner.Width, 1100);
-            _title.Text = playlist.Title;
+            _title.BindingContext = playlist;
             _description.Text = playlist.Description ?? string.Empty;
             _description.IsVisible = !string.IsNullOrWhiteSpace(playlist.Description);
 
@@ -2199,32 +2193,26 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                         StrokeThickness = 0,
                         StrokeShape = BuildArtworkShape(16),
                         HeightRequest = artworkHeight,
-                        Content = new Grid
+                        Content = new ProgressiveCachedImage(
+                            _apiClient,
+                            new ProgressiveImageRequest(
+                                playlist.ArtworkUrl,
+                                FallbackFile: "schink_background.jpeg"))
                         {
-                            Children =
-                            {
-                                new ProgressiveCachedImage(
-                                    _apiClient,
-                                    new ProgressiveImageRequest(
-                                        playlist.ArtworkUrl,
-                                        FallbackFile: "schink_background.jpeg"))
-                                {
-                                    PrepareForScrolling = true,
-                                    WidthRequest = cardWidth,
-                                    HeightRequest = artworkHeight,
-                                    Aspect = Aspect.AspectFill,
-                                    HorizontalOptions = LayoutOptions.Fill,
-                                    VerticalOptions = LayoutOptions.Fill
-                                },
-                                BuildPlaylistBadge()
-                            }
-                        },
+                            PrepareForScrolling = true,
+                            WidthRequest = cardWidth,
+                            HeightRequest = artworkHeight,
+                            Aspect = Aspect.AspectFill,
+                            HorizontalOptions = LayoutOptions.Fill,
+                            VerticalOptions = LayoutOptions.Fill
+                        }
                     },
                     new Label
                     {
                         Text = playlist.Title,
                         FontSize = 17,
                         TextColor = Color.FromArgb("#1B2231"),
+                        TextDecorations = TextDecorations.Underline,
                         MaxLines = 2,
                         LineBreakMode = LineBreakMode.TailTruncation,
                         LineHeight = 1.15
@@ -2239,19 +2227,38 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         return card;
     }
 
+    private Label BuildPlaylistTitleLink(MobilePlaylist? playlist = null)
+    {
+        var title = new Label
+        {
+            BindingContext = playlist,
+            FontSize = 22,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Color.FromArgb("#222222"),
+            TextDecorations = TextDecorations.Underline,
+            MinimumHeightRequest = 48,
+            HorizontalOptions = LayoutOptions.Fill,
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center
+        };
+        title.SetBinding(Label.TextProperty, static (MobilePlaylist item) => item.Title);
+        SemanticProperties.SetHeadingLevel(title, SemanticHeadingLevel.Level2);
+        SemanticProperties.SetHint(title, "Maak die speellys oop");
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) =>
+        {
+            if (title.BindingContext is MobilePlaylist current)
+                await OpenPlaylistAsync(current);
+        };
+        title.GestureRecognizers.Add(tap);
+        return title;
+    }
+
     private View BuildPlaylistSection(MobilePlaylist playlist)
     {
         var section = new VerticalStackLayout { Spacing = 10 };
         MobileResponsiveLayout.ApplyCenteredContent(section, Width, 1100);
-        section.Children.Add(new Label
-        {
-            Text = playlist.Title,
-            FontSize = 22,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#222222"),
-            HorizontalOptions = LayoutOptions.Fill,
-            HorizontalTextAlignment = TextAlignment.Center
-        });
+        section.Children.Add(BuildPlaylistTitleLink(playlist));
 
         if (!string.IsNullOrWhiteSpace(playlist.Description))
         {
@@ -3041,35 +3048,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             });
     }
 
-    private static View BuildPlaylistBadge() =>
-        new Grid
-        {
-            InputTransparent = true,
-            Children =
-            {
-                new Border
-                {
-                    WidthRequest = 38,
-                    HeightRequest = 38,
-                    BackgroundColor = Color.FromArgb("#8AF3B23F"),
-                    StrokeThickness = 0,
-                    StrokeShape = new RoundRectangle { CornerRadius = 999 },
-                    HorizontalOptions = LayoutOptions.Center,
-                    VerticalOptions = LayoutOptions.Center,
-                    Content = new Label
-                    {
-                        Text = "▦",
-                        Opacity = 0.78,
-                        TextColor = Color.FromArgb("#2A1C05"),
-                        FontSize = 19,
-                        FontAttributes = FontAttributes.Bold,
-                        HorizontalTextAlignment = TextAlignment.Center,
-                        VerticalTextAlignment = TextAlignment.Center
-                    }
-                }
-            }
-        };
-
     private View? BuildContinueListeningCard()
     {
         var item = _continueListeningState.Current;
@@ -3277,15 +3255,18 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     {
         foreach (var playlist in EnumerateLuisterPlaylists())
         {
+            if (item.PlaylistSlug is not null &&
+                !string.Equals(item.PlaylistSlug, playlist.Slug, StringComparison.OrdinalIgnoreCase))
+                continue;
             var story = playlist.Stories.FirstOrDefault(candidate => StoryMatchesContinueItem(candidate, item));
             if (story is not null)
             {
-                return (story, playlist);
+                return (story, item.PlaylistSlug is null ? null : playlist);
             }
 
             if (playlist.ShowcaseStory is { } showcaseStory && StoryMatchesContinueItem(showcaseStory, item))
             {
-                return (showcaseStory, playlist);
+                return (showcaseStory, item.PlaylistSlug is null ? null : playlist);
             }
         }
 
@@ -3481,7 +3462,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 return;
             }
 
-            _playlistPlaybackState.Clear();
             await CapturePlayerTransitionBackdropAsync();
             await Shell.Current.GoToAsync(
                 $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=luister",
@@ -3680,9 +3660,12 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
     }
 
-    private Task OpenPlaylistAsync(MobilePlaylist playlist) =>
+    private Task OpenPlaylistAsync(MobilePlaylist selectedPlaylist) =>
         _navigationGate.RunAsync(async () =>
         {
+            // A filtered carousel can contain only the stories that matched the search.
+            var playlist = EnumerateLuisterPlaylists().FirstOrDefault(candidate =>
+                string.Equals(candidate.Slug, selectedPlaylist.Slug, StringComparison.OrdinalIgnoreCase)) ?? selectedPlaylist;
             var firstStory = playlist.Stories.FirstOrDefault(story => !story.IsLocked)
                 ?? playlist.Stories.FirstOrDefault();
             if (firstStory is null)
@@ -3706,24 +3689,13 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         await _navigationGate.RunAsync(async () =>
         {
             var resolvedStory = ResolveContinueListeningStory(item);
-            if (resolvedStory.HasValue && resolvedStory.Value.Playlist is { } playlist)
-            {
-                await OpenPlaylistStoryCoreAsync(MergeContinueListeningMetadata(resolvedStory.Value.Story, item), playlist);
-                return;
-            }
-
             var story = resolvedStory is { } resolved
                 ? MergeContinueListeningMetadata(resolved.Story, item)
                 : ToMobileStorySummary(item);
-            _playlistPlaybackState.Clear();
-            await CapturePlayerTransitionBackdropAsync();
-            await Shell.Current.GoToAsync(
-                $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
-                animate: false,
-                parameters: new Dictionary<string, object>
-                {
-                    ["preview"] = story
-                });
+            var queue = _storyPlaybackSession.IsCurrentStory(story)
+                ? _storyPlaybackSession.Current!.PlaybackQueue
+                : PlaylistPlaybackState.ForStory(resolvedStory?.Playlist, story, item.AutoplayEnabled);
+            await OpenPlaylistStoryCoreAsync(story, queue);
         });
     }
 
@@ -3771,14 +3743,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
                 var playbackStory = MergeContinueListeningMetadata(detail.Story, item);
                 var playlist = resolvedStory?.Playlist;
-                if (playlist is not null)
-                {
-                    _playlistPlaybackState.Set(playlist, playbackStory);
-                }
-                else
-                {
-                    _playlistPlaybackState.Clear();
-                }
+                var queue = PlaylistPlaybackState.ForStory(playlist, playbackStory, item.AutoplayEnabled);
 
                 var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
                     detail.AudioUrl,
@@ -3788,10 +3753,11 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                     playbackUrl,
                     playbackStory,
                     _apiClient.BuildImageUrl(playbackStory.ImageUrl),
-                    playlist?.Slug ?? item.PlaylistSlug,
-                    playlist?.Title ?? item.PlaylistTitle,
+                    queue.Slug,
+                    queue.Title,
                     playbackStory.DurationSeconds ?? item.DurationSeconds,
-                    originPlaylist: playlist);
+                    originPlaylist: playlist,
+                    playbackQueue: queue);
             }
             catch (Exception ex)
             {
@@ -3818,10 +3784,10 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private async Task OpenPlaylistStoryAsync(MobileStorySummary story, MobilePlaylist playlist)
     {
-        await _navigationGate.RunAsync(() => OpenPlaylistStoryCoreAsync(story, playlist));
+        await _navigationGate.RunAsync(() => OpenPlaylistStoryCoreAsync(story, PlaylistPlaybackState.ForStory(playlist, story)));
     }
 
-    private async Task OpenPlaylistStoryCoreAsync(MobileStorySummary story, MobilePlaylist playlist)
+    private async Task OpenPlaylistStoryCoreAsync(MobileStorySummary story, PlaylistPlaybackState queue)
     {
         if (story.IsLocked)
         {
@@ -3829,16 +3795,14 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             return;
         }
 
-        _playlistPlaybackState.Set(playlist, story);
         await CapturePlayerTransitionBackdropAsync();
         await Shell.Current.GoToAsync(
-            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=luister",
+            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
             animate: false,
             parameters: new Dictionary<string, object>
             {
                 ["preview"] = story,
-                ["playlistTitle"] = playlist.Title,
-                ["playlistSlug"] = playlist.Slug
+                ["playbackQueue"] = queue
             });
     }
 

@@ -18,10 +18,12 @@ public static class MobilePushInstallation
     private const string RegisteredAtKey = "mobile_push_registered_at_v1";
     private const string DirtyKey = "mobile_push_registration_dirty_v1";
     public static readonly SemaphoreSlim OperationGate = new(1, 1);
+    private const string EnabledKey = "mobile_push_enabled_v1";
+    public static bool HasNotificationChoice => Preferences.Default.ContainsKey(EnabledKey);
     public static bool Enabled
     {
-        get => Preferences.Default.Get("mobile_push_enabled_v1", false);
-        set => Preferences.Default.Set("mobile_push_enabled_v1", value);
+        get => Preferences.Default.Get(EnabledKey, false);
+        set => Preferences.Default.Set(EnabledKey, value);
     }
     public static string RegistrationId => Preferences.Default.Get(RegistrationKey, string.Empty);
     public static bool IsRegistered => !string.IsNullOrEmpty(RegistrationId);
