@@ -375,7 +375,6 @@ internal static class MobileMenuSheet
             },
             Content = panelContent
         };
-        SemanticProperties.SetDescription(panel, "Menu");
 
         var scrim = new BoxView
         {
@@ -524,6 +523,7 @@ internal static class MobileMenuSheet
                 InputTransparent = true
             }
         };
+        SemanticProperties.SetDescription(button, text);
         AttachTapHandler(button, onTap);
         return button;
     }

@@ -208,13 +208,13 @@ public sealed class LuisterPlaylistRouteTests
     {
         public List<Guid?> RequestedIds { get; } = [];
         public SubscriberPlaylistListResult Result { get; set; } = new(true, [new(PlaylistId, "My slaaptyd", ["alpha"])]);
-        public Task<SubscriberPlaylistListResult> GetPlaylistsAsync(Guid? playlistId = null, CancellationToken cancellationToken = default)
+        public Task<SubscriberPlaylistListResult> GetPlaylistsAsync(Guid? playlistId = null, CancellationToken cancellationToken = default, ClaimsPrincipal? requestUser = null)
         {
             RequestedIds.Add(playlistId);
             return Task.FromResult(Result);
         }
-        public Task<SubscriberPlaylistSaveResult> SavePlaylistAsync(Guid? playlistId, string title, IReadOnlyList<string> storySlugs, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Playback must not save.");
-        public Task<bool> DeletePlaylistAsync(Guid playlistId, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Playback must not delete.");
+        public Task<SubscriberPlaylistSaveResult> SavePlaylistAsync(Guid? playlistId, string title, IReadOnlyList<string> storySlugs, CancellationToken cancellationToken = default, ClaimsPrincipal? requestUser = null) => throw new InvalidOperationException("Playback must not save.");
+        public Task<bool> DeletePlaylistAsync(Guid playlistId, CancellationToken cancellationToken = default, ClaimsPrincipal? requestUser = null) => throw new InvalidOperationException("Playback must not delete.");
     }
 
     private sealed class TestCatalog : IStoryCatalogService

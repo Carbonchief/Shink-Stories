@@ -26,7 +26,7 @@ internal sealed class StoryVideoPlayer : ContentView, IDisposable
     public bool HasMedia => _media.Source is not null;
 
     public StoryVideoPlayer(MobileStoryDetailResponse detail, MobileApiClient api,
-        IOfflineStoryDownloadService downloads, StoryPlaybackSession audio)
+        IOfflineStoryDownloadService downloads, StoryPlaybackSession audio, TimeSpan resumePosition = default)
     {
         _detail = detail;
         _api = api;
@@ -60,7 +60,18 @@ internal sealed class StoryVideoPlayer : ContentView, IDisposable
             if (args.NewState == MediaElementState.Playing) _audio.Pause();
             _play.Text = args.NewState == MediaElementState.Playing ? "Pouse" : "Speel video";
         };
-        _media.MediaOpened += (_, _) => { _poster.IsVisible = false; _loading = false; _play.IsEnabled = true; };
+        _media.MediaOpened += async (_, _) =>
+        {
+            _poster.IsVisible = false;
+            _loading = false;
+            _play.IsEnabled = true;
+            if (resumePosition <= TimeSpan.Zero) return;
+            var position = resumePosition;
+            resumePosition = TimeSpan.Zero;
+            try { await _media.SeekTo(position, _request?.Token ?? CancellationToken.None); }
+            catch (OperationCanceledException) { }
+            catch (Exception) { if (!_disposed) ShowError(); }
+        };
         _media.MediaFailed += (_, _) => ShowError();
         var actions = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto) }, Children = { _play, _fullscreen } };
         Grid.SetColumn(_fullscreen, 1);

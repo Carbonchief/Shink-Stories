@@ -46,7 +46,7 @@ public sealed class SettingsPage : ContentPage
 
         _content = new VerticalStackLayout
         {
-            Padding = new Thickness(20, 18, 20, 34),
+            Padding = new Thickness(20, 8, 20, 34),
             Spacing = 18
         };
         MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 760);
@@ -143,16 +143,6 @@ public sealed class SettingsPage : ContentPage
         _content.Children.Clear();
         _downloadSummaryLabel = null;
 
-        _content.Children.Add(MobileTopBar.Build(
-            this,
-            _apiClient,
-            session,
-            new Thickness(0, 0, 0, 2),
-            "back",
-            backgroundColor: AccentColor,
-            foregroundColor: Colors.White,
-            showProfile: true,
-            applyMaterial: false));
         _content.Children.Add(BuildAccountSummary(session));
 
         if (MobilePushPlatform.BuildEnabled)
@@ -244,6 +234,27 @@ public sealed class SettingsPage : ContentPage
         });
     }
 
+    private Button BuildBackButton()
+    {
+        var button = new Button
+        {
+            Text = "\uf060",
+            FontFamily = "FontAwesomeSolid",
+            FontSize = 16,
+            TextColor = Color.FromArgb("#C5DBD6"),
+            BackgroundColor = Colors.Transparent,
+            BorderWidth = 0,
+            WidthRequest = 48,
+            HeightRequest = 48,
+            Padding = 0,
+            VerticalOptions = LayoutOptions.Center
+        };
+        SemanticProperties.SetDescription(button, "Gaan terug na Luister");
+        button.Clicked += async (_, _) =>
+            await _navigationGate.RunAsync(() => Shell.Current.GoToAsync("//Luister", animate: false));
+        return button;
+    }
+
     private View BuildAccountSummary(MobileSession session)
     {
         var displayName = ResolveDisplayName(session);
@@ -251,65 +262,59 @@ public sealed class SettingsPage : ContentPage
             ? "Jou rekening"
             : session.Email.Trim();
 
-        var card = new Border
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star)
+            },
+            ColumnSpacing = 8
+        };
+        grid.Add(BuildBackButton(), 0);
+        grid.Add(BuildAvatar(session), 1);
+        grid.Add(new VerticalStackLayout
+        {
+            Spacing = 4,
+            VerticalOptions = LayoutOptions.Center,
+            Children =
+            {
+                new Label
+                {
+                    Text = displayName,
+                    FontSize = 21,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = Colors.White,
+                    MaxLines = 1,
+                    LineBreakMode = LineBreakMode.TailTruncation
+                },
+                new Label
+                {
+                    Text = email,
+                    FontSize = 13,
+                    TextColor = Color.FromArgb("#DDEDE8"),
+                    MaxLines = 1,
+                    LineBreakMode = LineBreakMode.TailTruncation
+                },
+                new Label
+                {
+                    Text = session.HasPaidSubscription ? "Betaalde toegang is aktief" : "Gratis toegang",
+                    FontSize = 13,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = GoldColor
+                }
+            }
+        }, 2);
+
+        return new Border
         {
             BackgroundColor = AccentColor,
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 28 },
-            Padding = new Thickness(18),
-            Content = new Grid
-            {
-                ColumnDefinitions =
-                {
-                    new ColumnDefinition(GridLength.Auto),
-                    new ColumnDefinition(GridLength.Star)
-                },
-                ColumnSpacing = 14,
-                Children =
-                {
-                    BuildAvatar(session),
-                    new VerticalStackLayout
-                    {
-                        Spacing = 4,
-                        VerticalOptions = LayoutOptions.Center,
-                        Children =
-                        {
-                            new Label
-                            {
-                                Text = displayName,
-                                FontSize = 21,
-                                FontAttributes = FontAttributes.Bold,
-                                TextColor = Colors.White,
-                                MaxLines = 1,
-                                LineBreakMode = LineBreakMode.TailTruncation
-                            },
-                            new Label
-                            {
-                                Text = email,
-                                FontSize = 13,
-                                TextColor = Color.FromArgb("#DDEDE8"),
-                                MaxLines = 1,
-                                LineBreakMode = LineBreakMode.TailTruncation
-                            },
-                            new Label
-                            {
-                                Text = session.HasPaidSubscription ? "Betaalde toegang is aktief" : "Gratis toegang",
-                                FontSize = 13,
-                                FontAttributes = FontAttributes.Bold,
-                                TextColor = GoldColor
-                            }
-                        }
-                    }
-                }
-            }
+            Padding = new Thickness(4, 14, 16, 14),
+            Content = grid
         };
-
-        if (card.Content is Grid summaryGrid && summaryGrid.Children.Count > 1)
-        {
-            summaryGrid.SetColumn(summaryGrid.Children[1], 1);
-        }
-
-        return card;
     }
 
     private void OnPushChanged()
@@ -333,10 +338,34 @@ public sealed class SettingsPage : ContentPage
             await _push.SetEnabledAsync(choice == "Skakel aan");
     }
 
-    private static View BuildAvatar(MobileSession session)
+    private View BuildAvatar(MobileSession session)
     {
-        var initials = BuildInitials(session);
-        var avatar = new Border
+        var initials = new Label
+        {
+            Text = BuildInitials(session),
+            FontSize = 20,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Color.FromArgb("#0B3534"),
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center
+        };
+        var content = new Grid { Children = { initials } };
+        var imageUrl = _apiClient.BuildImageUrl(session.ProfileImageUrl);
+        if (!string.IsNullOrWhiteSpace(imageUrl))
+        {
+            var image = new ProgressiveCachedImage(_apiClient, new ProgressiveImageRequest(imageUrl))
+            {
+                Aspect = Aspect.AspectFill
+            };
+            image.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(Image.Source))
+                    initials.IsVisible = image.Source is null;
+            };
+            content.Children.Add(image);
+        }
+
+        return new Border
         {
             BackgroundColor = GoldColor,
             Stroke = Colors.White,
@@ -344,18 +373,9 @@ public sealed class SettingsPage : ContentPage
             StrokeShape = new RoundRectangle { CornerRadius = 32 },
             WidthRequest = 64,
             HeightRequest = 64,
-            Content = new Label
-            {
-                Text = initials,
-                FontSize = 20,
-                FontAttributes = FontAttributes.Bold,
-                TextColor = Color.FromArgb("#0B3534"),
-                HorizontalTextAlignment = TextAlignment.Center,
-                VerticalTextAlignment = TextAlignment.Center
-            }
+            Padding = 0,
+            Content = content
         };
-
-        return avatar;
     }
 
     private static View BuildSection(string title, params View[] rows)

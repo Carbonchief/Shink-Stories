@@ -1,11 +1,13 @@
+using System.Security.Claims;
+
 namespace Shink.Services;
 
 // Identity is resolved from the authenticated server session, never from a form.
 public interface ISubscriberPlaylistService
 {
-    Task<SubscriberPlaylistListResult> GetPlaylistsAsync(Guid? playlistId = null, CancellationToken cancellationToken = default);
-    Task<SubscriberPlaylistSaveResult> SavePlaylistAsync(Guid? playlistId, string title, IReadOnlyList<string> storySlugs, CancellationToken cancellationToken = default);
-    Task<bool> DeletePlaylistAsync(Guid playlistId, CancellationToken cancellationToken = default);
+    Task<SubscriberPlaylistListResult> GetPlaylistsAsync(Guid? playlistId = null, CancellationToken cancellationToken = default, ClaimsPrincipal? requestUser = null);
+    Task<SubscriberPlaylistSaveResult> SavePlaylistAsync(Guid? playlistId, string title, IReadOnlyList<string> storySlugs, CancellationToken cancellationToken = default, ClaimsPrincipal? requestUser = null);
+    Task<bool> DeletePlaylistAsync(Guid playlistId, CancellationToken cancellationToken = default, ClaimsPrincipal? requestUser = null);
 }
 
 public sealed record SubscriberPlaylist(Guid PlaylistId, string Title, IReadOnlyList<string> StorySlugs);

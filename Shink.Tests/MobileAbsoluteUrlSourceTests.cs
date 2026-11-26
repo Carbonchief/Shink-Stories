@@ -997,9 +997,12 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(mobileTopBar, "\"Karakters\",");
         StringAssert.Contains(mobileTopBar, "\"Karakter-pare\",");
         StringAssert.Contains(mobileTopBar, "\"Instellings\"");
-        StringAssert.Contains(settingsPage, "backgroundColor: AccentColor");
-        StringAssert.Contains(settingsPage, "foregroundColor: Colors.White");
-        StringAssert.Contains(settingsPage, "applyMaterial: false");
+        StringAssert.Contains(settingsPage, "grid.Add(BuildBackButton(), 0)");
+        StringAssert.Contains(settingsPage, "grid.Add(BuildAvatar(session), 1)");
+        Assert.IsFalse(settingsPage.Contains("_content.Children.Add(BuildBackButton())", StringComparison.Ordinal));
+        Assert.IsFalse(settingsPage.Contains("MobileTopBar.Build(", StringComparison.Ordinal));
+        StringAssert.Contains(settingsPage, "_apiClient.BuildImageUrl(session.ProfileImageUrl)");
+        StringAssert.Contains(settingsPage, "new ProgressiveImageRequest(imageUrl)");
         Assert.IsFalse(mobileTopBar.Contains("\"Bestuur rekening\"", StringComparison.Ordinal));
         Assert.IsFalse(settingsPage.Contains("\"Bestuur rekening\"", StringComparison.Ordinal));
         Assert.IsFalse(settingsPage.Contains("\"Intekening\"", StringComparison.Ordinal));

@@ -485,6 +485,16 @@ public sealed class MobileApiClient
     public Task<MobileStoryCollectionResponse?> GetGratisAsync(CancellationToken cancellationToken = default) =>
         GetAsync<MobileStoryCollectionResponse>("/api/mobile/gratis", cancellationToken);
 
+    public Task<MobileStoryLibrary?> GetMyStoriesAsync(CancellationToken cancellationToken) =>
+        GetAsync<MobileStoryLibrary>("/api/mobile/my-stories", cancellationToken);
+
+    public Task<MobilePersonalPlaylist?> SavePersonalPlaylistAsync(Guid? playlistId, string title,
+        IReadOnlyList<string> storySlugs, CancellationToken cancellationToken) =>
+        PostAsync<MobilePersonalPlaylist>("/api/mobile/my-stories/playlists", new { playlistId, title, storySlugs }, cancellationToken);
+
+    public Task DeletePersonalPlaylistAsync(Guid playlistId, CancellationToken cancellationToken) =>
+        PostAsync<object>($"/api/mobile/my-stories/playlists/{playlistId:D}/delete", new { }, cancellationToken);
+
     public async Task<MobileLuisterResponse?> GetLuisterAsync(CancellationToken cancellationToken = default, Guid? visitId = null)
     {
         var cacheKey = BuildStoryAccessCacheKey();
@@ -1439,7 +1449,7 @@ public sealed class MobileApiClient
             await SaveAuthCookiesAsync(cancellationToken);
             await EnsureSuccessAsync(response, cancellationToken, authRequestId);
 
-            if (response.Content.Headers.ContentLength == 0)
+            if (response.StatusCode == HttpStatusCode.NoContent || response.Content.Headers.ContentLength == 0)
             {
                 TrackMobileApiRequest("POST", path, response.StatusCode, startedAt, true);
                 if (flushQueuedListens)

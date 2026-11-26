@@ -1700,6 +1700,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _menuOverlay = MobileMenuSheet.BuildOverlay(
                 "Menu",
                 HandleMenuChoiceAsync,
+                "My stories",
                 "Karakters",
                 "Karakter-pare",
                 "Karakter Raai",
@@ -1735,6 +1736,9 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             {
                 switch (choice)
                 {
+                    case "My stories":
+                        await Shell.Current.GoToAsync(nameof(MyStoriesPage), animate: true);
+                        break;
                     case "Karakters":
                         await Shell.Current.GoToAsync("//Karakters", animate: false);
                         break;

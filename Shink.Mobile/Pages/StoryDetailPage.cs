@@ -68,6 +68,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private IDispatcherTimer? _progressTimer;
     private MobileStorySummary? _activeStory;
     private MobileStorySummary? _previewStory;
+    private TimeSpan _libraryResumePosition;
     private IReadOnlyList<MobileStorySummary> _playlistStories = Array.Empty<MobileStorySummary>();
     private string? _playlistTitle;
     private string? _playlistSlug;
@@ -232,6 +233,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             preview is MobileStorySummary story)
         {
             _previewStory = story;
+            if (query.TryGetValue("resumeSeconds", out var seconds) && seconds is decimal position && position > 0)
+                _libraryResumePosition = TimeSpan.FromSeconds((double)position);
             StorySlug = story.Slug;
             Source = story.Source;
         }
@@ -651,7 +654,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         if (detail.IsVideo && !detail.RequiresSubscription)
         {
             _coverArt = null;
-            _videoPlayer = new StoryVideoPlayer(detail, _apiClient, _offlineDownloadService, _storyPlaybackSession);
+            _videoPlayer = new StoryVideoPlayer(detail, _apiClient, _offlineDownloadService, _storyPlaybackSession, _libraryResumePosition);
             _videoPlayer.FullscreenRequested += (_, _) => ToggleVideoFullscreen();
             _content.Children.Add(_videoPlayer);
         }
@@ -2091,6 +2094,12 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             ResolveCatalogDurationSeconds(detail),
             originPlaylist: ResolveOriginPlaylist(),
             playbackQueue: _playlistPlaybackState);
+        if (_libraryResumePosition > TimeSpan.Zero && _storyPlaybackSession.IsCurrentStory(detail.Story, _playlistPlaybackState))
+        {
+            var position = _libraryResumePosition;
+            _libraryResumePosition = TimeSpan.Zero;
+            await _storyPlaybackSession.SeekAsync(position);
+        }
         playButton.Text = "II";
         StartProgressTimer();
     }
@@ -3582,7 +3591,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
 
         var isCurrentStory = _storyPlaybackSession.IsCurrentStory(_currentDetail?.Story, _playlistPlaybackState);
-        var position = isCurrentStory ? _storyPlaybackSession.CurrentPosition : TimeSpan.Zero;
+        var position = isCurrentStory ? _storyPlaybackSession.CurrentPosition : _libraryResumePosition;
         var duration = isCurrentStory ? _storyPlaybackSession.Duration ?? _activeCatalogDuration : _activeCatalogDuration;
 
         if (_activeCurrentTimeLabel is not null && !_isProgressScrubbing)
@@ -3999,6 +4008,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _storyPlaybackSession.NotifyPageHidden();
         StopProgressTimer();
         _pendingAutoplayAfterLoad = autoplay;
+        _libraryResumePosition = TimeSpan.Zero;
         _storyPlaybackSession.Stop();
         ClearActivePlaybackUi();
         if (autoplay)

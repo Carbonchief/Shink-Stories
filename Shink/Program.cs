@@ -4299,6 +4299,63 @@ app.MapGet("/api/mobile/luister", async (
         FirstGratisVisitId: isFirstVisit && !access.HasPaidSubscription ? visitId : null));
 }).DisableAntiforgery();
 
+// The native library uses the same signed-in listener and playlist store as /my-stories.
+var mobileLibrary = app.MapGroup("/api/mobile/my-stories");
+mobileLibrary.AddEndpointFilter(async (context, next) =>
+{
+    var http = context.HttpContext;
+    http.Response.Headers.CacheControl = "private, no-store";
+    if (!IsMobileAppRequest(http) || !IsLikelySameSiteRequest(http)) return Results.Forbid();
+    if (string.IsNullOrWhiteSpace(GetSignedInEmail(http.User))) return Results.Unauthorized();
+    return await next(context);
+});
+
+mobileLibrary.MapGet("", async (HttpContext http, IStoryCatalogService catalog,
+    IStoryTrackingService tracking, IStoryFavoriteService favorites, ISubscriberPlaylistService playlists,
+    ISubscriptionLedgerService ledger) =>
+{
+    var email = GetSignedInEmail(http.User);
+    var token = http.RequestAborted;
+    var progress = tracking.GetUserStoryProgressAsync(email, token);
+    var favoriteSlugs = favorites.GetFavoriteStorySlugsAsync(email, cancellationToken: token);
+    var free = catalog.GetFreeStoriesAsync(token);
+    var luister = catalog.GetLuisterStoriesAsync(token);
+    var saved = playlists.GetPlaylistsAsync(cancellationToken: token, requestUser: http.User);
+    var access = ResolveMobileStoryAccessAsync(http, ledger);
+    await Task.WhenAll(progress, favoriteSlugs, free, luister, saved, access);
+
+    var comparer = StringComparer.OrdinalIgnoreCase;
+    var liked = favoriteSlugs.Result.ToHashSet(comparer);
+    var luisterSlugs = luister.Result.Select(story => story.Slug).ToHashSet(comparer);
+    var stories = luister.Result.Concat(free.Result).DistinctBy(story => story.Slug, comparer)
+        .Select(story => BuildMobileStorySummary(http, story, luisterSlugs.Contains(story.Slug) ? "luister" : "gratis",
+            !access.Result.CanPlay(story), liked.Contains(story.Slug)));
+    return Results.Ok(new
+    {
+        Catalog = stories,
+        PlaylistStorySlugs = luister.Result.Where(SupabaseSubscriberPlaylistService.IsAudioStory).Select(story => story.Slug),
+        Progress = progress.Result.OrderByDescending(item => item.LastListenedAtUtc)
+            .Select(item => new { item.StorySlug, item.IsCompleted, item.LastPositionSeconds, item.DurationSeconds, item.TotalListenedSeconds }),
+        saved.Result.Playlists,
+        PlaylistError = saved.Result.ErrorMessage
+    });
+});
+
+mobileLibrary.MapPost("/playlists", async (HttpContext http, MobilePersonalPlaylistRequest request, ISubscriberPlaylistService playlists) =>
+{
+    if (request.Title is null || request.StorySlugs is null || request.StorySlugs.Any(string.IsNullOrWhiteSpace))
+        return Results.BadRequest(new { message = "Ongeldige speellys." });
+
+    var result = await playlists.SavePlaylistAsync(request.PlaylistId, request.Title, request.StorySlugs,
+        http.RequestAborted, http.User);
+    return result.IsSuccess ? Results.Ok(result.Playlist) : Results.BadRequest(new { message = result.ErrorMessage });
+});
+
+mobileLibrary.MapPost("/playlists/{id:guid}/delete", async (Guid id, HttpContext http, ISubscriberPlaylistService playlists) =>
+    await playlists.DeletePlaylistAsync(id, http.RequestAborted, http.User)
+        ? Results.NoContent()
+        : Results.BadRequest(new { message = "Ons kon nie jou speellys verwyder nie. Probeer asseblief weer." }));
+
 app.MapGet("/api/mobile/karakters", async (
     HttpContext httpContext,
     ICharacterCatalogService characterCatalogService,
@@ -8688,6 +8745,7 @@ sealed record WinkelAddressSuggestion(
     string? Suburb,
     string? City,
     string? PostalCode);
+sealed record MobilePersonalPlaylistRequest(Guid? PlaylistId, string? Title, IReadOnlyList<string>? StorySlugs);
 sealed record MobileFavoriteMutationRequest(bool IsFavorite, string? Source, string? PlaylistSlug);
 sealed record MobileGoogleAuthCompleteRequest(string? Token, bool MarketingConsent = false);
 sealed record MobileGoogleAuthCompleteResponse(string Message, MobileSessionResponse Session, bool RequiresAvatarSelection = false);

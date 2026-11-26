@@ -20,9 +20,9 @@ public sealed class SupabaseSubscriberPlaylistService(
     public const int MaximumPlaylists = 50;
     private const string UnavailableMessage = "Ons kon nie jou speellyste laai nie. Probeer asseblief weer.";
 
-    public async Task<SubscriberPlaylistListResult> GetPlaylistsAsync(Guid? playlistId = null, CancellationToken cancellationToken = default)
+    public async Task<SubscriberPlaylistListResult> GetPlaylistsAsync(Guid? playlistId = null, CancellationToken cancellationToken = default, ClaimsPrincipal? requestUser = null)
     {
-        var email = await GetSignedInEmailAsync();
+        var email = await GetSignedInEmailAsync(requestUser);
         if (email is null)
         {
             return new(false, [], "Teken in om jou speellyste te sien.");
@@ -33,9 +33,9 @@ public sealed class SupabaseSubscriberPlaylistService(
         return playlists is null ? new(false, [], UnavailableMessage) : new(true, playlists);
     }
 
-    public async Task<SubscriberPlaylistSaveResult> SavePlaylistAsync(Guid? playlistId, string title, IReadOnlyList<string> storySlugs, CancellationToken cancellationToken = default)
+    public async Task<SubscriberPlaylistSaveResult> SavePlaylistAsync(Guid? playlistId, string title, IReadOnlyList<string> storySlugs, CancellationToken cancellationToken = default, ClaimsPrincipal? requestUser = null)
     {
-        var email = await GetSignedInEmailAsync();
+        var email = await GetSignedInEmailAsync(requestUser);
         if (email is null)
         {
             return new(false, ErrorMessage: "Teken in om jou speellys te stoor.");
@@ -73,9 +73,9 @@ public sealed class SupabaseSubscriberPlaylistService(
             : new(true, saved);
     }
 
-    public async Task<bool> DeletePlaylistAsync(Guid playlistId, CancellationToken cancellationToken = default)
+    public async Task<bool> DeletePlaylistAsync(Guid playlistId, CancellationToken cancellationToken = default, ClaimsPrincipal? requestUser = null)
     {
-        var email = await GetSignedInEmailAsync();
+        var email = await GetSignedInEmailAsync(requestUser);
         if (email is null || playlistId == Guid.Empty)
         {
             return false;
@@ -88,9 +88,9 @@ public sealed class SupabaseSubscriberPlaylistService(
     public static bool IsAudioStory(Shink.Components.Content.StoryItem story) =>
         !string.Equals(story.StoryType, "video", StringComparison.OrdinalIgnoreCase);
 
-    private async Task<string?> GetSignedInEmailAsync()
+    private async Task<string?> GetSignedInEmailAsync(ClaimsPrincipal? requestUser)
     {
-        var user = (await authenticationStateProvider.GetAuthenticationStateAsync()).User;
+        var user = requestUser ?? (await authenticationStateProvider.GetAuthenticationStateAsync()).User;
         if (user.Identity?.IsAuthenticated != true)
         {
             return null;

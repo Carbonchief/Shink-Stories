@@ -53,6 +53,7 @@ internal static class MobileTopBar
             chromeColor,
             44,
             29);
+        SemanticProperties.SetDescription(navigationButton, isBackAction ? "Terug" : "Menu");
         var navigationTap = new TapGestureRecognizer();
         navigationTap.Tapped += async (_, _) => await navigationGate.RunAsync(() => HandleLeftActionAsync(hostPage, leftAction));
         navigationButton.GestureRecognizers.Add(navigationTap);
@@ -100,7 +101,7 @@ internal static class MobileTopBar
 
         if (showProfile)
         {
-            var profileButton = BuildProfileButton(apiClient, session);
+            var profileButton = BuildProfileAvatar(apiClient, session);
             var profileTap = new TapGestureRecognizer();
             profileTap.Tapped += async (_, _) => await navigationGate.RunAsync(OpenProfileAsync);
             profileButton.GestureRecognizers.Add(profileTap);
@@ -321,7 +322,7 @@ internal static class MobileTopBar
             InputTransparent = true
         };
 
-    private static Border BuildProfileButton(MobileApiClient apiClient, MobileSession session)
+    internal static Border BuildProfileAvatar(MobileApiClient apiClient, MobileSession session)
     {
         var imageUrl = string.IsNullOrWhiteSpace(session.ProfileImageUrl)
             ? null
@@ -383,6 +384,7 @@ internal static class MobileTopBar
         var choice = await MobileMenuSheet.ShowFromRightAsync(
             hostPage,
             "Menu",
+            "My stories",
             "Karakters",
             "Karakter-pare",
             "Karakter Raai",
@@ -393,6 +395,9 @@ internal static class MobileTopBar
         {
             switch (choice)
             {
+                case "My stories":
+                    await Shell.Current.GoToAsync(nameof(MyStoriesPage), animate: true);
+                    break;
                 case "Karakters":
                     await Shell.Current.GoToAsync("//Karakters", animate: false);
                     break;

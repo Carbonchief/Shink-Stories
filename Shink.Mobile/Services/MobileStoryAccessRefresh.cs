@@ -20,11 +20,11 @@ public sealed class MobileStoryAccessRefresh
         previous.HasPaidSubscription == current.HasPaidSubscription &&
         previous.HasFullStoryAccess == current.HasFullStoryAccess;
 
-    public async Task RefreshAsync(
+    public async Task RefreshAsync<T>(
         Func<MobileSession> getSession,
-        Func<CancellationToken, Task<StoryCatalogueResponse?>> load,
-        Action<StoryCatalogueResponse> apply,
-        CancellationToken cancellationToken)
+        Func<CancellationToken, Task<T?>> load,
+        Action<T> apply,
+        CancellationToken cancellationToken) where T : class
     {
         if (_refreshTask is { IsCompleted: false } pending)
         {
@@ -35,11 +35,11 @@ public sealed class MobileStoryAccessRefresh
         await (_refreshTask = RefreshCoreAsync(getSession, load, apply, cancellationToken));
     }
 
-    private async Task RefreshCoreAsync(
+    private async Task RefreshCoreAsync<T>(
         Func<MobileSession> getSession,
-        Func<CancellationToken, Task<StoryCatalogueResponse?>> load,
-        Action<StoryCatalogueResponse> apply,
-        CancellationToken cancellationToken)
+        Func<CancellationToken, Task<T?>> load,
+        Action<T> apply,
+        CancellationToken cancellationToken) where T : class
     {
         while (!HasSameAccess(_loadedSession, getSession()))
         {

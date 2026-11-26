@@ -80,6 +80,36 @@ public sealed record MobileStoryCollectionResponse(
     string Description,
     IReadOnlyList<MobileStorySummary> Stories);
 
+public sealed record MobileStoryLibrary(
+    IReadOnlyList<MobileStorySummary> Catalog,
+    IReadOnlyList<string> PlaylistStorySlugs,
+    IReadOnlyList<MobileStoryProgress> Progress,
+    IReadOnlyList<MobilePersonalPlaylist> Playlists,
+    string? PlaylistError)
+{
+    public IReadOnlyDictionary<string, MobileStorySummary> GetPlaylistCatalog()
+    {
+        var eligible = PlaylistStorySlugs.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return Catalog.Where(story => eligible.Contains(story.Slug))
+            .OrderBy(story => story.Title, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(story => story.Slug, StringComparer.OrdinalIgnoreCase);
+    }
+}
+
+public sealed record MobileStoryProgress(string StorySlug, bool IsCompleted, decimal? LastPositionSeconds,
+    decimal? DurationSeconds, decimal TotalListenedSeconds);
+
+public sealed record MobilePersonalPlaylist(Guid PlaylistId, string Title, IReadOnlyList<string> StorySlugs)
+{
+    public MobilePlaylist ToPlaybackPlaylist(IReadOnlyDictionary<string, MobileStorySummary> catalog)
+    {
+        var stories = StorySlugs.Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(slug => catalog.GetValueOrDefault(slug)).OfType<MobileStorySummary>().ToArray();
+        var cover = stories.FirstOrDefault()?.ImageUrl ?? string.Empty;
+        return new(PlaylistId.ToString("D"), Title, null, cover, cover, stories, PersonalPlaylistId: PlaylistId);
+    }
+}
+
 public sealed record MobilePlaylist(
     string Slug,
     string Title,
@@ -92,7 +122,8 @@ public sealed record MobilePlaylist(
     string? LogoUrl = null,
     string? BackgroundStartColorHex = null,
     string? BackgroundEndColorHex = null,
-    string? FontColorHex = null);
+    string? FontColorHex = null,
+    Guid? PersonalPlaylistId = null);
 
 public sealed record MobileLuisterResponse(
     bool HasPaidSubscription,

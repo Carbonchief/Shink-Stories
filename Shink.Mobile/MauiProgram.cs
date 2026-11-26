@@ -94,6 +94,7 @@ public static class MauiProgram
         builder.Services.AddTransient<LuisterPage>();
         builder.Services.AddTransient<SearchPage>();
         builder.Services.AddTransient<DownloadedPage>();
+        builder.Services.AddTransient<MyStoriesPage>();
         builder.Services.AddTransient<KarakterPareGamePage>();
         builder.Services.AddTransient<KarakterPareConfigPage>();
         builder.Services.AddTransient<KarakterRaaiConfigPage>();

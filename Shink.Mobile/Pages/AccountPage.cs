@@ -933,6 +933,7 @@ public sealed class AccountPage : ContentPage, IQueryAttributable
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
+        if (query.TryGetValue("signIn", out var signIn) && signIn is true) ShowSignIn();
         if (query.TryGetValue("signup", out var signup) && signup is true)
         {
             IsFullAccessSignup = true;
@@ -1608,6 +1609,12 @@ public sealed class AccountPage : ContentPage, IQueryAttributable
         if (!_sessionState.Current.IsSignedIn || _sessionState.Current.RequiresAvatarSelection ||
             (IsFullAccessSignup && !_sessionState.Current.HasPaidSubscription))
         {
+            return;
+        }
+
+        if (ReturnUrl == "/my-stories")
+        {
+            await Shell.Current.GoToAsync(nameof(MyStoriesPage), animate: true);
             return;
         }
 

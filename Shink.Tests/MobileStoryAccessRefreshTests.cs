@@ -43,7 +43,7 @@ public sealed class MobileStoryAccessRefreshTests
         var refresh = new MobileStoryAccessRefresh();
         refresh.MarkRefreshed(original);
         var updated = original with { DisplayName = "New name", FavoriteStorySlugs = ["story"], Email = "READER@example.com" };
-        await refresh.RefreshAsync(() => updated,
+        await refresh.RefreshAsync<StoryCatalogueResponse>(() => updated,
             _ => throw new AssertFailedException("Unchanged access should reuse the catalogue."),
             _ => Assert.Fail("The catalogue should not be rebuilt."), default);
     }
@@ -163,6 +163,22 @@ public sealed class MobileStoryAccessRefreshTests
         Assert.AreSame(playlist, MobileStoryAccessRefresh.FindPlaylist(new(false, [],
             [new("speellyste", "Playlists", 0, null, [playlist])]), "stories"));
         Assert.IsNull(MobileStoryAccessRefresh.FindPlaylist(compact, "missing"));
+    }
+
+    [TestMethod]
+    public void PersonalPlaylistResolvesCurrentAudioStoriesInSavedOrderWithTheirAccess()
+    {
+        var first = new MobileStorySummary("first", "First", "", "first.png", "", "luister", true, false, "", null);
+        var second = first with { Slug = "second", IsLocked = false, ImageUrl = "second.png" };
+        var video = first with { Slug = "video", StoryType = "video" };
+        var saved = new MobilePersonalPlaylist(Guid.NewGuid(), "My lys", ["SECOND", "missing", "video", "first", "second"]);
+        var library = new MobileStoryLibrary([first, video, second], ["first", "second"], [], [saved], null);
+
+        var queue = saved.ToPlaybackPlaylist(library.GetPlaylistCatalog());
+        Assert.AreEqual(saved.PlaylistId, queue.PersonalPlaylistId);
+        Assert.AreEqual("second.png", queue.ArtworkUrl);
+        CollectionAssert.AreEqual(new[] { second, first }, queue.Stories.ToArray());
+        Assert.IsTrue(queue.Stories[1].IsLocked);
     }
 
     private static MobileSession Session(bool paid, bool fullAccess) => new(

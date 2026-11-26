@@ -44,6 +44,26 @@ public class SubscriberPlaylistTests
     }
 
     [TestMethod]
+    public async Task MobilePlaylistOperationsUseOnlyTheAuthenticatedRequestPrincipal()
+    {
+        var handler = new RpcHandler("[]");
+        var service = CreateService(handler);
+        var anonymous = new ClaimsPrincipal(new ClaimsIdentity());
+        Assert.IsFalse((await service.GetPlaylistsAsync(requestUser: anonymous)).IsSuccess);
+        Assert.IsFalse((await service.SavePlaylistAsync(null, "My stories", [], requestUser: anonymous)).IsSuccess);
+        Assert.IsFalse(await service.DeletePlaylistAsync(PlaylistId, requestUser: anonymous));
+        Assert.AreEqual(0, handler.Calls.Count);
+
+        var mobileUser = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, "Mobile@Example.com")], "cookie"));
+        await service.GetPlaylistsAsync(requestUser: mobileUser);
+        await service.SavePlaylistAsync(PlaylistId, "My stories", ["beta", "alpha"], requestUser: mobileUser);
+        await service.DeletePlaylistAsync(PlaylistId, requestUser: mobileUser);
+        Assert.AreEqual(3, handler.Calls.Count);
+        foreach (var call in handler.Calls)
+            Assert.AreEqual("mobile@example.com", JsonSerializer.Deserialize<JsonElement>(call.Payload).GetProperty("p_email").GetString());
+    }
+
+    [TestMethod]
     public async Task InvalidTitlesUnknownStoriesAndVideosCannotBeSaved()
     {
         var handler = new RpcHandler("[]");

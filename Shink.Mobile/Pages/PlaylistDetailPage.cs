@@ -164,16 +164,26 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         {
             await _accessRefresh.RefreshAsync(
                 () => _sessionState.Current,
-                token => _apiClient.GetLuisterAsync(token),
-                response =>
-                {
-                    if (MobileStoryAccessRefresh.FindPlaylist(response, _playlist.Slug) is { } playlist)
-                        SetPlaylist(playlist);
-                },
+                token => ReloadPlaylistAsync(_playlist, token),
+                SetPlaylist,
                 _accessRefreshCancellation.Token);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { _analytics.TrackRecoverableFailure(ex, "mobile_playlist_player_access_refresh"); }
+    }
+
+    private async Task<MobilePlaylist?> ReloadPlaylistAsync(MobilePlaylist current, CancellationToken token)
+    {
+        if (current.PersonalPlaylistId is { } id)
+        {
+            var library = await _apiClient.GetMyStoriesAsync(token);
+            if (library is null || library.PlaylistError is not null) return null;
+            var saved = library.Playlists.FirstOrDefault(playlist => playlist.PlaylistId == id);
+            return saved?.ToPlaybackPlaylist(library.GetPlaylistCatalog()) ?? current with { Stories = [] };
+        }
+
+        var catalogue = await _apiClient.GetLuisterAsync(token);
+        return catalogue is null ? null : MobileStoryAccessRefresh.FindPlaylist(catalogue, current.Slug);
     }
 
     private void SetPlaylist(MobilePlaylist playlist)
@@ -548,6 +558,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         };
 
         var share = BuildSmallControlButton(ShareIconGlyph, "Deel speellys");
+        share.IsVisible = _playlist?.PersonalPlaylistId is null;
         share.Clicked += async (_, _) => await SharePlaylistAsync();
 
         return new HorizontalStackLayout
@@ -1053,7 +1064,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
     private async Task SharePlaylistAsync()
     {
-        if (_playlist is null)
+        if (_playlist is null || _playlist.PersonalPlaylistId.HasValue)
         {
             return;
         }
