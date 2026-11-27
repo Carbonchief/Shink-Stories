@@ -292,3 +292,11 @@ jobs:
             served_release="$(awk 'tolower($1) == "x-schink-release:" {gsub(/\r/, "", $2); release = $2} END {print release}' "$RUNNER_TEMP/schink-health-headers.txt")"
             test "$served_release" = "$EXPECTED_RELEASE"
           fi
+
+      - name: Verify deployed customer payment recovery
+        if: success() && steps.migrations.outputs.drained_recovery_sha != '' && !(github.event_name == 'workflow_dispatch' && inputs.preflight_only)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase --workdir "$SUPABASE_WORKDIR" db query --linked \
+            --file "$GITHUB_WORKSPACE/Shink/Database/tests/customer_payment_recovery_rollout.sql"
