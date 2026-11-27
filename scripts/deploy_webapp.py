@@ -4,8 +4,10 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -112,6 +114,9 @@ def deploy(kudu, site, package, state_file, release_id=None):
         raise ValueError("Deployment requires scmSiteAlsoStopped=false; app was not stopped")
     if site["state"] not in {"Running", "Stopped"}:
         raise ValueError("Refusing deployment while app state is " + site["state"])
+    migration_sha = os.environ.get("DRAINED_RECOVERY_SHA")
+    if migration_sha and (not re.fullmatch(r"[0-9a-f]{40}", migration_sha) or site["state"] != "Running" or not release_id):
+        raise ValueError("The recovery migration requires a running release and its deployment SHA")
     files = package_files(package)
     deployments = kudu.request("GET", "/api/deployments")
     if any(not item.get("complete", False) or item.get("status") in {0, 1, 2} for item in deployments):
@@ -126,7 +131,7 @@ def deploy(kudu, site, package, state_file, release_id=None):
     kudu.put(job, "worker.py", Path(__file__).with_name("webapp_deployment_worker.py").read_bytes())
     kudu.put(job, "settings.json", {"files": files, "package_sha256": digest(package),
                                    "original_state": site["state"], "resource_id": site["id"],
-                                   "release_id": release_id,
+                                   "release_id": release_id, "drained_recovery_sha": migration_sha,
                                    "health_url": "https://" + site["defaultHostName"] + "/healthz"})
     kudu.put(job, "state.json", {"phase": "uploaded"})
     return job
@@ -162,9 +167,57 @@ def launch_and_wait(kudu, job, recover=False):
             pass  # Normally already removed by the worker.
 
 
+RECOVERY_MIGRATION = "20261127101028_customer_payment_recovery.sql"
+
+
+def check_drained_recovery_migration(app, checkpoint):
+    sha = checkpoint["drained_recovery_sha"]
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise ValueError("Invalid recovery migration release SHA")
+    workdir = Path(__file__).resolve().parents[1] / "Shink/Database"
+    query = ["supabase", "--workdir", str(workdir), "db", "query", "--linked"]
+    def read_boolean(sql):
+        rows = subprocess.check_output([*query, "--output", "csv", sql], text=True).strip().splitlines()
+        if not rows or rows[-1] not in {"true", "false"}:
+            raise ValueError("Could not verify production recovery migration state")
+        return rows[-1] == "true"
+
+    applied = read_boolean("select exists(select from supabase_migrations.shink_action_migrations "
+                           f"where file_name='{RECOVERY_MIGRATION}') as applied")
+    if checkpoint["phase"] == "rollback_ready":
+        if applied:
+            raise RuntimeError("The recovery migration is active. Old billing workers must stay stopped.")
+        return
+    if applied:
+        return
+    if app.state() != "Stopped" or app.healthy_release() is not None:
+        raise RuntimeError("The old application must stop before the recovery migration")
+    if os.environ.get("GITHUB_SHA") != sha:
+        raise RuntimeError("The checked-out release must match the pending recovery migration")
+    # A worker stopped mid-job may still own a five-minute lease.
+    deadline = time.monotonic() + 330
+    while read_boolean("select exists(select from public.paystack_card_update_jobs "
+                       "where status='processing' and locked_until>now()) as busy"):
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Card-update jobs are still leased")
+        time.sleep(5)
+    print("Old application stopped and card-update workers drained. Applying " + RECOVERY_MIGRATION, flush=True)
+    sql = (workdir / "migrations" / RECOVERY_MIGRATION).read_text()
+    # Record the deployment SHA in the same transaction so that a lost reply is recoverable.
+    with tempfile.TemporaryDirectory() as directory:
+        batch = Path(directory) / "apply.sql"
+        batch.write_text("begin;\nset local lock_timeout='10s';\n" + sql +
+                         f"\ninsert into supabase_migrations.shink_action_migrations(file_name,github_sha) "
+                         f"values ('{RECOVERY_MIGRATION}','{sha}');\ncommit;\n")
+        subprocess.run([*query, "--file", str(batch)], check=True, timeout=100)
+    print("Recovery migration committed for " + sha, flush=True)
+
+
 def complete_start(kudu, job, app, checkpoint):
     # The worker has released its lock after verifying the files. Use ARM and
     # the direct app endpoint so a Kudu restart cannot interrupt verification.
+    if checkpoint.get("drained_recovery_sha"):
+        check_drained_recovery_migration(app, checkpoint)
     state = app.state()
     if state == "Stopped":
         app.start()

@@ -1259,6 +1259,16 @@ app.MapPost("/rekening/herstel-intekening", async (
         return Results.Redirect($"/teken-in?returnUrl={Uri.EscapeDataString("/luister")}");
     }
 
+    var assessment = await subscriptionLedgerService.AssessSubscriptionCheckoutAsync(signedInEmail, null, httpContext.RequestAborted);
+    if (assessment.CustomerRecovery is not null)
+    {
+        return Results.Redirect("/intekening-en-betaling#herstel-betaling");
+    }
+    if (assessment.TransitionKind == SubscriptionCheckoutTransitionKinds.BillingVerificationRequired)
+    {
+        return Results.Redirect("/intekening-en-betaling");
+    }
+
     var repairCacheKey = $"subscription-repair:{signedInEmail.Trim().ToLowerInvariant()}";
     if (memoryCache.TryGetValue(repairCacheKey, out _))
     {

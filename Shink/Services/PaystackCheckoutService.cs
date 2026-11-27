@@ -23,6 +23,9 @@ public sealed class PaystackCheckoutService(
     private readonly PaystackOptions _options = options.Value;
     private readonly SupabaseOptions? _supabaseOptions = supabaseOptions?.Value;
 
+    public bool CanChargeAuthorization =>
+        !string.IsNullOrWhiteSpace(_options.SecretKey) && Uri.TryCreate(_options.ChargeAuthorizationUrl, UriKind.Absolute, out _);
+
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(_options.SecretKey) &&
         Uri.TryCreate(_options.InitializeUrl, UriKind.Absolute, out _) &&
@@ -366,7 +369,7 @@ public sealed class PaystackCheckoutService(
         }
 
         var uri = new Uri(
-            $"https://api.paystack.co/subscription/{Uri.EscapeDataString(subscriptionCode.Trim())}/manage/link");
+            $"{_options.SubscriptionUrl.TrimEnd('/')}/{Uri.EscapeDataString(subscriptionCode.Trim())}/manage/link");
 
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
@@ -940,6 +943,18 @@ public sealed class PaystackCheckoutService(
             cancellationToken);
     }
 
+    private static bool IsMissingTransaction(System.Net.HttpStatusCode status, string body)
+    {
+        if (status is not (System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.NotFound)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return TryReadString(document.RootElement, "code") == "transaction_not_found" ||
+                string.Equals(TryReadString(document.RootElement, "message"), "Transaction reference not found", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (JsonException) { return false; }
+    }
+
     public async Task<PaystackVerifyResult> VerifyTransactionAsync(
         string reference,
         CancellationToken cancellationToken = default)
@@ -971,7 +986,7 @@ public sealed class PaystackCheckoutService(
             return new PaystackVerifyResult(
                 false,
                 ErrorMessage: $"Paystack betaling kon nie bevestig word nie (HTTP {(int)response.StatusCode}).",
-                RawPayload: body);
+                RawPayload: body, ReferenceNotFound: IsMissingTransaction(response.StatusCode, body));
         }
 
         try
@@ -994,7 +1009,7 @@ public sealed class PaystackCheckoutService(
 
             return new PaystackVerifyResult(
                 true,
-                Reference: TryReadString(dataNode, "reference") ?? reference,
+                Reference: TryReadString(dataNode, "reference"),
                 TransactionStatus: TryReadString(dataNode, "status"),
                 AmountInCents: TryReadInt64(dataNode, "amount"),
                 Currency: TryReadString(dataNode, "currency"),
@@ -1544,7 +1559,7 @@ public sealed class PaystackCheckoutService(
 
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            $"https://api.paystack.co/subscription/{Uri.EscapeDataString(subscriptionCode.Trim())}");
+            $"{_options.SubscriptionUrl.TrimEnd('/')}/{Uri.EscapeDataString(subscriptionCode.Trim())}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -1586,6 +1601,8 @@ public sealed class PaystackCheckoutService(
                 EmailToken: TryReadString(dataNode, "email_token"),
                 CustomerCode: TryReadNestedString(dataNode, "customer", "customer_code")
                     ?? TryReadString(dataNode, "customer_code"),
+                CustomerEmail: TryReadNestedString(dataNode, "customer", "email"),
+                AuthorizationReusable: TryReadNestedBoolean(dataNode, "authorization", "reusable"),
                 RawPayload: body);
         }
         catch (JsonException)
@@ -1792,7 +1809,7 @@ public sealed record PaystackVerifyResult(
     DateTimeOffset? PaidAt = null,
     string? GatewayResponse = null,
     string? ErrorMessage = null,
-    string? RawPayload = null);
+    string? RawPayload = null, bool ReferenceNotFound = false);
 
 public sealed record PaystackSubscriptionLookupResult(
     bool IsSuccess,
@@ -1803,4 +1820,9 @@ public sealed record PaystackSubscriptionLookupResult(
     string? EmailToken = null,
     string? CustomerCode = null,
     string? ErrorMessage = null,
-    string? RawPayload = null);
+    string? RawPayload = null,
+    string? CustomerEmail = null,
+    bool? AuthorizationReusable = null)
+{
+    public bool HasReusableCard => AuthorizationReusable == true && !string.IsNullOrWhiteSpace(AuthorizationCode);
+}

@@ -166,6 +166,7 @@ jobs:
           test "$scm_stopped" = false
 
       - name: Check and apply Supabase migrations
+        id: migrations
         if: steps.publish_check.outputs.should_publish == 'true' && steps.publish_check.outputs.migration_files != ''
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -229,6 +230,12 @@ jobs:
               continue
             fi
 
+            if [ "$migration_name" = 20261127101028_customer_payment_recovery.sql ]; then
+              echo "Deferring customer payment recovery migration until the old application has stopped."
+              echo "drained_recovery_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+              continue
+            fi
+
             echo "Applying Supabase migration: $migration_name"
             supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked --file "$migration_path"
             supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked \
@@ -261,11 +268,15 @@ jobs:
         timeout-minutes: 30
         env:
           RELEASE_ID: ${{ steps.package.outputs.release_id }}
+          DRAINED_RECOVERY_SHA: ${{ steps.migrations.outputs.drained_recovery_sha }}
+          SUPABASE_ACCESS_TOKEN: ${{ steps.migrations.outputs.drained_recovery_sha && secrets.SUPABASE_ACCESS_TOKEN || '' }}
         run: bash scripts/deploy-webapp-quiesced.sh "$AZURE_WEBAPP_RESOURCE_GROUP" "$AZURE_WEBAPP_NAME" "$GITHUB_WORKSPACE/webapp.zip" --release-id "$RELEASE_ID" --state-file "$RUNNER_TEMP/schink-deployment-job.json"
 
       - name: Recover interrupted activation
         if: always() && steps.publish_check.outputs.should_publish == 'true' && steps.activation.outcome != 'skipped' && !(github.event_name == 'workflow_dispatch' && inputs.preflight_only)
         timeout-minutes: 15
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ steps.migrations.outputs.drained_recovery_sha && secrets.SUPABASE_ACCESS_TOKEN || '' }}
         run: python3 scripts/deploy_webapp.py --recover "$RUNNER_TEMP/schink-deployment-job.json" --require-activation
 
       - name: Verify public service health

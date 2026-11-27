@@ -134,36 +134,20 @@ public sealed partial class SupabaseSubscriptionLedgerService
             : TryReadString(data, "reference");
     }
 
-    private async Task CompleteConfirmedCardUpdatePaymentAsync(
-        Uri baseUri, string apiKey, PaymentRecoverySubscriptionContext subscription, PaymentRecoveryRow recovery,
-        DateTimeOffset nextRenewalAtUtc, string reference, DateTimeOffset nowUtc, CancellationToken cancellationToken)
+    private async Task<PaymentRecoveryRow?> ReserveRecoveryAttemptAsync(Uri baseUri, string apiKey, PaymentRecoveryRow recovery,
+        PaymentRecoverySubscriptionContext subscription, string reference, DateTimeOffset paidThrough, CancellationToken cancellationToken)
     {
-        // A failed write must leave the durable job retryable. Reprocessing uses
-        // the same payment reference, so it reconciles rather than recollects.
-        // Protect this confirmed payment from the expiry worker before changing
-        // access. A restart must reconcile succeeded-but-unresolved recoveries.
-        await MarkPaymentRecoveryAuthorizationRetryAsync(baseUri, apiKey, recovery.RecoveryId,
-            nowUtc, "succeeded", reference, null, null, cancellationToken,
-            requireSuccess: true, expectedReference: reference);
-        await MarkSubscriptionRecoveredByIdAsync(baseUri, apiKey, subscription.SubscriptionId,
-            nextRenewalAtUtc, cancellationToken, requireSuccess: true);
-        await _subscriptionPaymentRecoveryEmailService.CancelSequenceAsync(
-            new SubscriptionPaymentRecoveryEmailSequence(recovery.ImmediateEmailId, recovery.WarningEmailId, recovery.SuspensionEmailId), cancellationToken);
-        await ResolvePaymentRecoveryAsync(baseUri, apiKey, recovery.RecoveryId, nowUtc,
-            "recovered", cancellationToken, requireSuccess: true);
-    }
-
-    private async Task<bool> ReserveCardUpdateAttemptAsync(
-        Uri baseUri, string apiKey, PaymentRecoveryRow recovery, string reference, CancellationToken cancellationToken)
-    {
-        using var request = CreateJsonRequest(HttpMethod.Post,
-            new Uri(baseUri, "rest/v1/rpc/reserve_paystack_card_update_attempt"), apiKey,
+        using var request = CreateJsonRequest(HttpMethod.Post, new Uri(baseUri, "rest/v1/rpc/reserve_customer_payment_recovery"), apiKey,
             new { p_recovery_id = recovery.RecoveryId, p_expected_status = recovery.AuthorizationRetryStatus,
-                p_expected_reference = recovery.AuthorizationRetryReference, p_attempt_reference = reference }, "return=representation");
+                p_expected_reference = recovery.AuthorizationRetryReference, p_attempt_reference = reference,
+                p_amount_zar = subscription.BillingAmountZar, p_email = subscription.Email,
+                p_provider_payment_id = subscription.ProviderPaymentId, p_paid_through = paidThrough }, "return=representation");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
         var rows = await response.Content.ReadFromJsonAsync<List<PaymentRecoveryRow>>(cancellationToken);
-        return rows?.Count == 1;
+        return rows is [var row] && row.RecoveryId == recovery.RecoveryId && row.SubscriptionId == subscription.SubscriptionId &&
+            row.AuthorizationRetryStatus == "pending" && row.AuthorizationRetryReference == reference &&
+            row.PaidThrough == paidThrough ? row : null;
     }
 
     private async Task<bool> SuspendExpiredPaymentRecoveryAsync(

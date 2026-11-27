@@ -262,6 +262,8 @@ def transaction(job, root, app, recover=False):
         # A lost status write may still have published the checkpoint. Once
         # attempted, only the coordinator can decide whether to start or recover.
         handing_off = True
+        if settings.get("drained_recovery_sha"):
+            details["drained_recovery_sha"] = settings["drained_recovery_sha"]
         phase(value, **details)
 
     def roll_back(error):
@@ -342,10 +344,10 @@ def transaction(job, root, app, recover=False):
                     previous[name] = None
             verify_files(backup, {k: v for k, v in previous.items() if v is not None})
             journal = {"previous": previous, "original_state": settings["original_state"]}
-            if settings.get("release_id") and settings["original_state"] == "Running" and previous:
+            if settings.get("release_id") and settings["original_state"] == "Running" and (previous or settings.get("drained_recovery_sha")):
                 journal["previous_release"] = app.check_health()
             write_json(journal_path, journal)
-            if not previous:
+            if not previous and not settings.get("drained_recovery_sha"):
                 verify_files(root, files)
                 if settings["original_state"] == "Running":
                     if settings.get("release_id"):
@@ -359,7 +361,7 @@ def transaction(job, root, app, recover=False):
             # and reserve working space for changed files before stop.
             package.unlink()
             (job / "candidate.zip").unlink()
-            largest = max(safe_path(candidate, name).stat().st_size for name in previous)
+            largest = max((safe_path(candidate, name).stat().st_size for name in previous), default=0)
             if shutil.disk_usage(root).free < largest + 16 * 1024 * 1024:
                 raise OSError("Insufficient free space for activation; app was not stopped")
             phase("stopping")

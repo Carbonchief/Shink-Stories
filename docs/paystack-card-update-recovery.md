@@ -41,34 +41,37 @@ These retry intervals are Schink policy, not Paystack completion guarantees.
 
 ## Separate payment recovery
 
-After provider card binding is confirmed, the worker may recover an existing,
-terminally failed renewal using its stored billing amount. A pending scheduled
-retry retains ownership of its attempt. Any previous reference is verified first:
-success is reconciled without another collection; queued transactions stay in
-`payment_confirmation`; old card-verification events cannot collect a later
-month's debt. Suspended accounts require reconciliation rather than an automatic
-new charge.
-Healthy subscriptions can save a verified card even when a legacy billing amount
-is missing. An unpaid recovery still requires its stored amount before collection.
+Customers in grace or suspended for a matching unpaid Paystack invoice can choose
+**Herstel my betaling** on the options page or open **Intekening en betaling**.
+The billing page shows the amount and offers payment with the saved card or a
+hosted card update on the same agreement. The older account-repair action also
+directs customers to billing.
 
-The recovery uses a deterministic reference for the subscription and verification
-transaction. The verification and refund therefore cannot independently collect
-the same renewal. Before the provider request, an atomic compare-and-swap reserves
-the recovery and persists its payment reference. Different card updates compete
-for this same recovery, rather than just separate webhook jobs. A reserved attempt
-has no scheduled retry due date; its card job owns verification and resumption.
-Even after an ambiguous request or restart, retries use that same reference.
-An unconfirmed payment stays pending. A different card may attempt collection
-only after verifying that the previous payment failed. Stale result writes are
-filtered by the exact reserved reference. Provider API acceptance alone does not grant access: the exact
-payment reference, full amount, currency, customer and successful transaction
-status are verified first. Failed persistence leaves the job retryable. Only a
-confirmed full payment restores access, using Paystack's next billing date when
-available. The R1 verification never creates or extends a paid subscription.
-Succeeded-but-unresolved recoveries remain eligible for reconciliation after a
-restart. Expiry rechecks the current recovery and removes access atomically;
-pending payments, successful attempts and resolved recoveries cannot be suspended
-from an old expiry snapshot.
+Customer retries, verified card updates, the scheduled worker and the operations
+batch share one PostgreSQL reservation per unpaid renewal. Collection requires
+the current agreement, customer, reusable card, ZAR invoice amount and billing
+period to match. The reservation records the payment reference and the provider's
+next billing date. A healthy subscription can save an updated card even when its
+legacy billing amount is missing.
+
+Workers check earlier attempts before collecting. A queued or processing payment
+stays in `payment_confirmation`. Customers can check its status, and the worker
+continues checking after they close the browser. A provider outage leaves the
+reference pending. A worker can resume an interrupted submission with the same
+reference when Paystack explicitly reports it missing and the agreement, invoice
+and eligibility checks still pass.
+
+Paystack verification must confirm the reference, amount, currency, customer
+and payment time. The database rechecks account status and competing agreements,
+restores the original tier through the reserved billing date and marks the debt
+recovered in one transaction. A failed write leaves the payment available for
+reconciliation. Once a previous attempt has definitively declined, a separately
+verified payment for the same invoice can also settle that renewal.
+
+The deployment workflow stages the candidate, stops the old application and waits
+for card-update leases to expire. It applies `20261127101028_customer_payment_recovery.sql`
+and records the release SHA in one transaction before starting the new workers. The migration withdraws application access to the former card-only
+reservation function.
 
 The job result `card_update_applied` describes card binding, not payment success;
 renewal status remains in the payment event and recovery record. Completing a

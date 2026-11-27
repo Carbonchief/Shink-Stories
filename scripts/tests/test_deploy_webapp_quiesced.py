@@ -13,7 +13,7 @@ import sys
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import urllib.error
 import zipfile
 
@@ -125,6 +125,39 @@ class DeploymentTests(unittest.TestCase):
         (self.job / 'settings.json').write_text(json.dumps(self.settings))
         self.assertEqual(0, worker.transaction(self.job, self.root, self.app))
         return json.loads((self.job / 'state.json').read_text())
+
+    def test_recovery_migration_commits_only_after_stop_and_before_candidate_start(self):
+        sha = 'a' * 40
+        self.settings['drained_recovery_sha'] = sha
+        checkpoint = self.prepare_start_handoff()
+        self.assertEqual(sha, checkpoint['drained_recovery_sha'])
+        self.assertEqual('Stopped', self.app.state())
+        self.app.healthy_release = lambda: None
+        def migrate(command, **kwargs):
+            self.assertEqual('Stopped', self.app.state())
+            batch = Path(command[-1]).read_text()
+            self.assertTrue(batch.startswith('begin;'))
+            self.assertIn('public.reserve_customer_payment_recovery(', batch)
+            self.assertIn(sha, batch)
+            self.assertTrue(batch.rstrip().endswith('commit;'))
+            self.app.events.append(('migrate', 'new'))
+        with patch.dict(os.environ, GITHUB_SHA=sha), \
+                patch.object(coordinator.subprocess, 'check_output', side_effect=['false', 'true', 'false']), \
+                patch.object(coordinator.time, 'sleep'), patch.object(coordinator.subprocess, 'run', side_effect=migrate):
+            result = coordinator.complete_start(Mock(), self.job.name, self.app, checkpoint)
+        self.assertEqual('succeeded', result['phase'])
+        self.assertEqual([('health', 'old'), ('stop', 'old'), ('migrate', 'new'), ('start', 'new'), ('health', 'new')], self.app.events)
+
+    def test_drained_migration_lost_reply_and_rollback_cannot_restart_old_workers(self):
+        checkpoint = {'phase': 'candidate_ready', 'drained_recovery_sha': 'a' * 40}
+        with patch.object(coordinator.subprocess, 'check_output', return_value='false'), self.assertRaises(RuntimeError):
+            coordinator.check_drained_recovery_migration(self.app, checkpoint)
+        with patch.object(coordinator.subprocess, 'check_output', return_value='true'), patch.object(coordinator.subprocess, 'run') as write:
+            coordinator.check_drained_recovery_migration(self.app, checkpoint)
+            checkpoint['phase'] = 'rollback_ready'
+            with self.assertRaises(RuntimeError):
+                coordinator.check_drained_recovery_migration(self.app, checkpoint)
+            write.assert_not_called()
 
     def test_startup_after_kudu_recycle_verifies_the_candidate_without_restarting_it(self):
         checkpoint = self.prepare_start_handoff()

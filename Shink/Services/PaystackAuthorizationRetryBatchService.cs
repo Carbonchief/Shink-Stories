@@ -8,16 +8,14 @@ namespace Shink.Services;
 
 public sealed class PaystackAuthorizationRetryBatchService(
     HttpClient httpClient,
-    PaystackCheckoutService paystackCheckoutService,
+    ISubscriptionLedgerService ledger,
     IOptions<SupabaseOptions> supabaseOptions,
     ILogger<PaystackAuthorizationRetryBatchService> logger)
 {
     private static readonly TimeSpan MinimumPaystackInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan VerificationDelay = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan AuthorizationRetryDelay = TimeSpan.FromDays(1);
 
     private readonly HttpClient _httpClient = httpClient;
-    private readonly PaystackCheckoutService _paystackCheckoutService = paystackCheckoutService;
     private readonly SupabaseOptions _supabaseOptions = supabaseOptions.Value;
     private readonly ILogger<PaystackAuthorizationRetryBatchService> _logger = logger;
 
@@ -149,146 +147,14 @@ public sealed class PaystackAuthorizationRetryBatchService(
 
         foreach (var candidate in executableCandidates)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var subscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
-                provider: "paystack",
-                sourceSystem: candidate.Subscription.SourceSystem,
-                providerPaymentId: candidate.Subscription.ProviderPaymentId,
-                providerTransactionId: candidate.Subscription.ProviderTransactionId);
-            if (string.IsNullOrWhiteSpace(subscriptionCode))
-            {
-                attempts.Add(new PaystackAuthorizationRetryAttemptResult(
-                    candidate.Subscriber.Email!,
-                    candidate.Subscription.SubscriptionId,
-                    candidate.ChargeKey,
-                    AttemptStatus: "skipped",
-                    Message: "No Paystack subscription code was available for retry.",
-                    Reference: null,
-                    NextPaymentDateUtc: null));
-                continue;
-            }
-
             await DelayForPaystackAsync(cancellationToken);
-            var liveSubscription = await _paystackCheckoutService.GetSubscriptionAsync(subscriptionCode, cancellationToken);
-            var liveMostRecentInvoiceStatus = TryReadMostRecentInvoiceStatus(liveSubscription.RawPayload);
-            var isLiveActionable =
-                liveSubscription.IsSuccess &&
-                (string.Equals(liveSubscription.Status, "attention", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(liveMostRecentInvoiceStatus, "failed", StringComparison.OrdinalIgnoreCase));
-            if (!isLiveActionable)
-            {
-                skippedNotActionableLiveCount++;
-                attempts.Add(new PaystackAuthorizationRetryAttemptResult(
-                    candidate.Subscriber.Email!,
-                    candidate.Subscription.SubscriptionId,
-                    candidate.ChargeKey,
-                    AttemptStatus: "skipped",
-                    Message: $"Live Paystack state was not actionable. status={liveSubscription.Status ?? "unknown"} invoice={liveMostRecentInvoiceStatus ?? "unknown"}",
-                    Reference: null,
-                    NextPaymentDateUtc: liveSubscription.NextPaymentDate));
-                continue;
-            }
-
-            var reference = BuildRetryReference(candidate.Subscription.SubscriptionId);
-            var retryBillingAmountZar = decimal.Round(candidate.Subscription.BillingAmountZar!.Value, 2, MidpointRounding.AwayFromZero);
-
-            await DelayForPaystackAsync(cancellationToken);
-            var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
-                candidate.Plan,
-                candidate.Subscriber.Email!,
-                candidate.Subscription.ProviderToken!,
-                reference,
-                candidate.Subscription.SubscriptionId,
-                candidate.ChargeKey,
-                retryBillingAmountZar,
-                cancellationToken);
-
-            if (chargeResult.Reference is not null || reference is not null)
-            {
-                await Task.Delay(VerificationDelay, cancellationToken);
-            }
-
-            PaystackVerifyResult? verifyResult = null;
-            var verifyReference = chargeResult.Reference ?? reference;
-            if (!string.IsNullOrWhiteSpace(verifyReference))
-            {
-                await DelayForPaystackAsync(cancellationToken);
-                verifyResult = await _paystackCheckoutService.VerifyTransactionAsync(verifyReference, cancellationToken);
-            }
-
-            var isVerifiedSuccess = verifyResult is not null &&
-                                    verifyResult.IsSuccess &&
-                                    (string.Equals(verifyResult.TransactionStatus, "success", StringComparison.OrdinalIgnoreCase) ||
-                                     string.Equals(verifyResult.TransactionStatus, "successful", StringComparison.OrdinalIgnoreCase) ||
-                                     string.Equals(verifyResult.TransactionStatus, "paid", StringComparison.OrdinalIgnoreCase));
-            var isVerifiedFailure = verifyResult is not null &&
-                                    verifyResult.IsSuccess &&
-                                    string.Equals(verifyResult.TransactionStatus, "failed", StringComparison.OrdinalIgnoreCase);
-
-            if (isVerifiedSuccess)
-            {
-                await DelayForPaystackAsync(cancellationToken);
-                var refreshedSubscription = await _paystackCheckoutService.GetSubscriptionAsync(subscriptionCode, cancellationToken);
-                var nextPaymentDateUtc = refreshedSubscription.NextPaymentDate
-                                         ?? liveSubscription.NextPaymentDate
-                                         ?? (verifyResult!.PaidAt ?? nowUtc).AddMonths(candidate.Plan.BillingPeriodMonths);
-
-                await InsertRetryEventAsync(
-                    baseUri,
-                    candidate.Subscription.SubscriptionId,
-                    candidate.ChargeKey,
-                    verifyResult!.ProviderTransactionId ?? verifyResult.Reference ?? reference,
-                    "success",
-                    BuildEventPayload(
-                        reference: verifyResult.Reference ?? reference,
-                        customerEmail: candidate.Subscriber.Email!,
-                        amountInCents: verifyResult.AmountInCents,
-                        currency: verifyResult.Currency ?? "ZAR",
-                        gatewayResponse: verifyResult.GatewayResponse,
-                        transactionStatus: verifyResult.TransactionStatus,
-                        paidAt: verifyResult.PaidAt),
-                    cancellationToken);
-                await MarkSubscriptionActiveAsync(baseUri, candidate.Subscription.SubscriptionId, nextPaymentDateUtc, cancellationToken);
-
-                succeededCount++;
-                attempts.Add(new PaystackAuthorizationRetryAttemptResult(
-                    candidate.Subscriber.Email!,
-                    candidate.Subscription.SubscriptionId,
-                    candidate.ChargeKey,
-                    AttemptStatus: "success",
-                    Message: verifyResult.GatewayResponse ?? "Approved",
-                    Reference: verifyResult.Reference ?? reference,
-                    NextPaymentDateUtc: nextPaymentDateUtc));
-                continue;
-            }
-
-            var failurePayload = BuildEventPayload(
-                reference: verifyResult?.Reference ?? chargeResult.Reference ?? reference,
-                customerEmail: candidate.Subscriber.Email!,
-                amountInCents: verifyResult?.AmountInCents ?? (long)Math.Round(retryBillingAmountZar * 100m, MidpointRounding.AwayFromZero),
-                currency: verifyResult?.Currency ?? "ZAR",
-                gatewayResponse: verifyResult?.GatewayResponse ?? chargeResult.ErrorMessage,
-                transactionStatus: verifyResult?.TransactionStatus ?? chargeResult.TransactionStatus,
-                paidAt: verifyResult?.PaidAt);
-            await InsertRetryEventAsync(
-                baseUri,
-                candidate.Subscription.SubscriptionId,
-                candidate.ChargeKey,
-                verifyResult?.ProviderTransactionId ?? chargeResult.ProviderTransactionId ?? reference,
-                "failed",
-                failurePayload,
-                cancellationToken);
-
-            failedCount++;
-            attempts.Add(new PaystackAuthorizationRetryAttemptResult(
-                candidate.Subscriber.Email!,
-                candidate.Subscription.SubscriptionId,
-                candidate.ChargeKey,
-                AttemptStatus: "failed",
-                Message: verifyResult?.GatewayResponse ?? chargeResult.ErrorMessage ?? "Retry failed.",
-                Reference: verifyResult?.Reference ?? chargeResult.Reference ?? reference,
-                NextPaymentDateUtc: liveSubscription.NextPaymentDate));
+            var debt = retryReadyRecoveryBySubscriptionId[candidate.Subscription.SubscriptionId];
+            var attempt = await ledger.RetryDueRecoveryAsync(candidate.Subscription.SubscriptionId, debt.RecoveryId!,
+                candidate.Subscriber.Email!, candidate.ChargeKey, cancellationToken);
+            attempts.Add(attempt);
+            if (attempt.AttemptStatus == "success") succeededCount++;
+            if (attempt.AttemptStatus == "failed") failedCount++;
+            if (attempt.AttemptStatus == "skipped") skippedNotActionableLiveCount++;
         }
 
         return new PaystackAuthorizationRetryBatchResult(
@@ -362,7 +228,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
     {
         var result = new Dictionary<string, List<CurrentSubscriptionRow>>(StringComparer.OrdinalIgnoreCase);
         var escapedNow = Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"));
-        foreach (var batch in Batch(subscriberIds, 150))
+        foreach (var batch in subscriberIds.Chunk(150))
         {
             var filter = string.Join(",", batch.Select(id => $"\"{id}\""));
             var uri = new Uri(
@@ -442,7 +308,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
         CancellationToken cancellationToken)
     {
         var result = new Dictionary<string, SubscriberRow>(StringComparer.OrdinalIgnoreCase);
-        foreach (var batch in Batch(subscriberIds, 150))
+        foreach (var batch in subscriberIds.Chunk(150))
         {
             var filter = string.Join(",", batch.Select(id => $"\"{id}\""));
             var uri = new Uri(
@@ -466,99 +332,6 @@ public sealed class PaystackAuthorizationRetryBatchService(
         }
 
         return result;
-    }
-
-    private async Task InsertRetryEventAsync(
-        Uri baseUri,
-        string subscriptionId,
-        string providerPaymentId,
-        string? providerTransactionId,
-        string eventStatus,
-        Dictionary<string, object?> payload,
-        CancellationToken cancellationToken)
-    {
-        var idempotencyTransactionId = string.IsNullOrWhiteSpace(providerTransactionId)
-            ? payload.TryGetValue("reference", out var reference) ? reference?.ToString() : null
-            : providerTransactionId.Trim();
-
-        if (!string.IsNullOrWhiteSpace(idempotencyTransactionId))
-        {
-            var existingUri = new Uri(
-                baseUri,
-                $"rest/v1/subscription_events?provider=eq.paystack&provider_payment_id=eq.{Uri.EscapeDataString(providerPaymentId)}&provider_transaction_id=eq.{Uri.EscapeDataString(idempotencyTransactionId)}&event_type=eq.paystack.authorization_retry&select=event_id&limit=1");
-            using var existingRequest = CreateSupabaseRequest(HttpMethod.Get, existingUri);
-            using var existingResponse = await _httpClient.SendAsync(existingRequest, cancellationToken);
-            if (existingResponse.IsSuccessStatusCode)
-            {
-                var existingRows = await existingResponse.Content.ReadFromJsonAsync<List<ExistingEventRow>>(cancellationToken: cancellationToken) ?? [];
-                if (existingRows.Count > 0)
-                {
-                    return;
-                }
-            }
-        }
-
-        var eventPayload = new
-        {
-            subscription_id = subscriptionId,
-            provider = "paystack",
-            provider_payment_id = providerPaymentId,
-            provider_transaction_id = idempotencyTransactionId,
-            event_type = "paystack.authorization_retry",
-            event_status = eventStatus,
-            event_dedupe_key = BuildRetryEventDedupeKey(providerPaymentId, idempotencyTransactionId, payload),
-            processing_status = "processed",
-            processing_error = (string?)null,
-            received_at = DateTime.UtcNow,
-            payload
-        };
-
-        using var request = CreateSupabaseJsonRequest(
-            HttpMethod.Post,
-            new Uri(baseUri, "rest/v1/subscription_events"),
-            eventPayload,
-            "return=minimal");
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning(
-                "Paystack retry event insert failed. subscription_id={SubscriptionId} payment_id={ProviderPaymentId} Status={StatusCode} Body={Body}",
-                subscriptionId,
-                providerPaymentId,
-                (int)response.StatusCode,
-                body);
-        }
-    }
-
-    private async Task MarkSubscriptionActiveAsync(
-        Uri baseUri,
-        string subscriptionId,
-        DateTimeOffset nextRenewalAtUtc,
-        CancellationToken cancellationToken)
-    {
-        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
-        using var request = CreateSupabaseJsonRequest(
-            new HttpMethod("PATCH"),
-            new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}"),
-            new
-            {
-                status = "active",
-                next_renewal_at = nextRenewalAtUtc.UtcDateTime,
-                cancelled_at = (DateTime?)null,
-                updated_at = DateTime.UtcNow
-            },
-            "return=minimal");
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning(
-                "Paystack retry subscription update failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
-                subscriptionId,
-                (int)response.StatusCode,
-                body);
-        }
     }
 
     private async Task DelayForPaystackAsync(CancellationToken cancellationToken)
@@ -659,102 +432,6 @@ public sealed class PaystackAuthorizationRetryBatchService(
         }
 
         return subscriptionId;
-    }
-
-    private static string BuildRetryReference(string subscriptionId)
-    {
-        var compact = new string(subscriptionId.Where(char.IsLetterOrDigit).ToArray());
-        var tail = compact.Length > 12 ? compact[^12..] : compact;
-        return $"retry-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{tail.ToLowerInvariant()}";
-    }
-
-    private static string? TryReadMostRecentInvoiceStatus(string? rawPayload)
-    {
-        if (string.IsNullOrWhiteSpace(rawPayload))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(rawPayload);
-            if (document.RootElement.TryGetProperty("data", out var dataNode) &&
-                dataNode.ValueKind == JsonValueKind.Object &&
-                dataNode.TryGetProperty("most_recent_invoice", out var invoiceNode) &&
-                invoiceNode.ValueKind == JsonValueKind.Object &&
-                invoiceNode.TryGetProperty("status", out var statusNode) &&
-                statusNode.ValueKind == JsonValueKind.String)
-            {
-                return statusNode.GetString();
-            }
-        }
-        catch (JsonException)
-        {
-        }
-
-        return null;
-    }
-
-    private static Dictionary<string, object?> BuildEventPayload(
-        string? reference,
-        string customerEmail,
-        long amountInCents,
-        string currency,
-        string? gatewayResponse,
-        string? transactionStatus,
-        DateTimeOffset? paidAt)
-    {
-        return new Dictionary<string, object?>
-        {
-            ["reference"] = reference,
-            ["customer_email"] = customerEmail,
-            ["amount"] = amountInCents,
-            ["currency"] = currency,
-            ["gateway_response"] = gatewayResponse,
-            ["verified_status"] = transactionStatus,
-            ["paid_at"] = paidAt?.UtcDateTime.ToString("O"),
-            ["source"] = "subscription_authorization_retry_batch"
-        };
-    }
-
-    private static string BuildRetryEventDedupeKey(
-        string providerPaymentId,
-        string? providerTransactionId,
-        IReadOnlyDictionary<string, object?> payload)
-    {
-        if (!string.IsNullOrWhiteSpace(providerTransactionId))
-        {
-            return $"paystack:paystack.authorization_retry:txn:{NormalizeDedupePart(providerTransactionId)}";
-        }
-
-        if (payload.TryGetValue("reference", out var reference) &&
-            !string.IsNullOrWhiteSpace(reference?.ToString()))
-        {
-            return $"paystack:paystack.authorization_retry:ref:{NormalizeDedupePart(reference.ToString())}";
-        }
-
-        return $"paystack:paystack.authorization_retry:payment:{NormalizeDedupePart(providerPaymentId)}";
-    }
-
-    private static string NormalizeDedupePart(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        var chars = value.Trim().ToLowerInvariant()
-            .Select(character => char.IsLetterOrDigit(character) || character is '_' or '-' or '.' or ':' ? character : '-')
-            .ToArray();
-        return new string(chars).Trim('-');
-    }
-
-    private static IEnumerable<List<string>> Batch(IReadOnlyList<string> values, int batchSize)
-    {
-        for (var index = 0; index < values.Count; index += batchSize)
-        {
-            yield return values.Skip(index).Take(batchSize).ToList();
-        }
     }
 
     private static bool IsRetryReadyRecovery(PaymentRecoveryRow row, DateTimeOffset nowUtc)
@@ -861,12 +538,6 @@ public sealed class PaystackAuthorizationRetryBatchService(
 
         [JsonPropertyName("received_at")]
         public DateTimeOffset? ReceivedAt { get; set; }
-    }
-
-    private sealed class ExistingEventRow
-    {
-        [JsonPropertyName("event_id")]
-        public int EventId { get; set; }
     }
 
     private sealed class PaymentRecoveryRow

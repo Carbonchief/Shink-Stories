@@ -194,6 +194,10 @@
                        data-enhance-nav="false">@UpgradeContinueButtonText</a>
                     <a class="opsies-plan-change-secondary" href="#plan-opsies">Kies 'n ander plan</a>
                 }
+                else if (UpgradeTransitionKind == SubscriptionCheckoutTransitionKinds.CustomerPaymentRetry)
+                {
+                    <a class="opsies-plan-change-primary" href="/intekening-en-betaling#herstel-betaling">Herstel my betaling</a>
+                }
                 else if (IsPaystackRecoveryRequired)
                 {
                     @if (IsUserAuthenticated)
@@ -213,7 +217,11 @@
                 }
                 else
                 {
-                    <a class="opsies-plan-change-primary" href="/#kontak-ons">@BlockedUpgradeContactText</a>
+                    @if (UpgradeTransitionKind == SubscriptionCheckoutTransitionKinds.BillingVerificationRequired)
+                    {
+                        <a class="opsies-plan-change-primary" href="/intekening-en-betaling#herstel-betaling">Gaan my betaling na</a>
+                    }
+                    <a class="@(UpgradeTransitionKind == SubscriptionCheckoutTransitionKinds.BillingVerificationRequired ? "opsies-plan-change-secondary" : "opsies-plan-change-primary")" href="/#kontak-ons">@BlockedUpgradeContactText</a>
                 }
             </div>
         </section>
@@ -711,6 +719,7 @@
         SubscriptionCheckoutTransitionKinds.PayFastConversion => "Jou ou PayFast-intekening word eers ná suksesvolle aktivering gekanselleer.",
         SubscriptionCheckoutTransitionKinds.ProviderConversion => "Jou bestaande intekening word deur 'n ander betaalverskaffer bestuur.",
         SubscriptionCheckoutTransitionKinds.LegacyPaystack => "Ons kan nie jou ou Paystack-intekening outomaties verander nie.",
+        SubscriptionCheckoutTransitionKinds.CustomerPaymentRetry => "Jou intekening het ’n uitstaande betaling.",
         SubscriptionCheckoutTransitionKinds.PaystackRecoveryRequired => "Bestuur eers jou bestaande Paystack-intekening.",
         SubscriptionCheckoutTransitionKinds.BillingVerificationRequired => "Ons kon nie jou bestaande betalingstatus bevestig nie.",
         SubscriptionCheckoutTransitionKinds.BillingStatusUncertain => "Ons kon nie bevestig dat jou vorige betaling reeds gestop het nie.",
@@ -734,6 +743,7 @@
             $"Jy kan met {PlanChangeTargetName} voortgaan, maar jou huidige {FriendlyCurrentProviderName}-intekening moet steeds by daardie verskaffer bestuur of gekanselleer word.",
         SubscriptionCheckoutTransitionKinds.LegacyPaystack =>
             $"Jy kan 'n nuwe betaling vir {PlanChangeTargetName} begin, maar ons het nie al die ou intekeningbesonderhede om die vorige Paystack-heffing outomaties te stop nie.",
+        SubscriptionCheckoutTransitionKinds.CustomerPaymentRetry => "Jy kan die uitstaande bedrag op jou bestaande intekening betaal.",
         SubscriptionCheckoutTransitionKinds.PaystackRecoveryRequired =>
             "Jou bestaande Paystack-intekening kan steeds hernu. Werk jou kaartbesonderhede vir daardie intekening by.",
         SubscriptionCheckoutTransitionKinds.BillingVerificationRequired =>
@@ -754,8 +764,9 @@
             : "Kanselleer die ou PayFast-intekening direk ná die nuwe plan aktief word. Niks verander as jy nie die nuwe betaling voltooi nie.",
         SubscriptionCheckoutTransitionKinds.ProviderConversion => "Om dubbele heffings te vermy, kanselleer die ou intekening by die huidige verskaffer.",
         SubscriptionCheckoutTransitionKinds.LegacyPaystack => "Kontak ons eers as jy onseker is of die ou Paystack-intekening nog geld aftrek.",
+        SubscriptionCheckoutTransitionKinds.CustomerPaymentRetry => "Gebruik jou gestoorde kaart of werk jou kaartbesonderhede by.",
         SubscriptionCheckoutTransitionKinds.PaystackRecoveryRequired => "Jy kan jou bestaande intekening op die veilige Paystack-blad bestuur.",
-        SubscriptionCheckoutTransitionKinds.BillingVerificationRequired => "Probeer later weer of kontak ons sodat ons jou kan help.",
+        SubscriptionCheckoutTransitionKinds.BillingVerificationRequired => "Gaan jou betaling op die rekeningblad na en probeer weer.",
         SubscriptionCheckoutTransitionKinds.BillingStatusUncertain => "Kontroleer jou bankstaat of kontak ons eers om 'n dubbele heffing te vermy.",
         SubscriptionCheckoutTransitionKinds.AccountClosed => "Kontak ons om die rekening te heropen; daarna kan jy enige plan kies.",
         "discount-code-not-carried" => "Niks word gehef totdat die planverandering suksesvol verwerk is nie.",

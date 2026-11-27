@@ -11,10 +11,10 @@ public sealed class PaystackAuthorizationRetryAmountSourceTests
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackAuthorizationRetryBatchService.cs"));
 
         StringAssert.Contains(service, "billing_amount_zar");
-        StringAssert.Contains(service, "candidate.Subscription.BillingAmountZar");
         StringAssert.Contains(service, "SkippedMissingBillingAmountCount");
         StringAssert.Contains(service, "candidate.BillingAmountZar is not > 0m");
-        StringAssert.Contains(service, "ChargeAuthorizationAsync(");
+        StringAssert.Contains(service, "ledger.RetryDueRecoveryAsync(");
+        Assert.IsFalse(service.Contains(".ChargeAuthorizationAsync(", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -48,12 +48,10 @@ public sealed class PaystackAuthorizationRetryAmountSourceTests
     [TestMethod]
     public void BatchRetryEventsIncludeDedupeAndProcessingStatus()
     {
-        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackAuthorizationRetryBatchService.cs"));
-
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+        StringAssert.Contains(service, "InsertSubscriptionEventAsync");
         StringAssert.Contains(service, "event_dedupe_key");
-        StringAssert.Contains(service, "BuildRetryEventDedupeKey");
-        StringAssert.Contains(service, "processing_status = \"processed\"");
-        StringAssert.Contains(service, "processing_error = (string?)null");
+        StringAssert.Contains(service, "processing_status");
     }
 
     [TestMethod]
@@ -61,10 +59,8 @@ public sealed class PaystackAuthorizationRetryAmountSourceTests
     {
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
 
-        StringAssert.Contains(service, "subscription.BillingAmountZar is > 0m");
-        StringAssert.Contains(service, "No stored billing amount is available for this subscription.");
+        StringAssert.Contains(service, "subscriptionContext.BillingAmountZar is not > 0");
         StringAssert.Contains(service, "subscription.BillingAmountZar!.Value");
-        StringAssert.Contains(service, "subscriptionContext.BillingAmountZar!.Value");
     }
 
     private static string GetRepoPath(params string[] parts)

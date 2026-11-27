@@ -49,12 +49,12 @@ public partial class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
-    public async Task CardUpdateWorker_ResolutionFailsAfterSucceededWrite_RestartFinishesAndExpiryPreservesAccess()
+    public async Task CardUpdateWorker_AtomicSettlementFails_RestartFinishesAndExpiryPreservesAccess()
     {
         var fixture = new CardUpdateFixture { FailRecoveryResolutionOnce = true };
         await CreateService(fixture.Handler).RecordPaystackEventAsync(fixture.Payload);
         await CreateService(fixture.Handler).ProcessPendingPaystackCardUpdatesAsync();
-        Assert.AreEqual("succeeded", fixture.RecoveryStatus);
+        Assert.AreEqual("pending", fixture.RecoveryStatus);
         Assert.IsTrue(fixture.HasRecovery);
         Assert.AreEqual("pending", fixture.Jobs.Values.Single().Status);
 

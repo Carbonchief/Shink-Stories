@@ -17,6 +17,7 @@ public interface ISubscriptionLedgerService
         DateTimeOffset subscribedAtUtc,
         DateTimeOffset? nextRenewalAtUtc,
         CancellationToken cancellationToken = default);
+    Task<PaystackAuthorizationRetryAttemptResult> RetryDueRecoveryAsync(string subscriptionId, string recoveryId, string email, string code, CancellationToken cancellationToken = default);
     Task ProcessExpiredPaymentRecoveriesAsync(CancellationToken cancellationToken = default);
     Task ProcessPendingPaystackCardUpdatesAsync(CancellationToken cancellationToken = default);
     Task<bool> HasActivePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
@@ -36,6 +37,7 @@ public interface ISubscriptionLedgerService
         string? targetPlanSlug,
         CancellationToken cancellationToken = default);
     Task<SubscriptionCardUpdateLinkResult> CreatePaystackCardUpdateLinkAsync(string? email, CancellationToken cancellationToken = default);
+    Task<SubscriptionRepairResult> RetryCustomerPaymentAsync(string email, CustomerPaymentRecovery offer, CancellationToken cancellationToken = default);
     Task<SubscriptionCardUpdateLinkResult> CreatePaystackCheckoutRecoveryLinkAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionRepairResult> TryRepairPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionFreeTierTransferResult> TransferPaidSubscriptionToGratisAsync(string? email, CancellationToken cancellationToken = default);
@@ -122,8 +124,11 @@ public sealed record SubscriptionCheckoutAssessment(
     DateTimeOffset? CurrentAccessEndsAtUtc = null,
     bool CanAutomaticallyCancelCurrentProvider = false)
 {
+    public CustomerPaymentRecovery? CustomerRecovery { get; init; }
     internal string? PaystackRecoverySubscriptionCode { get; init; }
 }
+public sealed record CustomerPaymentRecovery(string SubscriptionId, string RecoveryId, decimal AmountZar, string? PreviousReference, bool AwaitingPayment, bool CanUseSavedCard);
+
 public static class SubscriptionCheckoutTransitionKinds
 {
     public const string NewCheckout = "new-checkout";
@@ -132,13 +137,14 @@ public static class SubscriptionCheckoutTransitionKinds
     public const string PayFastConversion = "payfast-conversion";
     public const string ProviderConversion = "provider-conversion";
     public const string LegacyPaystack = "legacy-paystack";
+    public const string CustomerPaymentRetry = "customer-payment-retry";
     public const string PaystackRecoveryRequired = "paystack-recovery-required";
     public const string BillingVerificationRequired = "billing-verification-required";
     public const string BillingStatusUncertain = "billing-status-uncertain";
     public const string AccountClosed = "account-closed";
 
     public static bool BlocksCheckout(string? transitionKind) =>
-        transitionKind?.Trim().ToLowerInvariant() is PaystackRecoveryRequired or BillingVerificationRequired or AccountClosed;
+        transitionKind?.Trim().ToLowerInvariant() is CustomerPaymentRetry or PaystackRecoveryRequired or BillingVerificationRequired or AccountClosed;
 }
 public sealed record SubscriptionCardUpdateLinkResult(bool IsSuccess, string? Link = null, string? ErrorMessage = null);
 public sealed record SubscriptionRepairResult(

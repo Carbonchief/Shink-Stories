@@ -18,7 +18,7 @@ public sealed partial class SupabaseSubscriptionLedgerService
 
             const int limit = 100;
             var uri = new Uri(context.BaseUri,
-                "rest/v1/subscriptions?select=subscription_id,tier_code,provider,source_system,provider_payment_id,provider_transaction_id,provider_token,next_renewal_at,cancelled_at,status,recurring_billing_mode" +
+                "rest/v1/subscriptions?select=subscription_id,tier_code,provider,source_system,provider_payment_id,provider_transaction_id,provider_token,billing_amount_zar,next_renewal_at,cancelled_at,status,recurring_billing_mode" +
                 $"&subscriber_id=eq.{Uri.EscapeDataString(context.SubscriberId)}&tier_code=neq.gratis" +
                 $"&or=(status.eq.active,provider.eq.paystack)&order=subscribed_at.desc&limit={limit}");
             using var request = CreateRequest(HttpMethod.Get, uri, context.ApiKey);
@@ -46,6 +46,7 @@ public sealed partial class SupabaseSubscriptionLedgerService
 
     private async Task<SubscriptionCheckoutAssessment?> GetPaystackCheckoutBlockAsync(
         SelfServiceSubscriptionContext context,
+        string email,
         IReadOnlyList<SelfServiceSubscriptionRow> subscriptions,
         string? planChangeSubscriptionCode,
         DateTimeOffset nowUtc,
@@ -113,6 +114,28 @@ public sealed partial class SupabaseSubscriptionLedgerService
                     return uncertain;
                 }
 
+                if (row.CancelledAt is null && row.Status is "failed" or "active" && row.ProviderPaymentId == code &&
+                    row.BillingAmountZar is > 0 && !subscriptions.Any(other => other.SubscriptionId != row.SubscriptionId && other.Status == "active"))
+                {
+                    var debt = await GetActivePaymentRecoveryAsync(context.BaseUri, context.ApiKey, row.SubscriptionId,
+                        cancellationToken, requireSuccess: true, includeSuspended: true);
+                    var awaiting = debt is not null && HasSubmittedRetry(debt);
+                    if (debt?.ProviderPaymentId == code &&
+                        (row.Status == "active" || debt.Resolution == "suspended" || awaiting || IsCustomerReservedRecovery(debt)) &&
+                        (awaiting || live.Status == "attention" && live.NextPaymentDate > nowUtc &&
+                            TryGetFailedInvoicePeriod(live, email, row.BillingAmountZar.Value, out var start, out var end) &&
+                            debt.FirstFailedAt >= start && debt.FirstFailedAt < end))
+                    {
+                        recovery = new SubscriptionCheckoutAssessment(SubscriptionCheckoutTransitionKinds.CustomerPaymentRetry, "paystack", row.TierCode)
+                        {
+                            PaystackRecoverySubscriptionCode = code,
+                            CustomerRecovery = new CustomerPaymentRecovery(row.SubscriptionId, debt.RecoveryId, row.BillingAmountZar.Value,
+                                debt.AuthorizationRetryReference, awaiting, live.HasReusableCard)
+                        };
+                        continue;
+                    }
+                }
+
                 if (string.Equals(code, planChangeSubscriptionCode, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
@@ -134,7 +157,7 @@ public sealed partial class SupabaseSubscriptionLedgerService
             }
 
             // A promotional pause looks non-renewing at Paystack until Schink resumes it.
-            if ((hasStoppedAgreement || planChangeSubscriptionCode is not null) &&
+            if ((hasStoppedAgreement || planChangeSubscriptionCode is not null || recovery?.CustomerRecovery is not null) &&
                 await HasPendingPaystackResumeAsync(context, cancellationToken))
             {
                 return uncertain;

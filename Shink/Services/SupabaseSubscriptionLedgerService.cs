@@ -23,7 +23,6 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private const string GratisTierCode = "gratis";
     private const string GratisProvider = "paystack";
     private const string GratisPlanSlug = "gratis";
-    private static readonly TimeSpan AccountRepairAttemptWindow = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan PendingAccountRepairCheckoutBlockWindow = TimeSpan.FromHours(1);
     private static readonly TimeSpan AuthorizationRetryDelay = TimeSpan.FromDays(1);
     private static readonly TimeSpan FollowUpAuthorizationRetryDelay = TimeSpan.FromDays(1);
@@ -212,7 +211,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 current.Subscription.ProviderTransactionId)
             : null;
         var paystackBlock = await GetPaystackCheckoutBlockAsync(
-            context, subscriptions, planChangeSubscriptionCode, nowUtc, cancellationToken);
+            context, email!, subscriptions, planChangeSubscriptionCode, nowUtc, cancellationToken);
         if (paystackBlock is not null)
         {
             return paystackBlock;
@@ -1439,347 +1438,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return new SubscriptionRepairResult(false, ErrorMessage: "Kon nie die betaalplan vir hierdie intekening bepaal nie.");
         }
 
-        if (!CanAttemptAutomaticRetry(subscription, plan))
-        {
-            return new SubscriptionRepairResult(false, plan.Slug);
-        }
-
-        var nowUtc = DateTimeOffset.UtcNow;
-        var providerPaymentId = ResolveProviderPaymentIdForEvent(subscription);
-        var recentRepairResult = await TryResolveRecentAccountRepairResultAsync(
-            candidate.Context.BaseUri,
-            candidate.Context.ApiKey,
-            subscription.SubscriptionId,
-            plan.Slug,
-            nowUtc,
-            cancellationToken);
-        if (recentRepairResult is not null)
-        {
-            return recentRepairResult;
-        }
-
-        if (await HasPendingPaystackCheckoutSessionForTierAsync(
-                candidate.Context.BaseUri,
-                candidate.Context.ApiKey,
-                email!.Trim().ToLowerInvariant(),
-                plan.TierCode,
-                nowUtc,
-                cancellationToken))
-        {
-            return new SubscriptionRepairResult(false, plan.Slug, IsPending: true);
-        }
-
-        var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
-            subscription.Provider,
-            subscription.SourceSystem,
-            subscription.ProviderPaymentId,
-            subscription.ProviderTransactionId);
-        var liveSubscriptionResult = await TryRefreshAccountRepairFromActivePaystackSubscriptionAsync(
-            candidate.Context.BaseUri,
-            candidate.Context.ApiKey,
-            subscription,
-            plan,
-            paystackSubscriptionCode,
-            nowUtc,
-            cancellationToken);
-        if (liveSubscriptionResult is not null)
-        {
-            return liveSubscriptionResult;
-        }
-
-        var activeRecovery = await GetActivePaymentRecoveryAsync(
-            candidate.Context.BaseUri,
-            candidate.Context.ApiKey,
-            subscription.SubscriptionId,
-            cancellationToken);
-        if (!IsPaystackAuthorizationRetryDue(activeRecovery, nowUtc))
-        {
-            return new SubscriptionRepairResult(
-                false,
-                plan.Slug,
-                "Ons wag nog vir Paystack se mislukte-betaling kennisgewing en die 24-uur herstelvenster.",
-                IsPending: true);
-        }
-
-        var reference = BuildAccountRepairReference(subscription.SubscriptionId);
-        var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
-            plan,
-            email!.Trim().ToLowerInvariant(),
-            subscription.ProviderToken!,
-            reference,
-            subscription.SubscriptionId,
-            activeRecovery?.ProviderPaymentId ?? providerPaymentId,
-            subscription.BillingAmountZar!.Value,
-            cancellationToken);
-
-        var eventPayload = string.IsNullOrWhiteSpace(chargeResult.RawPayload)
-            ? new Dictionary<string, string?>
-            {
-                ["reference"] = chargeResult.Reference,
-                ["error"] = chargeResult.ErrorMessage
-            }
-            : DeserializePayloadObject(chargeResult.RawPayload);
-
-        await InsertSubscriptionEventAsync(
-            candidate.Context.BaseUri,
-            candidate.Context.ApiKey,
-            subscription.SubscriptionId,
-            provider: "paystack",
-            providerPaymentId,
-            providerTransactionId: chargeResult.ProviderTransactionId ?? chargeResult.Reference ?? reference,
-            eventType: "paystack.authorization_retry",
-            eventStatus: chargeResult.IsSuccess ? "success" : chargeResult.TransactionStatus ?? "failed",
-            payload: eventPayload,
-            cancellationToken);
-
-        if (IsPendingPaystackStatus(chargeResult.TransactionStatus) ||
-            IsDuplicatePaystackReferenceFailure(chargeResult))
-        {
-            return new SubscriptionRepairResult(false, plan.Slug, IsPending: true);
-        }
-
-        if (!chargeResult.IsSuccess)
-        {
-            return new SubscriptionRepairResult(false, plan.Slug, chargeResult.ErrorMessage);
-        }
-
-        var nextRenewalAtUtc = (chargeResult.PaidAt ?? nowUtc).AddMonths(plan.BillingPeriodMonths);
-        if (!string.IsNullOrWhiteSpace(paystackSubscriptionCode))
-        {
-            try
-            {
-                var subscriptionLookup = await _paystackCheckoutService.GetSubscriptionAsync(
-                    paystackSubscriptionCode,
-                    cancellationToken);
-                if (subscriptionLookup.IsSuccess && subscriptionLookup.NextPaymentDate is not null)
-                {
-                    nextRenewalAtUtc = subscriptionLookup.NextPaymentDate.Value;
-                }
-            }
-            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
-            {
-                _logger.LogWarning(
-                    exception,
-                    "Paystack account repair renewal lookup failed after authorization charge. subscription_id={SubscriptionId} provider_payment_id={ProviderPaymentId}",
-                    subscription.SubscriptionId,
-                    paystackSubscriptionCode);
-            }
-        }
-
-        await MarkSubscriptionRecoveredByIdAsync(
-            candidate.Context.BaseUri,
-            candidate.Context.ApiKey,
-            subscription.SubscriptionId,
-            nextRenewalAtUtc,
-            cancellationToken);
-
-        return new SubscriptionRepairResult(true, plan.Slug);
-    }
-
-    private async Task<SubscriptionRepairResult?> TryRefreshAccountRepairFromActivePaystackSubscriptionAsync(
-        Uri baseUri,
-        string apiKey,
-        SelfServiceSubscriptionRow subscription,
-        PaymentPlan plan,
-        string? paystackSubscriptionCode,
-        DateTimeOffset nowUtc,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(paystackSubscriptionCode))
-        {
-            return null;
-        }
-
-        PaystackSubscriptionLookupResult liveSubscription;
-        try
-        {
-            liveSubscription = await _paystackCheckoutService.GetSubscriptionAsync(
-                paystackSubscriptionCode,
-                cancellationToken);
-        }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
-        {
-            _logger.LogWarning(
-                exception,
-                "Paystack account repair subscription refresh failed. subscription_id={SubscriptionId} provider_payment_id={ProviderPaymentId}",
-                subscription.SubscriptionId,
-                paystackSubscriptionCode);
-            return null;
-        }
-
-        if (!liveSubscription.IsSuccess ||
-            !string.Equals(liveSubscription.Status, "active", StringComparison.OrdinalIgnoreCase) ||
-            liveSubscription.NextPaymentDate is null ||
-            liveSubscription.NextPaymentDate <= nowUtc)
-        {
-            return null;
-        }
-
-        await MarkSubscriptionRecoveredByIdAsync(
-            baseUri,
-            apiKey,
-            subscription.SubscriptionId,
-            liveSubscription.NextPaymentDate.Value,
-            cancellationToken);
-        await ResolveActivePaymentRecoveryAfterAccountRepairAsync(
-            baseUri,
-            apiKey,
-            subscription.SubscriptionId,
-            nowUtc,
-            paystackSubscriptionCode,
-            cancellationToken);
-
-        return new SubscriptionRepairResult(true, plan.Slug);
-    }
-
-    private async Task ResolveActivePaymentRecoveryAfterAccountRepairAsync(
-        Uri baseUri,
-        string apiKey,
-        string subscriptionId,
-        DateTimeOffset resolvedAtUtc,
-        string recoveryReference,
-        CancellationToken cancellationToken)
-    {
-        var activeRecovery = await GetActivePaymentRecoveryAsync(
-            baseUri,
-            apiKey,
-            subscriptionId,
-            cancellationToken);
-        if (activeRecovery is null)
-        {
-            return;
-        }
-
-        await MarkPaymentRecoveryAuthorizationRetryAsync(
-            baseUri,
-            apiKey,
-            activeRecovery.RecoveryId,
-            resolvedAtUtc,
-            "succeeded",
-            recoveryReference,
-            null,
-            null,
-            cancellationToken);
-        await _subscriptionPaymentRecoveryEmailService.CancelSequenceAsync(
-            new SubscriptionPaymentRecoveryEmailSequence(
-                activeRecovery.ImmediateEmailId,
-                activeRecovery.WarningEmailId,
-                activeRecovery.SuspensionEmailId),
-            cancellationToken);
-        await ResolvePaymentRecoveryAsync(
-            baseUri,
-            apiKey,
-            activeRecovery.RecoveryId,
-            resolvedAtUtc,
-            "recovered",
-            cancellationToken);
-    }
-
-    private async Task<SubscriptionRepairResult?> TryResolveRecentAccountRepairResultAsync(
-        Uri baseUri,
-        string apiKey,
-        string subscriptionId,
-        string planSlug,
-        DateTimeOffset nowUtc,
-        CancellationToken cancellationToken)
-    {
-        var cutoffUtc = nowUtc.Subtract(AccountRepairAttemptWindow);
-        var filters = string.Join(
-            "&",
-            $"subscription_id=eq.{Uri.EscapeDataString(subscriptionId)}",
-            "provider=eq.paystack",
-            "event_type=eq.paystack.authorization_retry",
-            $"received_at=gt.{Uri.EscapeDataString(cutoffUtc.UtcDateTime.ToString("O"))}",
-            "select=event_status,provider_transaction_id,received_at,payload",
-            "order=received_at.desc",
-            "limit=10");
-        var uri = new Uri(baseUri, $"rest/v1/subscription_events?{filters}");
-
-        try
-        {
-            using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                return null;
-            }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var rows = await JsonSerializer.DeserializeAsync<List<AccountRepairEventRow>>(stream, cancellationToken: cancellationToken)
-                ?? [];
-            foreach (var row in rows.Where(IsAccountRepairEvent))
-            {
-                var status = ResolveAccountRepairEventStatus(row);
-                if (IsPendingPaystackStatus(status))
-                {
-                    return new SubscriptionRepairResult(false, planSlug, IsPending: true);
-                }
-
-                if (IsSuccessfulPaystackStatus(status))
-                {
-                    return new SubscriptionRepairResult(true, planSlug);
-                }
-            }
-        }
-        catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
-                                         exception is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            _logger.LogWarning(exception, "Recent account repair lookup failed. subscription_id={SubscriptionId}", subscriptionId);
-        }
-
-        return null;
-    }
-
-    private async Task<bool> HasPendingPaystackCheckoutSessionForTierAsync(
-        Uri baseUri,
-        string apiKey,
-        string email,
-        string tierCode,
-        DateTimeOffset nowUtc,
-        CancellationToken cancellationToken)
-    {
-        var filters = string.Join(
-            "&",
-            "provider=eq.paystack",
-            "checkout_kind=eq.subscription",
-            $"customer_email=eq.{Uri.EscapeDataString(email)}",
-            $"tier_code=eq.{Uri.EscapeDataString(tierCode)}",
-            "status=eq.pending",
-            $"expires_at=gt.{Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"))}",
-            "select=session_id",
-            "limit=1");
-        var uri = new Uri(baseUri, $"rest/v1/paystack_checkout_sessions?{filters}");
-
-        try
-        {
-            using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning(
-                    "Pending Paystack checkout lookup failed. email={Email} tier={TierCode} Status={StatusCode} Body={Body}",
-                    email,
-                    tierCode,
-                    (int)response.StatusCode,
-                    body);
-                return false;
-            }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var rows = await JsonSerializer.DeserializeAsync<List<PaystackCheckoutSessionLookupRow>>(stream, cancellationToken: cancellationToken)
-                ?? [];
-            return rows.Any(row => !string.IsNullOrWhiteSpace(row.SessionId));
-        }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            _logger.LogWarning(
-                exception,
-                "Pending Paystack checkout lookup failed unexpectedly. email={Email} tier={TierCode}",
-                email,
-                tierCode);
-            return false;
-        }
+        // This legacy entry point must never collect independently of a reserved renewal.
+        return new SubscriptionRepairResult(false, plan.Slug,
+            IsPending: string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<IReadOnlyList<PendingRepairSubscriptionRow>> GetPaystackRepairCandidateSubscriptionsForTierAsync(
@@ -2738,11 +2399,15 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string apiKey,
         CancellationToken cancellationToken)
     {
-        var nowUtc = DateTimeOffset.UtcNow;
         IReadOnlyList<PaymentRecoveryRow> pendingRecoveries;
         try
         {
-            pendingRecoveries = await GetPendingAuthorizationRetryRecoveriesAsync(baseUri, apiKey, nowUtc, cancellationToken);
+            using var claim = CreateJsonRequest(HttpMethod.Post, new Uri(baseUri, "rest/v1/rpc/claim_payment_recovery_checks"),
+                apiKey, new { }, "return=representation");
+            using var claimed = await _httpClient.SendAsync(claim, cancellationToken);
+            claimed.EnsureSuccessStatusCode();
+            var checks = await claimed.Content.ReadFromJsonAsync<List<PaymentRecoveryRow>>(cancellationToken);
+            pendingRecoveries = checks ?? [];
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
@@ -2781,263 +2446,76 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
     }
 
-    private async Task ProcessPendingAuthorizationRetryAsync(
-        Uri baseUri,
-        string apiKey,
-        PaymentRecoveryRow recovery,
-        DateTimeOffset nowUtc,
-        CancellationToken cancellationToken)
+    public async Task<PaystackAuthorizationRetryAttemptResult> RetryDueRecoveryAsync(string subscriptionId,
+        string recoveryId, string email, string code, CancellationToken cancellationToken = default)
     {
-        if (!IsPaystackAuthorizationRetryDue(recovery, nowUtc))
-        {
-            return;
-        }
-
-        var subscriptionContext = await TryGetSubscriptionContextByIdAsync(
-            baseUri,
-            apiKey,
-            recovery.SubscriptionId!,
-            cancellationToken);
-        if (subscriptionContext is null)
-        {
-            await MarkPaymentRecoveryAuthorizationRetryAsync(
-                baseUri,
-                apiKey,
-                recovery.RecoveryId,
-                nowUtc,
-                "skipped",
-                null,
-                "Subscription context could not be loaded.",
-                null,
-                cancellationToken);
-            return;
-        }
-
-        var subscriptionStopped = subscriptionContext.CancelledAt is not null ||
-            !string.Equals(subscriptionContext.Status, "active", StringComparison.OrdinalIgnoreCase);
-        var accountEnabled = subscriptionStopped ? false :
-            await IsSubscriberEnabledForRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriberId, cancellationToken);
-        if (accountEnabled is null)
-        {
-            return; // Keep the pending retry until account status can be confirmed.
-        }
-        if (!accountEnabled.Value)
-        {
-            await ResolvePaymentRecoveryAsync(
-                baseUri,
-                apiKey,
-                recovery.RecoveryId,
-                nowUtc,
-                "cancelled",
-                cancellationToken);
-            return;
-        }
-
-        var provider = recovery.Provider ?? subscriptionContext.Provider ?? string.Empty;
-        var providerPaymentId = recovery.ProviderPaymentId ?? subscriptionContext.ProviderPaymentId ?? string.Empty;
-        var plan = PaymentPlanCatalog.FindByTierCode(subscriptionContext.TierCode);
-        if (!string.Equals(provider, "paystack", StringComparison.OrdinalIgnoreCase) ||
-            string.IsNullOrWhiteSpace(subscriptionContext.ProviderToken) ||
-            subscriptionContext.BillingAmountZar is not > 0m ||
-            plan is null)
-        {
-            var retryError = plan is null
-                ? "No local subscription plan matched this tier."
-                : subscriptionContext.BillingAmountZar is not > 0m
-                    ? "No stored billing amount is available for this subscription."
-                    : "No Paystack authorization code is available for this subscription.";
-            await SchedulePaymentRecoveryEmailsAsync(
-                baseUri,
-                apiKey,
-                recovery,
-                subscriptionContext,
-                string.IsNullOrWhiteSpace(provider) ? "unknown" : provider,
-                providerPaymentId,
-                nowUtc,
-                "skipped",
-                null,
-                retryError,
-                cancellationToken);
-            return;
-        }
-
-        var liveRecoveryResult = await TryRecoverFromSuccessfulLivePaystackPaymentAsync(
-            baseUri,
-            apiKey,
-            recovery,
-            subscriptionContext,
-            plan,
-            nowUtc,
-            cancellationToken);
-        if (liveRecoveryResult)
-        {
-            return;
-        }
-
-        var reference = BuildAuthorizationRetryReference(recovery.RecoveryId);
-        var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
-            plan,
-            subscriptionContext.Email,
-            subscriptionContext.ProviderToken,
-            reference,
-            subscriptionContext.SubscriptionId,
-            providerPaymentId,
-            subscriptionContext.BillingAmountZar!.Value,
-            cancellationToken);
-
-        var eventPayload = string.IsNullOrWhiteSpace(chargeResult.RawPayload)
-            ? new Dictionary<string, string?>
-            {
-                ["reference"] = chargeResult.Reference,
-                ["error"] = chargeResult.ErrorMessage
-            }
-            : DeserializePayloadObject(chargeResult.RawPayload);
-        await InsertSubscriptionEventAsync(
-            baseUri,
-            apiKey,
-            subscriptionContext.SubscriptionId,
-            provider: "paystack",
-            providerPaymentId,
-            providerTransactionId: chargeResult.ProviderTransactionId ?? chargeResult.Reference,
-            eventType: "paystack.authorization_retry",
-            eventStatus: chargeResult.IsSuccess ? "success" : chargeResult.TransactionStatus ?? "failed",
-            payload: eventPayload,
-            cancellationToken);
-
-        if (chargeResult.IsSuccess)
-        {
-            var paidAtUtc = chargeResult.PaidAt ?? nowUtc;
-            var nextRenewalAtUtc = paidAtUtc.AddMonths(plan.BillingPeriodMonths);
-            var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
-                subscriptionContext.Provider,
-                subscriptionContext.SourceSystem,
-                subscriptionContext.ProviderPaymentId,
-                subscriptionContext.ProviderTransactionId);
-            if (!string.IsNullOrWhiteSpace(paystackSubscriptionCode))
-            {
-                var subscriptionLookup = await _paystackCheckoutService.GetSubscriptionAsync(
-                    paystackSubscriptionCode,
-                    cancellationToken);
-                if (subscriptionLookup.IsSuccess && subscriptionLookup.NextPaymentDate is not null)
-                {
-                    nextRenewalAtUtc = subscriptionLookup.NextPaymentDate.Value;
-                }
-            }
-
-            await MarkSubscriptionRecoveredByIdAsync(
-                baseUri,
-                apiKey,
-                subscriptionContext.SubscriptionId,
-                nextRenewalAtUtc,
-                cancellationToken);
-            await MarkPaymentRecoveryAuthorizationRetryAsync(
-                baseUri,
-                apiKey,
-                recovery.RecoveryId,
-                nowUtc,
-                "succeeded",
-                chargeResult.Reference,
-                null,
-                null,
-                cancellationToken);
-            await _subscriptionPaymentRecoveryEmailService.CancelSequenceAsync(
-                new SubscriptionPaymentRecoveryEmailSequence(
-                    recovery.ImmediateEmailId,
-                    recovery.WarningEmailId,
-                    recovery.SuspensionEmailId),
-                cancellationToken);
-            await ResolvePaymentRecoveryAsync(baseUri, apiKey, recovery.RecoveryId, nowUtc, "recovered", cancellationToken);
-            await TrySendAdminOpsAlertAsync(
-                alertKey: $"payment-recovery-authorization-retry-succeeded/{recovery.RecoveryId}",
-                severity: "info",
-                title: "Subscription authorization retry succeeded",
-                summary: $"Automatic payment retry recovered {subscriptionContext.Email}.",
-                details: $"Provider: Paystack\nSubscription ID: {subscriptionContext.SubscriptionId}\nRecovery ID: {recovery.RecoveryId}\nReference: {chargeResult.Reference ?? "not available"}",
-                eventReference: recovery.RecoveryId,
-                occurredAtUtc: nowUtc,
-                cancellationToken);
-            return;
-        }
-
-        await SchedulePaymentRecoveryEmailsAsync(
-            baseUri,
-            apiKey,
-            recovery,
-            subscriptionContext,
-            "paystack",
-            providerPaymentId,
-            nowUtc,
-            "failed",
-            chargeResult.Reference,
-            chargeResult.ErrorMessage,
-            cancellationToken);
+        var skipped = new PaystackAuthorizationRetryAttemptResult(email, subscriptionId, code, "skipped",
+            "The renewal is no longer eligible for collection.", null, null);
+        if (!TryBuildSupabaseBaseUri(out var baseUri) || ResolveApiKey() is not { Length: > 0 } apiKey) return skipped;
+        var debt = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionId, cancellationToken, requireSuccess: true);
+        if (debt?.RecoveryId != recoveryId || debt.ProviderPaymentId != code || !IsPaystackAuthorizationRetryDue(debt, DateTimeOffset.UtcNow))
+            return skipped;
+        var result = await ProcessPendingAuthorizationRetryAsync(baseUri, apiKey, debt, DateTimeOffset.UtcNow, cancellationToken);
+        var updated = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionId, cancellationToken,
+            requireSuccess: true, includeSuspended: true, includeRecovered: true);
+        if (updated?.RecoveryId != recoveryId) return skipped;
+        if (updated.Resolution == "recovered")
+            return skipped with { AttemptStatus = "success", Message = "Payment confirmed.", Reference = updated.AuthorizationRetryReference, NextPaymentDateUtc = updated.PaidThrough };
+        if (result is null) return skipped;
+        var pending = result.PendingReason is not null || result.ShouldFailWebhook;
+        return skipped with { AttemptStatus = pending ? "pending" : "failed", Message = pending ? "Awaiting confirmation." : "Payment declined.",
+            Reference = updated.AuthorizationRetryReference };
     }
 
-    private async Task<bool> TryRecoverFromSuccessfulLivePaystackPaymentAsync(
+    private async Task<PaystackCardUpdateRefundRetryResult?> ProcessPendingAuthorizationRetryAsync(
         Uri baseUri,
         string apiKey,
         PaymentRecoveryRow recovery,
-        PaymentRecoverySubscriptionContext subscriptionContext,
-        PaymentPlan plan,
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
-        var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
-            subscriptionContext.Provider,
-            subscriptionContext.SourceSystem,
-            subscriptionContext.ProviderPaymentId,
-            subscriptionContext.ProviderTransactionId);
-        if (string.IsNullOrWhiteSpace(paystackSubscriptionCode))
+        var reserved = HasSubmittedRetry(recovery);
+        if (!reserved && !IsPaystackAuthorizationRetryDue(recovery, nowUtc)) return null;
+
+        var subscription = await TryGetSubscriptionContextByIdAsync(baseUri, apiKey, recovery.SubscriptionId!, cancellationToken);
+        if (subscription is null || recovery.Provider != "paystack" || recovery.ProviderPaymentId != subscription.ProviderPaymentId)
+            return null;
+        var enabled = await IsSubscriberEnabledForRecoveryAsync(baseUri, apiKey, subscription.SubscriberId, cancellationToken);
+        if (enabled is null) return null;
+        if (!enabled.Value || subscription.CancelledAt is not null || subscription.Status is not ("active" or "failed"))
         {
-            return false;
+            // A submitted charge may still settle. Never resurrect access or erase its reference.
+            if (!reserved && recovery.AuthorizationRetryReference is null)
+                await ResolvePaymentRecoveryAsync(baseUri, apiKey, recovery.RecoveryId, nowUtc, "cancelled", cancellationToken);
+            return null;
         }
 
-        var liveSubscription = await _paystackCheckoutService.GetSubscriptionAsync(
-            paystackSubscriptionCode,
-            cancellationToken);
-        var livePayment = TryReadSuccessfulLivePaystackPayment(liveSubscription.RawPayload);
-        if (!liveSubscription.IsSuccess || livePayment is null)
+        var code = subscription.ProviderPaymentId;
+        var plan = PaymentPlanCatalog.FindByTierCode(subscription.TierCode);
+        if (!PaystackSubscriptionCodeResolver.IsSubscriptionCode(code) || subscription.BillingAmountZar is not > 0 || plan is null)
+            return null;
+        var live = await _paystackCheckoutService.GetSubscriptionAsync(code!, cancellationToken);
+        if (reserved)
         {
-            return false;
+            var mayResume = recovery.AuthorizationRetryStatus == "pending" && recovery.PaidThrough == live.NextPaymentDate && recovery.PaidThrough is not null && recovery.AuthorizationRetryAttemptedAt < nowUtc.AddMinutes(-5) &&
+                HasMatchingUnpaidInvoice(live, subscription, recovery, nowUtc) && _paystackCheckoutService.CanChargeAuthorization;
+            var checkedPayment = await ReconcileReservedAttemptAsync(baseUri, apiKey, subscription, recovery, live,
+                nowUtc, cancellationToken, allowMissing: mayResume);
+            if (checkedPayment is not null) return checkedPayment;
+            // An interrupted submit may have reserved before reaching Paystack. Only the worker can
+            // resume collection here, after a definitive missing-reference reply, with the same key.
+            var reservedReference = recovery.AuthorizationRetryReference!;
+            if (!await CanResumeReservedRecoveryAsync(subscription, recovery, live, cancellationToken)) return null;
+            return await SubmitReservedRecoveryAsync(baseUri, apiKey, subscription, recovery, live, plan,
+                reservedReference, "recovery_resume", reservedReference, null, nowUtc, cancellationToken);
         }
+        if (!IsMatchingAgreement(live, subscription) || live.Status is not ("active" or "attention")) return null;
 
-        var nextRenewalAtUtc = liveSubscription.NextPaymentDate ??
-                               livePayment.PaidAtUtc?.AddMonths(plan.BillingPeriodMonths) ??
-                               nowUtc.AddMonths(plan.BillingPeriodMonths);
-
-        await MarkSubscriptionRecoveredByIdAsync(
-            baseUri,
-            apiKey,
-            subscriptionContext.SubscriptionId,
-            nextRenewalAtUtc,
-            cancellationToken);
-        await MarkPaymentRecoveryAuthorizationRetryAsync(
-            baseUri,
-            apiKey,
-            recovery.RecoveryId,
-            nowUtc,
-            "succeeded",
-            livePayment.Reference,
-            null,
-            null,
-            cancellationToken);
-        await _subscriptionPaymentRecoveryEmailService.CancelSequenceAsync(
-            new SubscriptionPaymentRecoveryEmailSequence(
-                recovery.ImmediateEmailId,
-                recovery.WarningEmailId,
-                recovery.SuspensionEmailId),
-            cancellationToken);
-        await ResolvePaymentRecoveryAsync(baseUri, apiKey, recovery.RecoveryId, nowUtc, "recovered", cancellationToken);
-        await TrySendAdminOpsAlertAsync(
-            alertKey: $"payment-recovery-live-paystack-confirmed/{recovery.RecoveryId}",
-            severity: "info",
-            title: "Subscription payment already confirmed",
-            summary: $"Paystack already showed a successful payment for {subscriptionContext.Email}.",
-            details: $"Provider: Paystack\nSubscription ID: {subscriptionContext.SubscriptionId}\nRecovery ID: {recovery.RecoveryId}\nReference: {livePayment.Reference ?? "not available"}",
-            eventReference: recovery.RecoveryId,
-            occurredAtUtc: nowUtc,
-            cancellationToken);
-        return true;
+        if (await TryReconcilePaidInvoiceAsync(baseUri, apiKey, subscription, recovery, live, cancellationToken)) return null;
+        if (!_paystackCheckoutService.CanChargeAuthorization || !HasMatchingUnpaidInvoice(live, subscription, recovery, nowUtc)) return null;
+        var reference = BuildAuthorizationRetryReference(recovery.RecoveryId, recovery.AuthorizationRetryDueAt!.Value);
+        return await CollectRecoveryPaymentAsync(baseUri, apiKey, subscription, code!, live, recovery, plan,
+            live.AuthorizationCode!, "scheduled_retry", reference, null, nowUtc, cancellationToken);
     }
 
     private async Task<bool> HasActiveSubscriptionAsync(
@@ -4336,7 +3814,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     isCardUpdateVerification, cancellationToken);
             }
 
-            var isPaystackInvoiceChargeSuccess = IsPaystackInvoiceChargeSuccess(eventType, data);
+            var isRecoveryCharge = IsPaystackAuthorizationRetrySuccess(eventType, data);
+            var isPaystackInvoiceChargeSuccess = !isRecoveryCharge && IsPaystackInvoiceChargeSuccess(eventType, data);
             if (isPaystackInvoiceChargeSuccess)
             {
                 providerTransactionId = TryReadString(data, "reference") ?? providerTransactionId;
@@ -4347,7 +3826,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             PaymentRecoverySubscriptionContext? recurringChargeContext = null;
             SubscriptionPlanChangeAttemptResult? planChangeAttempt = null;
             string? planChangeSubscriptionId = null;
-            if (IsPaystackAuthorizationRetrySuccess(eventType, data))
+            if (isRecoveryCharge)
             {
                 var retrySubscriptionId = TryReadNestedString(data, "metadata", "subscription_id");
                 if (!string.IsNullOrWhiteSpace(retrySubscriptionId))
@@ -4564,7 +4043,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 }
             }
 
-            if (paystackContext is not null)
+            if (isRecoveryCharge)
+            {
+                if (paystackContext is null || TryReadString(data, "reference") is not { } reference ||
+                    !await ReconcileRetryWebhookAsync(baseUri, apiKey, paystackContext, reference, data, cancellationToken))
+                    return await FailClaimedEventAsync("The payment could not be matched to its outstanding renewal.", paystackContext?.SubscriptionId);
+                subscriptionId = paystackContext.SubscriptionId;
+            }
+            else if (paystackContext is not null)
             {
                 subscriptionId = paystackContext.SubscriptionId;
                 var nextRenewalAtUtc = ResolvePaystackAuthorizationRetryNextRenewalAt(data, paystackContext, nowUtc);
@@ -4579,10 +4065,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     apiKey,
                     paystackContext,
                     nowUtc,
-                    cancellationToken,
-                    authorizationRetryReference: authorizationRetryContext is null
-                        ? null
-                        : TryReadString(data, "reference") ?? providerTransactionId);
+                    cancellationToken);
             }
 
             if (isPaystackInvoiceChargeSuccess)
@@ -4969,16 +4452,19 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         {
             return PaystackCardUpdateRefundRetryResult.Failed("The verified card update could not be linked to its local subscription owner.");
         }
-        if (!string.Equals(subscriptionContext.Status, "active", StringComparison.OrdinalIgnoreCase) ||
-            subscriptionContext.CancelledAt is not null)
+        var suspended = subscriptionContext.Status == "failed";
+        if (subscriptionContext.CancelledAt is not null || (!suspended && subscriptionContext.Status != "active"))
         {
-            if (string.Equals(subscriptionContext.Status, "failed", StringComparison.OrdinalIgnoreCase))
-            {
-                return PaystackCardUpdateRefundRetryResult.Failed(
-                    "The local subscription was suspended; payment and access need reconciliation before further recovery.",
-                    subscriptionContext.SubscriptionId, subscriptionCode);
-            }
             return PaystackCardUpdateRefundRetryResult.NotApplicable;
+        }
+        if (suspended)
+        {
+            var assessment = await AssessSubscriptionCheckoutAsync(subscriptionContext.Email, null, cancellationToken);
+            if (assessment.CustomerRecovery?.SubscriptionId != subscriptionContext.SubscriptionId ||
+                assessment.PaystackRecoverySubscriptionCode != subscriptionCode)
+            {
+                return PaystackCardUpdateRefundRetryResult.NotApplicable;
+            }
         }
 
         var accountEnabled = await IsSubscriberEnabledForRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriberId, cancellationToken);
@@ -5024,193 +4510,114 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         // Paystack can keep an old failed invoice after a separate recovery
         // charge. A live failed invoice alone must never cause another charge.
-        var recovery = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriptionId, cancellationToken, requireSuccess: true);
+        var recovery = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriptionId,
+            cancellationToken, requireSuccess: true, includeSuspended: suspended);
         if (recovery is null)
         {
             return new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode);
         }
 
-        // A pending scheduled retry owns the next attempt. It will use the card
-        // saved above. Do not race it with a separate card-update charge.
-        var isCardUpdateAttempt = recovery.AuthorizationRetryReference?.StartsWith("card-update-retry-", StringComparison.Ordinal) == true;
-        if (recovery.AuthorizationRetryStatus == "pending" && !isCardUpdateAttempt)
-        {
-            return new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode);
-        }
+        return await CollectRecoveryPaymentAsync(baseUri, apiKey, subscriptionContext, subscriptionCode, liveSubscription,
+            recovery, plan, verification.AuthorizationCode!, isVerificationCharge ? "card_update" : "card_update_refund",
+            refundTransactionReference, verification.PaidAt, nowUtc, cancellationToken, refundAmount);
+    }
 
-        if (subscriptionContext.BillingAmountZar is not > 0m)
-        {
-            return PaystackCardUpdateRefundRetryResult.Failed("No stored billing amount is available for payment recovery.", subscriptionContext.SubscriptionId, subscriptionCode);
-        }
+    private async Task<PaystackCardUpdateRefundRetryResult> CollectRecoveryPaymentAsync(
+        Uri baseUri, string apiKey, PaymentRecoverySubscriptionContext subscriptionContext, string subscriptionCode,
+        PaystackSubscriptionLookupResult liveSubscription, PaymentRecoveryRow recovery, PaymentPlan plan,
+        string authorizationCode, string trigger, string attemptKey, DateTimeOffset? verifiedCardAt,
+        DateTimeOffset nowUtc, CancellationToken cancellationToken, long? refundAmount = null)
+    {
+        var pending = new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode,
+            PendingReason: CardUpdatePaymentPending);
+        var scheduled = trigger == "scheduled_retry";
+        var customer = trigger == "customer_retry";
+        var reference = scheduled ? attemptKey : customer ? $"customer-retry-{ComputeSha256Hex(attemptKey)[..32]}"
+            : BuildCardUpdateRefundRetryReference(subscriptionContext.SubscriptionId, attemptKey);
+        if (subscriptionContext.BillingAmountZar is not > 0)
+            return PaystackCardUpdateRefundRetryResult.Failed("The recovery has no stored billing amount.");
 
-        var retryReference = BuildCardUpdateRefundRetryReference(subscriptionContext.SubscriptionId, refundTransactionReference);
-        var resumeReservedAttempt = isCardUpdateAttempt && recovery.AuthorizationRetryStatus == "pending" &&
-            string.Equals(recovery.AuthorizationRetryReference, retryReference, StringComparison.Ordinal);
-        var replaceFailedCardAttempt = false;
-        if (!string.IsNullOrWhiteSpace(recovery.AuthorizationRetryReference))
+        var reserved = HasSubmittedRetry(recovery);
+        if (reserved)
         {
-            var priorRetry = await _paystackCheckoutService.VerifyTransactionAsync(recovery.AuthorizationRetryReference, cancellationToken);
-            if (!priorRetry.IsSuccess && !resumeReservedAttempt)
+            // A customer's status check never submits a charge. A durable card job can resume its
+            // original reference only after an explicit provider response that it does not exist.
+            var result = await ReconcileReservedAttemptAsync(baseUri, apiKey, subscriptionContext, recovery,
+                liveSubscription, nowUtc, cancellationToken, allowMissing: !customer && reference == recovery.AuthorizationRetryReference);
+            if (result is not null)
             {
-                return PaystackCardUpdateRefundRetryResult.Failed("Could not confirm the previous payment retry before charging the updated card.", subscriptionContext.SubscriptionId, subscriptionCode);
+                if (customer || scheduled || reference == recovery.AuthorizationRetryReference ||
+                    result.PaymentRecovered || result.PendingReason is not null || result.ShouldFailWebhook) return result;
+                // The previous card has now definitively declined. A distinct, verified card update
+                // can compete for the failed renewal, using the database's new state.
+                var refreshed = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriptionId,
+                    cancellationToken, requireSuccess: true, includeSuspended: true);
+                if (refreshed?.RecoveryId != recovery.RecoveryId || refreshed.AuthorizationRetryStatus != "failed" ||
+                    refreshed.AuthorizationRetryReference != recovery.AuthorizationRetryReference) return pending;
+                recovery = refreshed;
+                reserved = false;
             }
-            if (priorRetry.IsSuccess && IsSuccessfulPaystackStatus(priorRetry.TransactionStatus))
-            {
-                if (priorRetry.AmountInCents != decimal.ToInt64(subscriptionContext.BillingAmountZar.Value * 100m) ||
-                    !string.Equals(priorRetry.Currency, "ZAR", StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(priorRetry.CustomerEmail, subscriptionContext.Email, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(priorRetry.Reference, recovery.AuthorizationRetryReference, StringComparison.Ordinal))
-                {
-                    return PaystackCardUpdateRefundRetryResult.Failed("The previous payment retry did not match this subscription.", subscriptionContext.SubscriptionId, subscriptionCode);
-                }
-                await CompleteConfirmedCardUpdatePaymentAsync(baseUri, apiKey, subscriptionContext, recovery,
-                    liveSubscription.NextPaymentDate is { } nextDate && nextDate > nowUtc
-                        ? nextDate : (priorRetry.PaidAt ?? nowUtc).AddMonths(plan.BillingPeriodMonths),
-                    recovery.AuthorizationRetryReference, nowUtc, cancellationToken);
+        }
+        else if (recovery.AuthorizationRetryReference is { } previous)
+        {
+            var verified = await _paystackCheckoutService.VerifyTransactionAsync(previous, cancellationToken);
+            if (!MatchesRecoveryTransaction(verified, previous, subscriptionContext)) return pending;
+            if (IsSuccessfulPaystackStatus(verified.TransactionStatus))
+                return await SettleVerifiedRecoveryAsync(baseUri, apiKey, subscriptionContext, recovery,
+                    liveSubscription, verified, cancellationToken);
+            if (!IsTerminalRetryFailure(verified.TransactionStatus)) return pending;
+            if (previous == reference || recovery.AuthorizationRetryStatus == "succeeded")
                 return new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode);
-            }
-            if (priorRetry.IsSuccess && priorRetry.TransactionStatus is not ("failed" or "abandoned" or "reversed"))
-            {
-                return new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode,
-                    PendingReason: CardUpdatePaymentPending);
-            }
-            if (priorRetry.IsSuccess && string.Equals(recovery.AuthorizationRetryReference, retryReference, StringComparison.Ordinal))
-            {
-                // One attempt per card update. A confirmed failed charge requires
-                // a deliberate new recovery attempt, not another webhook charge.
-                await MarkPaymentRecoveryAuthorizationRetryAsync(baseUri, apiKey, recovery.RecoveryId,
-                    nowUtc, "failed", retryReference, priorRetry.TransactionStatus, null, cancellationToken,
-                    requireSuccess: true, expectedReference: retryReference);
-                return new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode);
-            }
-            if (priorRetry.IsSuccess && isCardUpdateAttempt && recovery.AuthorizationRetryStatus == "pending")
-            {
-                replaceFailedCardAttempt = true;
-            }
         }
+        if (!HasMatchingUnpaidInvoice(liveSubscription, subscriptionContext, recovery, nowUtc) ||
+            liveSubscription.AuthorizationCode != authorizationCode ||
+            verifiedCardAt < recovery.FirstFailedAt || !_paystackCheckoutService.CanChargeAuthorization)
+            return pending;
 
-        // Reconcile an already-paid attempt above even if the provider has since
-        // changed its invoice state. New collection still needs a failed invoice.
-        var mostRecentInvoiceStatus = TryReadMostRecentPaystackInvoiceStatus(liveSubscription.RawPayload);
-        if ((!resumeReservedAttempt && !replaceFailedCardAttempt && recovery.AuthorizationRetryStatus is not ("failed" or "skipped")) ||
-            !string.Equals(liveSubscription.Status, "attention", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(mostRecentInvoiceStatus, "failed", StringComparison.OrdinalIgnoreCase) ||
-            verification.PaidAt is { } verificationPaidAt && recovery.FirstFailedAt is { } failedAt && verificationPaidAt < failedAt)
+        if (reserved)
         {
-            return new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode);
-        }
-
-        if (!resumeReservedAttempt && !await ReserveCardUpdateAttemptAsync(baseUri, apiKey, recovery, retryReference, cancellationToken))
-        {
-            return new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode,
-                PendingReason: CardUpdatePaymentPending);
-        }
-
-        PaystackAuthorizationChargeResult chargeResult;
-        try
-        {
-            chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
-                plan,
-                subscriptionContext.Email,
-                verification.AuthorizationCode!,
-                retryReference,
-                subscriptionContext.SubscriptionId,
-                subscriptionCode,
-                subscriptionContext.BillingAmountZar.Value,
-                cancellationToken,
-                new Dictionary<string, object?>
-                {
-                    ["source"] = "subscription_authorization_retry",
-                    ["retry_trigger"] = isVerificationCharge ? "card_update" : "card_update_refund",
-                    ["card_update_transaction_reference"] = refundTransactionReference,
-                    ["provider_next_payment_date"] = liveSubscription.NextPaymentDate?.UtcDateTime
-                });
-        }
-        catch (Exception exception) when (
-            exception is HttpRequestException ||
-            exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogWarning(
-                exception,
-                "Paystack card-update refund payment retry failed unexpectedly. subscription_id={SubscriptionId} transaction_reference={TransactionReference}",
-                subscriptionContext.SubscriptionId,
-                refundTransactionReference);
-            return PaystackCardUpdateRefundRetryResult.Failed(
-                "Could not start the Paystack payment retry after the card update.",
-                subscriptionContext.SubscriptionId,
-                subscriptionCode);
-        }
-
-        // API acceptance is not proof of collection (Paystack can return queued).
-        // Verify this exact reference, owner, currency and full billing amount
-        // before granting any access or resolving the failed renewal.
-        var retryVerification = await _paystackCheckoutService.VerifyTransactionAsync(retryReference, cancellationToken);
-        if (!retryVerification.IsSuccess)
-        {
-            return PaystackCardUpdateRefundRetryResult.Failed(
-                "Could not confirm the card-update recovery payment.", subscriptionContext.SubscriptionId, subscriptionCode);
-        }
-        var retrySucceeded = IsSuccessfulPaystackStatus(retryVerification.TransactionStatus);
-        var retryStatus = retryVerification.TransactionStatus ?? "unknown";
-        var retryProviderTransactionId = retryVerification.ProviderTransactionId ?? retryReference;
-        var retryPaidAtUtc = retryVerification.PaidAt;
-        if (retrySucceeded &&
-            (retryVerification.AmountInCents != decimal.ToInt64(subscriptionContext.BillingAmountZar.Value * 100m) ||
-             !string.Equals(retryVerification.Currency, "ZAR", StringComparison.OrdinalIgnoreCase) ||
-             !string.Equals(retryVerification.CustomerEmail, subscriptionContext.Email, StringComparison.OrdinalIgnoreCase) ||
-             !string.Equals(retryVerification.Reference, retryReference, StringComparison.Ordinal)))
-        {
-            return PaystackCardUpdateRefundRetryResult.Failed(
-                "The verified recovery payment did not match this subscription.", subscriptionContext.SubscriptionId, subscriptionCode);
-        }
-
-        await InsertSubscriptionEventAsync(
-            baseUri,
-            apiKey,
-            subscriptionContext.SubscriptionId,
-            provider: "paystack",
-            providerPaymentId: subscriptionCode,
-            providerTransactionId: retryProviderTransactionId,
-            eventType: isVerificationCharge ? "paystack.card_update_retry" : "paystack.card_update_refund_retry",
-            eventStatus: retryStatus,
-            payload: new
-            {
-                source = isVerificationCharge ? "charge.success" : "refund.processed",
-                trigger = isVerificationCharge ? "card_update" : "card_update_refund",
-                refund_transaction_reference = refundTransactionReference,
-                refund_amount_in_subunits = refundAmount,
-                retry_reference = retryReference,
-                retry_status = retryStatus,
-                retry_error = retrySucceeded ? null : chargeResult.ErrorMessage
-            },
-            cancellationToken);
-
-        if (retrySucceeded)
-        {
-            var nextRenewalAtUtc = liveSubscription.NextPaymentDate is { } nextPaymentDate && nextPaymentDate > nowUtc
-                ? nextPaymentDate
-                : (retryPaidAtUtc ?? nowUtc).AddMonths(plan.BillingPeriodMonths);
-            await CompleteConfirmedCardUpdatePaymentAsync(baseUri, apiKey, subscriptionContext, recovery,
-                nextRenewalAtUtc, retryReference, nowUtc, cancellationToken);
+            if (!await CanResumeReservedRecoveryAsync(subscriptionContext, recovery, liveSubscription, cancellationToken)) return pending;
         }
         else
         {
-            // Preserve even a queued/ambiguous reference so a later card update
-            // verifies it before it can create another payment attempt.
-            var terminalFailure = retryStatus is "failed" or "abandoned" or "reversed";
-            await MarkPaymentRecoveryAuthorizationRetryAsync(
-                baseUri, apiKey, recovery.RecoveryId, nowUtc, terminalFailure ? "failed" : "pending", retryReference,
-                chargeResult.ErrorMessage ?? retryStatus, null, cancellationToken, requireSuccess: true, expectedReference: retryReference);
-            if (!terminalFailure)
-            {
-                return new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode,
-                    PendingReason: CardUpdatePaymentPending);
-            }
+            if (recovery.AuthorizationRetryStatus == "pending" && !scheduled && !customer)
+                return new PaystackCardUpdateRefundRetryResult(subscriptionContext.SubscriptionId, subscriptionCode);
+            var historical = await CheckHistoricalRecoveryPaymentsAsync(baseUri, apiKey, subscriptionContext,
+                recovery, liveSubscription.NextPaymentDate, cancellationToken);
+            if (historical is not null) return historical;
+            var assessment = await AssessSubscriptionCheckoutAsync(subscriptionContext.Email, null, cancellationToken);
+            if (assessment.PaystackRecoverySubscriptionCode != subscriptionCode || assessment.CustomerRecovery?.RecoveryId != recovery.RecoveryId)
+                return pending;
+            var claimed = await ReserveRecoveryAttemptAsync(baseUri, apiKey, recovery, subscriptionContext, reference,
+                liveSubscription.NextPaymentDate!.Value, cancellationToken);
+            if (claimed is null) return pending;
+            recovery = claimed;
         }
+        return await SubmitReservedRecoveryAsync(baseUri, apiKey, subscriptionContext, recovery, liveSubscription,
+            plan, reference, trigger, attemptKey, refundAmount, nowUtc, cancellationToken);
+    }
 
-        return new PaystackCardUpdateRefundRetryResult(
-            subscriptionContext.SubscriptionId,
-            subscriptionCode);
+    private async Task<PaystackCardUpdateRefundRetryResult> SubmitReservedRecoveryAsync(Uri baseUri, string apiKey,
+        PaymentRecoverySubscriptionContext subscription, PaymentRecoveryRow recovery, PaystackSubscriptionLookupResult live,
+        PaymentPlan plan, string reference, string trigger, string attemptKey, long? refundAmount, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var result = await _paystackCheckoutService.ChargeAuthorizationAsync(plan, subscription.Email,
+            live.AuthorizationCode!, reference, subscription.SubscriptionId, subscription.ProviderPaymentId,
+            subscription.BillingAmountZar!.Value, cancellationToken, new Dictionary<string, object?>
+            {
+                ["source"] = "subscription_authorization_retry", ["retry_trigger"] = trigger,
+                ["recovery_id"] = recovery.RecoveryId, ["provider_next_payment_date"] = live.NextPaymentDate?.UtcDateTime,
+                ["card_update_transaction_reference"] = trigger.StartsWith("card_update", StringComparison.Ordinal) ? attemptKey : null
+            });
+        var verified = await _paystackCheckoutService.VerifyTransactionAsync(reference, cancellationToken);
+        var status = verified.IsSuccess ? verified.TransactionStatus : "unknown";
+        await InsertSubscriptionEventAsync(baseUri, apiKey, subscription.SubscriptionId, "paystack",
+            subscription.ProviderPaymentId!, verified.ProviderTransactionId ?? reference,
+            trigger == "card_update" ? "paystack.card_update_retry" : trigger == "card_update_refund" ? "paystack.card_update_refund_retry" : "paystack.authorization_retry",
+            status ?? "unknown", new { trigger, retry_reference = reference, retry_status = status,
+                refund_amount_in_subunits = refundAmount, retry_error = result.ErrorMessage }, cancellationToken);
+        return await ApplyVerifiedAttemptAsync(baseUri, apiKey, subscription, recovery, live, reference, verified, now, cancellationToken);
     }
 
     private async Task<bool> UpdatePaystackAuthorizationAfterCardUpdateAsync(
@@ -6656,14 +6063,13 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         CancellationToken cancellationToken)
     {
         var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
-        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}");
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&status=eq.active&cancelled_at=is.null&or=(next_renewal_at.is.null,next_renewal_at.lt.{Uri.EscapeDataString(graceEndsAtUtc.ToString("O"))})");
         using var request = CreateJsonRequest(
             new HttpMethod("PATCH"),
             uri,
             apiKey,
             new
             {
-                status = "active",
                 next_renewal_at = graceEndsAtUtc.UtcDateTime
             },
             "return=minimal");
@@ -7290,7 +6696,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status,billing_amount_zar,billing_period_months,billing_amount_source&limit=1");
+            $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status,cancelled_at,billing_amount_zar,billing_period_months,billing_amount_source&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -7342,7 +6748,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             row.Status,
             row.BillingAmountZar,
             row.BillingPeriodMonths,
-            row.BillingAmountSource);
+            row.BillingAmountSource,
+            row.CancelledAt);
     }
 
     private async Task<string?> GetSubscriberEmailByIdAsync(
@@ -7412,12 +6819,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string apiKey,
         string subscriptionId,
         CancellationToken cancellationToken,
-        bool requireSuccess = false)
+        bool requireSuccess = false,
+        bool includeSuspended = false, bool includeRecovered = false)
     {
         var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var filter = includeSuspended ? "order=first_failed_at.desc" : "resolved_at=is.null";
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscription_payment_recoveries?subscription_id=eq.{escapedSubscriptionId}&resolved_at=is.null&select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id&limit=1");
+            $"rest/v1/subscription_payment_recoveries?subscription_id=eq.{escapedSubscriptionId}&{filter}&select=resolution,recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_paid_through,authorization_retry_follow_up,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (requireSuccess) response.EnsureSuccessStatusCode();
@@ -7435,7 +6844,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var rows = await JsonSerializer.DeserializeAsync<List<PaymentRecoveryRow>>(stream, cancellationToken: cancellationToken)
             ?? [];
-        return rows.FirstOrDefault();
+        var latest = rows.FirstOrDefault();
+        return latest?.Resolution is null or "suspended" || includeRecovered && latest.Resolution == "recovered" ? latest : null;
     }
 
     private async Task<IReadOnlyList<PaymentRecoveryRow>> GetDuePaymentRecoveriesAsync(
@@ -7447,7 +6857,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedNow = Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"));
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscription_payment_recoveries?resolved_at=is.null&grace_ends_at=lte.{escapedNow}&or=(emails_scheduled_at.not.is.null,authorization_retry_status.is.null,authorization_retry_status.in.(failed,skipped))&select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id&order=grace_ends_at.asc&limit=100");
+            $"rest/v1/subscription_payment_recoveries?resolved_at=is.null&grace_ends_at=lte.{escapedNow}&or=(emails_scheduled_at.not.is.null,authorization_retry_status.is.null,authorization_retry_status.in.(failed,skipped))&select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_paid_through,authorization_retry_follow_up,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id&order=grace_ends_at.asc&limit=100");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -7455,33 +6865,6 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogWarning(
                 "Supabase due payment recovery lookup failed. Status={StatusCode} Body={Body}",
-                (int)response.StatusCode,
-                body);
-            return [];
-        }
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        return await JsonSerializer.DeserializeAsync<List<PaymentRecoveryRow>>(stream, cancellationToken: cancellationToken)
-            ?? [];
-    }
-
-    private async Task<IReadOnlyList<PaymentRecoveryRow>> GetPendingAuthorizationRetryRecoveriesAsync(
-        Uri baseUri,
-        string apiKey,
-        DateTimeOffset nowUtc,
-        CancellationToken cancellationToken)
-    {
-        var escapedNow = Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"));
-        var uri = new Uri(
-            baseUri,
-            $"rest/v1/subscription_payment_recoveries?resolved_at=is.null&authorization_retry_status=eq.pending&authorization_retry_due_at=lte.{escapedNow}&select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id&order=authorization_retry_due_at.asc&limit=100");
-        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning(
-                "Supabase pending authorization retry lookup failed. Status={StatusCode} Body={Body}",
                 (int)response.StatusCode,
                 body);
             return [];
@@ -7514,7 +6897,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             authorization_retry_status = "pending"
         };
 
-        var uri = new Uri(baseUri, "rest/v1/subscription_payment_recoveries?select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id");
+        var uri = new Uri(baseUri, "rest/v1/subscription_payment_recoveries?select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_paid_through,authorization_retry_follow_up,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id");
         using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "return=representation");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -7588,7 +6971,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     {
         var escapedRecoveryId = Uri.EscapeDataString(recoveryId);
         var uri = new Uri(baseUri, $"rest/v1/subscription_payment_recoveries?recovery_id=eq.{escapedRecoveryId}" +
-            (expectedReference is null ? "" : $"&authorization_retry_reference=eq.{Uri.EscapeDataString(expectedReference)}&resolved_at=is.null&select=recovery_id"));
+            (expectedReference is null ? "" : $"&authorization_retry_reference=eq.{Uri.EscapeDataString(expectedReference)}&authorization_retry_status=eq.pending&resolved_at=is.null&select=recovery_id"));
         var payload = new Dictionary<string, object?>
         {
             ["authorization_retry_attempted_at"] = attemptedAtUtc.UtcDateTime,
@@ -7603,6 +6986,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         if (nextRetryDueAtUtc is not null)
         {
+            payload["authorization_retry_follow_up"] = true;
             payload["authorization_retry_due_at"] = nextRetryDueAtUtc.Value.UtcDateTime;
         }
 
@@ -7613,7 +6997,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             payload,
             expectedReference is null ? "return=minimal" : "return=representation");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (requireSuccess) response.EnsureSuccessStatusCode();
+        if (requireSuccess || expectedReference is not null) response.EnsureSuccessStatusCode();
         if (expectedReference is not null && response.IsSuccessStatusCode)
         {
             var rows = await response.Content.ReadFromJsonAsync<List<PaymentRecoveryRow>>(cancellationToken);
@@ -8078,7 +7462,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 retryError,
                 followUpGraceEndsAtUtc,
                 cancellationToken,
-                nextRetryDueAtUtc: followUpRetryDueAtUtc);
+                nextRetryDueAtUtc: followUpRetryDueAtUtc, expectedReference: retryReference);
 
             await ExtendSubscriptionGracePeriodAsync(
                 baseUri,
@@ -8111,7 +7495,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 retryReference,
                 retryError,
                 null,
-                cancellationToken);
+                cancellationToken, expectedReference: retryReference);
             return;
         }
 
@@ -8124,7 +7508,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             retryReference,
             retryError,
             graceEndsAtUtc,
-            cancellationToken);
+            cancellationToken, expectedReference: retryReference);
 
         await ExtendSubscriptionGracePeriodAsync(
             baseUri,
@@ -8178,7 +7562,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string provider,
         string retryStatus) =>
         recovery.EmailsScheduledAt is null &&
-        recovery.AuthorizationRetryAttemptedAt is null &&
+        !recovery.FollowUp &&
         string.Equals(provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
         string.Equals(retryStatus, "failed", StringComparison.OrdinalIgnoreCase) &&
         !string.IsNullOrWhiteSpace(subscriptionContext.ProviderToken);
@@ -8188,8 +7572,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string apiKey,
         PaymentRecoverySubscriptionContext subscriptionContext,
         DateTimeOffset nowUtc,
-        CancellationToken cancellationToken,
-        string? authorizationRetryReference = null)
+        CancellationToken cancellationToken)
     {
         var recovery = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriptionId, cancellationToken);
         if (recovery is null)
@@ -8203,20 +7586,6 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 recovery.WarningEmailId,
                 recovery.SuspensionEmailId),
             cancellationToken);
-        if (!string.IsNullOrWhiteSpace(authorizationRetryReference))
-        {
-            await MarkPaymentRecoveryAuthorizationRetryAsync(
-                baseUri,
-                apiKey,
-                recovery.RecoveryId,
-                nowUtc,
-                "succeeded",
-                authorizationRetryReference,
-                null,
-                null,
-                cancellationToken);
-        }
-
         await ResolvePaymentRecoveryAsync(baseUri, apiKey, recovery.RecoveryId, nowUtc, "recovered", cancellationToken);
     }
 
@@ -8428,7 +7797,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private static string BuildGratisProviderPaymentId(string subscriberId) =>
         $"gratis-{subscriberId}";
 
-    private static string BuildAuthorizationRetryReference(string recoveryId)
+    private static string BuildAuthorizationRetryReference(string recoveryId, DateTimeOffset dueAt)
     {
         var safeRecoveryId = new string(
             recoveryId.Where(character => char.IsLetterOrDigit(character) || character == '-').ToArray());
@@ -8437,36 +7806,13 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             safeRecoveryId = Guid.NewGuid().ToString("N");
         }
 
-        return $"retry-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{safeRecoveryId}";
+        return $"retry-{dueAt.UtcDateTime:yyyyMMddHHmmss}-{safeRecoveryId}";
     }
 
     private static string BuildCardUpdateRefundRetryReference(
         string subscriptionId,
         string refundTransactionReference) =>
         $"card-update-retry-{ComputeSha256Hex($"{subscriptionId}:{refundTransactionReference}")[..32]}";
-
-    private static string BuildAccountRepairReference(string subscriptionId)
-    {
-        var safeSubscriptionId = new string(
-            subscriptionId.Where(character => char.IsLetterOrDigit(character) || character == '-').ToArray());
-        if (string.IsNullOrWhiteSpace(safeSubscriptionId))
-        {
-            safeSubscriptionId = Guid.NewGuid().ToString("N");
-        }
-
-        var nowUtc = DateTimeOffset.UtcNow;
-        var bucketMinute = nowUtc.Minute - nowUtc.Minute % (int)AccountRepairAttemptWindow.TotalMinutes;
-        var bucketUtc = new DateTimeOffset(
-            nowUtc.Year,
-            nowUtc.Month,
-            nowUtc.Day,
-            nowUtc.Hour,
-            bucketMinute,
-            0,
-            TimeSpan.Zero);
-
-        return $"repair-{bucketUtc:yyyyMMddHHmm}-{safeSubscriptionId}";
-    }
 
     private static string BuildPlanChangeReference(string subscriptionId, string targetTierCode, DateTimeOffset effectiveAtUtc)
     {
@@ -8763,59 +8109,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string.Equals(eventType, "charge.success", StringComparison.OrdinalIgnoreCase) &&
         string.Equals(TryReadNestedString(data, "metadata", "invoice_action"), "update", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsPaystackAuthorizationRetrySuccess(string eventType, JsonElement data) =>
-        string.Equals(eventType, "charge.success", StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(TryReadNestedString(data, "metadata", "source"), "subscription_authorization_retry", StringComparison.OrdinalIgnoreCase);
-
-    private static LivePaystackPayment? TryReadSuccessfulLivePaystackPayment(string? rawPayload)
+    private static bool IsPaystackAuthorizationRetrySuccess(string eventType, JsonElement data)
     {
-        if (string.IsNullOrWhiteSpace(rawPayload))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(rawPayload);
-            if (!document.RootElement.TryGetProperty("data", out var dataNode) ||
-                dataNode.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            var invoiceNode = dataNode.TryGetProperty("most_recent_invoice", out var parsedInvoice) &&
-                              parsedInvoice.ValueKind == JsonValueKind.Object
-                ? parsedInvoice
-                : default;
-            if (invoiceNode.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            var invoiceStatus = TryReadString(invoiceNode, "status");
-            var transactionStatus = TryReadNestedString(invoiceNode, "transaction", "status");
-            if (!IsSuccessfulPaystackStatus(invoiceStatus) &&
-                !IsSuccessfulPaystackStatus(transactionStatus))
-            {
-                return null;
-            }
-
-            var reference = TryReadNestedString(invoiceNode, "transaction", "reference") ??
-                            TryReadNestedString(invoiceNode, "transaction", "id") ??
-                            TryReadString(invoiceNode, "reference") ??
-                            TryReadString(invoiceNode, "id");
-            var paidAtUtc = TryParseDateTimeOffset(
-                TryReadString(invoiceNode, "paid_at") ??
-                TryReadString(invoiceNode, "paidAt") ??
-                TryReadNestedString(invoiceNode, "transaction", "paid_at") ??
-                TryReadNestedString(invoiceNode, "transaction", "paidAt"));
-
-            return new LivePaystackPayment(reference, paidAtUtc);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        if (!string.Equals(eventType, "charge.success", StringComparison.OrdinalIgnoreCase)) return false;
+        var reference = TryReadString(data, "reference");
+        return string.Equals(TryReadNestedString(data, "metadata", "source"), "subscription_authorization_retry", StringComparison.OrdinalIgnoreCase) ||
+            reference?.StartsWith("retry-", StringComparison.Ordinal) == true || IsManualAttempt(reference) ||
+            reference?.StartsWith("card-update-retry-", StringComparison.Ordinal) == true ||
+            reference?.StartsWith("repair-", StringComparison.Ordinal) == true;
     }
 
     private static bool IsPaystackPlanChangeChargeSuccess(string eventType, JsonElement data) =>
@@ -8907,27 +8208,6 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return null;
     }
 
-    private static string? TryReadMostRecentPaystackInvoiceStatus(string? rawPayload)
-    {
-        if (string.IsNullOrWhiteSpace(rawPayload))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(rawPayload);
-            return document.RootElement.TryGetProperty("data", out var dataNode) &&
-                   dataNode.ValueKind == JsonValueKind.Object
-                ? TryReadNestedString(dataNode, "most_recent_invoice", "status")
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
     private static string? ResolvePaystackRefundTransactionReference(JsonElement data) =>
         TryReadString(data, "transaction_reference")
         ?? TryReadNestedString(data, "transaction", "reference")
@@ -8967,7 +8247,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var retryTrigger = TryReadNestedString(data, "metadata", "retry_trigger");
         var providerNextPaymentDate = (string.Equals(retryTrigger, "card_update_refund", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(retryTrigger, "card_update", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(retryTrigger, "card_update_manual", StringComparison.OrdinalIgnoreCase))
+            string.Equals(retryTrigger, "card_update_manual", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(retryTrigger, "customer_retry", StringComparison.OrdinalIgnoreCase))
             ? TryParseDateTimeOffset(TryReadNestedString(data, "metadata", "provider_next_payment_date"))
             : null;
         if (providerNextPaymentDate is { } futureProviderNextPaymentDate &&
@@ -9043,6 +8324,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string.Equals(status, "paid", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsPendingPaystackStatus(string? status) =>
+        string.Equals(status, "processing", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "queued", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "pending", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "ongoing", StringComparison.OrdinalIgnoreCase);
@@ -9582,12 +8864,6 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         public string? SubscriptionId { get; set; }
     }
 
-    private sealed class PaystackCheckoutSessionLookupRow
-    {
-        [JsonPropertyName("session_id")]
-        public string? SessionId { get; set; }
-    }
-
     private sealed class AccountRepairEventRow
     {
         [JsonPropertyName("event_status")]
@@ -9673,16 +8949,13 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? BillingAmountSource,
         DateTimeOffset? CancelledAt = null);
 
-    private sealed record LivePaystackPayment(
-        string? Reference,
-        DateTimeOffset? PaidAtUtc);
-
     private sealed record PaystackCardUpdateRefundRetryResult(
         string? SubscriptionId = null,
         string? ProviderPaymentId = null,
         bool ShouldFailWebhook = false,
         string? ErrorMessage = null,
-        string? PendingReason = null)
+        string? PendingReason = null,
+        bool PaymentRecovered = false)
     {
         public static PaystackCardUpdateRefundRetryResult NotApplicable { get; } = new();
 
@@ -9702,6 +8975,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
     private sealed class PaymentRecoveryRow
     {
+        [JsonPropertyName("resolution")]
+        public string? Resolution { get; set; }
+
         [JsonPropertyName("recovery_id")]
         public string RecoveryId { get; set; } = string.Empty;
 
@@ -9725,6 +9001,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         [JsonPropertyName("authorization_retry_attempted_at")]
         public DateTimeOffset? AuthorizationRetryAttemptedAt { get; set; }
+
+        [JsonPropertyName("authorization_retry_paid_through")]
+        public DateTimeOffset? PaidThrough { get; set; }
+
+        [JsonPropertyName("authorization_retry_follow_up")]
+        public bool FollowUp { get; set; }
 
         [JsonPropertyName("authorization_retry_status")]
         public string? AuthorizationRetryStatus { get; set; }

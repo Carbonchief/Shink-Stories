@@ -65,6 +65,16 @@ if '--output' in sys.argv:
         self.assertTrue(calls[0][-1].startswith('create schema if not exists'))
         self.assertEqual(3, sum(call[-1].startswith('insert into supabase_migrations.shink_action_migrations') for call in calls))
 
+    def test_retry_migration_is_deferred_until_the_workers_stop(self):
+        migration = 'Shink/Database/migrations/20261127101028_customer_payment_recovery.sql'
+        (self.root / migration).touch()
+        output = self.root / 'github-output'
+        self.environment.update(MIGRATION_FILES=migration, GITHUB_OUTPUT=str(output))
+        result, calls = self.execute('false')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertFalse(any('--file' in call for call in calls))
+        self.assertEqual('drained_recovery_sha=fixture-sha', output.read_text().strip())
+
     def test_already_applied_migrations_remain_skipped_during_preflight(self):
         result, calls = self.execute('true', applied='true')
         self.assertEqual(0, result.returncode, result.stderr)
